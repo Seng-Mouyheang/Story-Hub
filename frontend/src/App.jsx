@@ -1,22 +1,31 @@
-import { useState } from 'react'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Login from './pages/Login';
+import Home from './pages/Home';
+import Explore from './pages/Explore';
+import Confession from './pages/Confession';
+import Bookmarks from './pages/Bookmarks';
+import Dashboard from './pages/Dashboard';
+import Write from './pages/Write';
+import Profile from './pages/Profile';
+import EditProfile from './pages/EditProfile';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <div className='h-min-screen flex flex-col justify-between items-center p-12'>
-      <h1 className='text-xl text-gray-600 font-bold border-gray-400 mb-6'><span className='text-yellow-600'>Vite</span> + <span className='text-blue-600'>React</span> + <span className='text-green-600'>Tailwind</span></h1>
-      <div className='text-center space-y-6'>
-        <h3 className='text-gray-600 font-bold'>Current counts: {count}</h3>
-        <button 
-          className='bg-purple-300 px-4 py-2 rounded cursor-pointer text-white font-bold transition-all ease-in duration-200 hover:bg-purple-500'
-          onClick={() => setCount((count) => count + 1)}>
-          Click Me!
-        </button>
-        <p className='text-gray-600 font-bold'>If you see the button is purple, then Tailwind is working!</p>
-      </div>
-    </div>
-  )
+    <Router>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/explore" element={<Explore />} />
+        <Route path="/confession" element={<Confession />} />
+        <Route path="/bookmarks" element={<Bookmarks />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/write" element={<Write />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/edit-profile" element={<EditProfile />} />
+      </Routes>
+    </Router>
+  );
 }
 
-export default App
+export default App;
