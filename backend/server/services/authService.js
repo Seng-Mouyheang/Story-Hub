@@ -1,13 +1,13 @@
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const path = require('path');
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const path = require("path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const SALT_ROUNDS = 10;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
-  throw new Error('Missing JWT_SECRET environment variable');
+  throw new Error("Missing JWT_SECRET environment variable");
 }
 
 /**
@@ -34,7 +34,7 @@ const generateToken = (user) => {
       role: user.role,
     },
     JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: "7d" },
   );
 };
 

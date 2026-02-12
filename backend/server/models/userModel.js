@@ -1,7 +1,7 @@
-const { connectToDatabase } = require('../configuration/dbConfig');
-const { ObjectId } = require('mongodb');
+const { connectToDatabase } = require("../configuration/dbConfig");
+const { ObjectId } = require("mongodb");
 
-const COLLECTION_NAME = 'users';
+const COLLECTION_NAME = "users";
 
 const getCollection = async () => {
   const db = await connectToDatabase();
@@ -21,9 +21,10 @@ const createUser = async (userData) => {
     username: userData.username,
     email: userData.email,
     password: userData.password, // hash later
-    role: userData.role || 'user',
+    role: userData.role || "user",
     createdAt: new Date(),
     updatedAt: new Date(),
+    deletedAt: null,
   };
 
   const result = await collection.insertOne(user);

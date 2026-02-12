@@ -1,5 +1,5 @@
-const userModel = require('../models/userModel');
-const authService = require('../services/authService');
+const userModel = require("../models/userModel");
+const authService = require("../services/authService");
 
 const register = async (req, res) => {
   try {
@@ -7,7 +7,7 @@ const register = async (req, res) => {
 
     const existingUser = await userModel.findUserByEmail(email);
     if (existingUser) {
-      return res.status(409).json({ message: 'Email already exists' });
+      return res.status(409).json({ message: "Email already exists" });
     }
 
     const hashedPassword = await authService.hashPassword(password);
@@ -20,7 +20,7 @@ const register = async (req, res) => {
 
     res.status(201).json({ userId });
   } catch (error) {
-    res.status(500).json({ message: 'Registration failed' });
+    res.status(500).json({ message: "Registration failed" });
   }
 };
 
@@ -30,16 +30,13 @@ const login = async (req, res) => {
 
     const user = await userModel.findUserByEmail(email);
     if (!user) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const isMatch = await authService.comparePassword(
-      password,
-      user.password
-    );
+    const isMatch = await authService.comparePassword(password, user.password);
 
     if (!isMatch) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const token = authService.generateToken(user);
@@ -54,7 +51,7 @@ const login = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ message: 'Login failed' });
+    res.status(500).json({ message: "Login failed" });
   }
 };
 
