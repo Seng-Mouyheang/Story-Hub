@@ -91,24 +91,13 @@ export default function Login() {
               Sign In
             </Link>
 
-            <button
-              type="button"
-              className="w-full bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-slate-50"
-            >
-              <img
-                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/action/google.svg"
-                className="w-5 h-5"
-                alt="Google"
-              />
-              Sign in with Google
-            </button>
           </form>
 
           <p className="mt-8 text-center text-sm text-slate-500">
             Don't have an account?{' '}
-            <a href="#" className="font-bold text-red-400">
+            <Link to="/signup" className="font-bold text-red-400 hover:text-red-500">
               Sign up
-            </a>
+            </Link>
           </p>
         </div>
       </div>

@@ -1,61 +1,130 @@
-import React from 'react';
-import Sidebar from '../components/Sidebar';
-import Navbar from '../components/Navbar';
-import { Bookmark } from 'lucide-react';
+import React from "react";
+import Sidebar from "../components/Sidebar";
+import Navbar from "../components/Navbar";
+import { Heart, MessageCircle, Bookmark, Share2, MoreHorizontal, User } from "lucide-react";
 
+/* -------------------- Post Card -------------------- */
+const PostCard = ({
+  author,
+  genre,
+  time,
+  title,
+  excerpt,
+  likes,
+  comments,
+}) => (
+  <div className="bg-white rounded-3xl p-6 mb-6 border border-gray-100 shadow-sm">
+    {/* Header */}
+    <div className="flex justify-between items-start mb-4">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+          <img
+            src={`https://api.dicebear.com/7.x/bottts/svg?seed=${author}`}
+            alt="avatar"
+          />
+        </div>
+
+        <div>
+          <div className="flex items-center gap-2">
+            <h3 className="font-bold text-gray-900">{author}</h3>
+            <span className="text-gray-400 text-xs">• {time}</span>
+          </div>
+
+          <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">
+            {genre}
+          </span>
+        </div>
+      </div>
+
+      <button className="text-gray-400 hover:text-gray-600">
+        <MoreHorizontal size={20} />
+      </button>
+    </div>
+
+    {/* Content */}
+    <h2 className="text-2xl font-bold mb-3 text-gray-900">{title}</h2>
+
+    <p className="text-gray-600 text-sm leading-relaxed mb-6">
+      {excerpt}
+    </p>
+
+    {/* Actions */}
+    <div className="flex items-center justify-between pt-4 border-t border-gray-50">
+      <div className="flex items-center gap-6">
+        <button className="flex items-center gap-2 text-gray-500 hover:text-red-500 transition">
+          <Heart size={20} />
+          <span className="text-sm font-medium">{likes}</span>
+        </button>
+
+        <button className="flex items-center gap-2 text-gray-500 hover:text-blue-500 transition">
+          <MessageCircle size={20} />
+          <span className="text-sm font-medium">{comments}</span>
+        </button>
+      </div>
+
+      <div className="flex items-center gap-4">
+        <button className="text-red-400">
+          <Bookmark size={20} fill="currentColor" />
+        </button>
+        <button className="text-gray-500 hover:text-black">
+          <Share2 size={20} />
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
+/* -------------------- Bookmarks Page -------------------- */
 export default function Bookmarks() {
   const bookmarks = [
     {
-      id: 1,
-      title: 'Visualizing System Design',
-      description: 'A deep dive into how we created the visualize platform architecture...',
-      tag: 'Article',
-      image: 'https://picsum.photos/seed/81/200',
+      author: "Jane Doe",
+      genre: "LIFESTYLE",
+      time: "2 days ago",
+      title: "Visualizing System Design",
+      excerpt:
+        "A deep dive into how we created the visualize platform architecture and best practices...",
+      likes: "1.2K",
+      comments: "300",
     },
     {
-      id: 2,
-      title: 'UI Component Library',
-      description: 'Comprehensive guide to building reusable UI components...',
-      tag: 'Tutorial',
-      image: 'https://picsum.photos/seed/82/200',
+      author: "Alex Smith",
+      genre: "TECHNOLOGY",
+      time: "5 days ago",
+      title: "UI Component Library",
+      excerpt:
+        "Comprehensive guide to building reusable UI components for faster design and development...",
+      likes: "800",
+      comments: "120",
     },
     {
-      id: 3,
-      title: 'Design Trends 2024',
-      description: 'Latest trends and predictions for UI/UX design in 2024...',
-      tag: 'Blog Post',
-      image: 'https://picsum.photos/seed/83/200',
+      author: "Bob Wilson",
+      genre: "DESIGN",
+      time: "1 week ago",
+      title: "Design Trends 2024",
+      excerpt:
+        "Latest trends and predictions for UI/UX design in 2024. Stay ahead of the curve...",
+      likes: "950",
+      comments: "210",
     },
   ];
 
   return (
-    <div className="flex h-screen">
+    <div className="flex min-h-screen bg-white text-gray-900">
+      {/* Sidebar */}
       <Sidebar />
-      <div className="flex-1 flex flex-col bg-white">
+
+      {/* Main Section */}
+      <div className="flex-1 flex flex-col">
+        {/* Navbar */}
         <Navbar title="Saved Items" />
-        <main className="flex-1 overflow-y-auto pt-10 px-6 pb-10">
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {bookmarks.map((item) => (
-              <div key={item.id} className="bg-white p-6 rounded-2xl border border-slate-100 flex gap-4">
-                <div className="w-24 h-24 bg-slate-100 rounded-xl flex-shrink-0 overflow-hidden">
-                  <img src={item.image} className="w-full h-full object-cover" alt={item.title} />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-sm mb-1">{item.title}</h4>
-                  <p className="text-xs text-slate-400 mb-4 line-clamp-2">{item.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] bg-slate-50 px-2 py-1 rounded text-slate-500 font-medium">
-                      {item.tag}
-                    </span>
-                    <button className="text-red-400">
-                      <Bookmark className="w-4 h-4 fill-red-400" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+
+        {/* Page Content */}
+        <main className="pt-10 px-6 pb-10">
+          <div className="max-w-6xl mx-auto">
+            {bookmarks.map((post, i) => (
+              <PostCard key={i} {...post} />
             ))}
-            </div>
           </div>
         </main>
       </div>

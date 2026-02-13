@@ -86,8 +86,35 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Trending Tags Section Added Back */}
+      {!isCollapsed && (
+        <div className="px-4 mt-6">
+          <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">
+            Trending Tags #
+          </h3>
+
+          <div className="space-y-3">
+            {[
+              "#DailyLifeAsGenZ",
+              "#CampusStory",
+              "#StudyMood",
+              "#LateNightThoughts",
+            ].map((tag, index) => (
+              <a
+                key={index}
+                href="#"
+                className="block text-gray-600 text-sm hover:text-black transition-colors"
+              >
+                {tag}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Bottom Buttons */}
       <div className="absolute bottom-0 w-full p-3 border-t border-slate-100 space-y-2">
+        {/* Write Post Button */}
         <Link
           to="/write"
           className="bg-red-400 text-white py-2 rounded-xl font-medium flex items-center justify-center gap-2 hover:opacity-90"
@@ -96,6 +123,7 @@ export default function Sidebar() {
           {!isCollapsed && "Write Post"}
         </Link>
 
+        {/* Logout Button */}
         <Link
           to="/login"
           className="text-slate-400 py-2 text-sm flex items-center justify-center gap-2 hover:text-slate-600"
