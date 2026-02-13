@@ -8,10 +8,11 @@ export default function Profile() {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <main className="flex-1 bg-slate-50/50 min-h-screen flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col bg-white">
         <Navbar title="User Profile" />
-        <div className="p-8 max-w-5xl mx-auto w-full">
-          <div className="space-y-8">
+        <main className="flex-1 overflow-y-auto pt-10 px-6 pb-10">
+          <div className="max-w-5xl mx-auto">
+            <div className="space-y-8">
             <div className="bg-white rounded-3xl overflow-hidden border border-slate-100 relative shadow-sm">
               <div className="h-48 bg-gradient-to-r from-red-100 to-amber-50"></div>
               <div className="px-8 pb-8">
@@ -58,9 +59,10 @@ export default function Profile() {
                 </div>
               </div>
             </div>
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

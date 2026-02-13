@@ -31,10 +31,11 @@ export default function Bookmarks() {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <main className="flex-1 bg-slate-50/50 min-h-screen flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col bg-white">
         <Navbar title="Saved Items" />
-        <div className="p-8 max-w-5xl mx-auto w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <main className="flex-1 overflow-y-auto pt-10 px-6 pb-10">
+          <div className="max-w-5xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {bookmarks.map((item) => (
               <div key={item.id} className="bg-white p-6 rounded-2xl border border-slate-100 flex gap-4">
                 <div className="w-24 h-24 bg-slate-100 rounded-xl flex-shrink-0 overflow-hidden">
@@ -54,9 +55,10 @@ export default function Bookmarks() {
                 </div>
               </div>
             ))}
+            </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
