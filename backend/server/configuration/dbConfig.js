@@ -20,6 +20,40 @@ const connectToDatabase = async () => {
     await client.connect();
     console.log("Connected to MongoDB");
     db = client.db(databaseName);
+
+    // Ensure indexes (safe to run multiple times)
+    await db.collection("stories").createIndex(
+      { publishedAt: -1, _id: -1 },
+      {
+        name: "published_cursor_index",
+        partialFilterExpression: {
+          status: "published",
+          visibility: "public",
+          deletedAt: null,
+        },
+      },
+    );
+
+    // Index for author dashboard (sort by updatedAt desc, then _id desc)
+    await db
+      .collection("stories")
+      .createIndex(
+        { authorId: 1, updatedAt: -1, _id: -1 },
+        { name: "author_dashboard_index" },
+      );
+
+    // For Hard delete Testing
+    // await db.collection("stories").dropIndex("deletedAt_1").catch(() => {});
+
+    // Create TTL index on stories collection (Hard delete 30 days)
+    await db.collection("stories").createIndex(
+      { deletedAt: 1 },
+      {
+        expireAfterSeconds: 60 * 60 * 24 * 30,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
     console.log(`Using database: ${databaseName}`);
     return db;
   } catch (error) {
