@@ -33,10 +33,7 @@ const getAllStories = async (req, res) => {
     const { cursor } = req.query;
     const limit = parseInt(req.query.limit, 10) || 10;
 
-    const result = await storyModel.getPublishedStories(
-      cursor,
-      limit
-    );
+    const result = await storyModel.getPublishedStories(cursor, limit);
 
     res.json(result);
   } catch (error) {
@@ -44,7 +41,6 @@ const getAllStories = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 const getStory = async (req, res) => {
   try {
@@ -67,10 +63,7 @@ const getStory = async (req, res) => {
       }
     }
 
-    if (
-      story.status === "published" &&
-      story.visibility === "public"
-    ) {
+    if (story.status === "published" && story.visibility === "public") {
       await storyModel.incrementViews(story._id);
     }
 
@@ -120,7 +113,7 @@ const getMyStories = async (req, res) => {
     const result = await storyModel.getUserStories(
       req.user.userId,
       limit,
-      cursor
+      cursor,
     );
 
     res.json(result);

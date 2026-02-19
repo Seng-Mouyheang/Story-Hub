@@ -27,7 +27,7 @@ const {
 router.get(
   "/",
   validate(cursorPaginationSchema, "query"),
-  storyController.getAllStories
+  storyController.getAllStories,
 );
 
 // Get my stories (auth required)
@@ -35,16 +35,11 @@ router.get(
   "/me",
   authenticate,
   validate(cursorPaginationSchema, "query"),
-  storyController.getMyStories
+  storyController.getMyStories,
 );
 
 // Public single story (auth optional)
-router.get(
-  "/:id", 
-  validate(idParamSchema, 
-  "params"), 
-  storyController.getStory,
-);
+router.get("/:id", validate(idParamSchema, "params"), storyController.getStory);
 
 /* ============================= */
 /*            PROTECTED          */

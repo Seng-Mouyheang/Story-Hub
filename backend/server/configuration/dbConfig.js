@@ -29,18 +29,20 @@ const connectToDatabase = async () => {
         partialFilterExpression: {
           status: "published",
           visibility: "public",
-          deletedAt: null
-        }
-      }
+          deletedAt: null,
+        },
+      },
     );
 
     // Index for author dashboard (sort by updatedAt desc, then _id desc)
-    await db.collection("stories").createIndex(
-      { authorId: 1, updatedAt: -1, _id: -1 },
-      { name: "author_dashboard_index" }
-    );
+    await db
+      .collection("stories")
+      .createIndex(
+        { authorId: 1, updatedAt: -1, _id: -1 },
+        { name: "author_dashboard_index" },
+      );
 
-    // For Hard delete Testing 
+    // For Hard delete Testing
     // await db.collection("stories").dropIndex("deletedAt_1").catch(() => {});
 
     // Create TTL index on stories collection (Hard delete 30 days)
@@ -48,8 +50,8 @@ const connectToDatabase = async () => {
       { deletedAt: 1 },
       {
         expireAfterSeconds: 60 * 60 * 24 * 30,
-        partialFilterExpression: { deletedAt: { $type: "date" } }
-      }
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
     );
 
     console.log(`Using database: ${databaseName}`);

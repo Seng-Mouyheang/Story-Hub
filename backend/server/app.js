@@ -8,7 +8,7 @@ const storyRoutes = require("./routes/storyRoutes");
 // Middleware to parse JSON bodies
 app.use(express.json());
 
-app.disable("x-powered-by")
+app.disable("x-powered-by");
 
 // Routes
 app.use("/api/auth", authRoutes);
