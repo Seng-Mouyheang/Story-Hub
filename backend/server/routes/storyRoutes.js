@@ -78,20 +78,20 @@ router.delete(
 /* ============================= */
 
 // Like a story
-router.post(
-  "/:id/like",
-  authenticate,
-  validate(idParamSchema, "params"),
-  storyLikeController.likeStory,
-);
+// router.post(
+//   "/:id/like",
+//   authenticate,
+//   validate(idParamSchema, "params"),
+//   storyLikeController.likeStory,
+// );
 
 // Unlike a story
-router.delete(
-  "/:id/like",
-  authenticate,
-  validate(idParamSchema, "params"),
-  storyLikeController.unlikeStory,
-);
+// router.delete(
+//   "/:id/like",
+//   authenticate,
+//   validate(idParamSchema, "params"),
+//   storyLikeController.unlikeStory,
+// );
 
 // Get story likes (auth optional to show if current user liked it)
 router.get(

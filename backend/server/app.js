@@ -35,6 +35,9 @@ connectToDatabase()
 ║   - POST /api/stories/                         ║
 ║   - PUT /api/stories/:id                       ║
 ║   - DELETE /api/stories/:id                    ║
+║                                                ║
+║   - GET /api/stories/:id/likes                 ║
+║   - POST /api/stories/:id/toggle-like          ║
 ╚════════════════════════════════════════════════╝
   `),
     );

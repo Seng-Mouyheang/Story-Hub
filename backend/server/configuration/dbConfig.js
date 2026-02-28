@@ -61,6 +61,11 @@ const connectToDatabase = async () => {
         { userId: 1, storyId: 1 },
         { unique: true, name: "unique_user_story_like" },
       );
+    
+    await db.collection("storyLikes").createIndex(
+      { storyId: 1 },
+      { name: "storyId_lookup_index" }
+    );
 
     console.log(`Using database: ${databaseName}`);
     return db;
@@ -70,4 +75,6 @@ const connectToDatabase = async () => {
   }
 };
 
-module.exports = { connectToDatabase };
+const getClient = () => client;
+
+module.exports = { connectToDatabase, getClient };
