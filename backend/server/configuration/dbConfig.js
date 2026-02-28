@@ -54,6 +54,14 @@ const connectToDatabase = async () => {
       },
     );
 
+    // Unique index to prevent duplicate likes by the same user on the same story
+    await db
+      .collection("storyLikes")
+      .createIndex(
+        { userId: 1, storyId: 1 },
+        { unique: true, name: "unique_user_story_like" },
+      );
+
     console.log(`Using database: ${databaseName}`);
     return db;
   } catch (error) {

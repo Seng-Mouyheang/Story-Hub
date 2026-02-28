@@ -1,7 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const authenticate = require("../middleware/authMiddleware");
+const optionalAuthenticate = require("../middleware/optionalAuthMiddleware");
 const storyController = require("../controllers/storyController");
+const storyLikeController = require("../controllers/storyLikeController");
 const validate = require("../middleware/validate");
 
 const {
@@ -26,6 +28,7 @@ const {
 // Cursor Pagination
 router.get(
   "/",
+  optionalAuthenticate,
   validate(cursorPaginationSchema, "query"),
   storyController.getAllStories,
 );
@@ -68,6 +71,42 @@ router.delete(
   authenticate,
   validate(idParamSchema, "params"),
   storyController.deleteStory,
+);
+
+/* ============================= */
+/*      PROTECTED LIKE ROUTE     */
+/* ============================= */
+
+// Like a story
+router.post(
+  "/:id/like",
+  authenticate,
+  validate(idParamSchema, "params"),
+  storyLikeController.likeStory,
+);
+
+// Unlike a story
+router.delete(
+  "/:id/like",
+  authenticate,
+  validate(idParamSchema, "params"),
+  storyLikeController.unlikeStory,
+);
+
+// Get story likes (auth optional to show if current user liked it)
+router.get(
+  "/:id/likes",
+  optionalAuthenticate, // important
+  validate(idParamSchema, "params"),
+  storyLikeController.getStoryLikes,
+);
+
+// Toggle likes
+router.post(
+  "/:id/toggle-like",
+  authenticate, // must be logged in
+  validate(idParamSchema, "params"),
+  storyLikeController.toggleLikeStory,
 );
 
 module.exports = router;
