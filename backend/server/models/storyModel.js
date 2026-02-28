@@ -38,6 +38,7 @@ const createStory = async (storyData) => {
     visibility: storyData.visibility || "private",
     status: storyData.status || "draft",
     views: 0,
+    likesCount: 0,
     wordCount,
     readingTime,
     createdAt: new Date(),
@@ -93,8 +94,14 @@ const createStory = async (storyData) => {
 // };
 
 // Cursor Pagination
-const getPublishedStories = async (cursor, limit) => {
+const getPublishedStories = async (cursor, limit, currentUserId) => {
+  const db = await connectToDatabase();
   const collection = await getCollection();
+
+  // const userObjectId = currentUserId ? new ObjectId(currentUserId) : null;
+
+  // console.log("currentUserId:", currentUserId);
+  // console.log("userObjectId:", userObjectId);
 
   const filter = {
     status: "published",
@@ -117,23 +124,121 @@ const getPublishedStories = async (cursor, limit) => {
     ];
   }
 
+  // const pipeline = [
+  //   { $match: filter },
+
+  //   {
+  //     $sort: { publishedAt: -1, _id: -1 },
+  //   },
+
+  //   {
+  //     $limit: limit + 1,
+  //   },
+
+  //   {
+  //     $lookup: {
+  //       from: "storyLikes",
+  //       let: { storyId: "$_id" },
+  //       pipeline: [
+  //         {
+  //           $match: {
+  //             $expr: {
+  //               $eq: ["$storyId", "$$storyId"],
+  //             },
+  //           },
+  //         },
+  //         {
+  //           $group: {
+  //             _id: null,
+  //             count: { $sum: 1 },
+  //             likedByCurrentUser: {
+  //               $max: {
+  //                 $cond: [
+  //                   {
+  //                     $and: [
+  //                       { $ne: [userObjectId, null] },
+  //                       { $eq: ["$userId", userObjectId] },
+  //                     ],
+  //                   },
+  //                   1,
+  //                   0,
+  //                 ],
+  //               },
+  //             },
+  //           },
+  //         },
+  //       ],
+  //       as: "likesData",
+  //     },
+  //   },
+  //   {
+  //     $addFields: {
+  //       likesCount: {
+  //         $ifNull: [{ $arrayElemAt: ["$likesData.count", 0] }, 0],
+  //       },
+  //       likedByCurrentUser: {
+  //         $toBool: {
+  //           $ifNull: [
+  //             { $arrayElemAt: ["$likesData.likedByCurrentUser", 0] },
+  //             0,
+  //           ],
+  //         },
+  //       },
+  //     },
+  //   },
+  //   {
+  //     $project: {
+  //       likesData: 0,
+  //     },
+  //   },
+  // ];
+
+  // const stories = await collection.aggregate(pipeline).toArray();
+
   const stories = await collection
     .find(filter)
     .sort({ publishedAt: -1, _id: -1 })
-    .limit(limit)
+    .limit(limit + 1)
     .toArray();
+
+  // Handle limit + 1 logic
+  const hasMore = stories.length > limit;
+  const data = hasMore ? stories.slice(0, limit) : stories;
+  
+  let likedStoryIds = new Set();
+
+  if (currentUserId && data.length > 0) {
+    const storyIds = data.map((story) => story._id);
+
+    const likes = await db
+      .collection("storyLikes")
+      .find({
+        userId: new ObjectId(currentUserId),
+        storyId: { $in: storyIds },
+      })
+      .project({ storyId: 1 })
+      .toArray();
+
+    likedStoryIds = new Set(likes.map((like) => like.storyId.toString()));
+  }
+
+  const finalData = data.map((story) => ({
+    ...story,
+    likedByCurrentUser: likedStoryIds.has(story._id.toString()),
+  }));
 
   let nextCursor = null;
 
-  if (stories.length === limit) {
-    const lastStory = stories[stories.length - 1];
+  if (hasMore) {
+    const lastStory = data[data.length - 1];
     nextCursor = `${lastStory.publishedAt.toISOString()}_${lastStory._id}`;
   }
 
   return {
-    data: stories,
+    // data,
+    data: finalData,
     nextCursor,
-    hasMore: stories.length === limit,
+    hasMore,
   };
 };
 
@@ -213,6 +318,7 @@ const incrementViews = async (id) => {
  */
 
 const deleteStory = async (id, userId) => {
+  const db = await connectToDatabase();
   const collection = await getCollection();
 
   const story = await collection.findOne({
@@ -226,10 +332,23 @@ const deleteStory = async (id, userId) => {
     throw new Error("Unauthorized");
   }
 
-  return collection.updateOne(
+  // Soft delete story
+  await collection.updateOne(
     { _id: new ObjectId(id) },
     { $set: { deletedAt: new Date() } },
   );
+
+  // return collection.updateOne(
+  //   { _id: new ObjectId(id) },
+  //   { $set: { deletedAt: new Date() }, },
+  // );
+
+  // Cascade delete likes
+  await db.collection("storyLikes").deleteMany({
+    storyId: new ObjectId(id),
+  });
+
+  return { success: true };
 };
 
 const getUserStories = async (userId, cursor, limit) => {

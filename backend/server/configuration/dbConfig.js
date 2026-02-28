@@ -54,6 +54,19 @@ const connectToDatabase = async () => {
       },
     );
 
+    // Unique index to prevent duplicate likes by the same user on the same story
+    await db
+      .collection("storyLikes")
+      .createIndex(
+        { userId: 1, storyId: 1 },
+        { unique: true, name: "unique_user_story_like" },
+      );
+    
+    await db.collection("storyLikes").createIndex(
+      { storyId: 1 },
+      { name: "storyId_lookup_index" }
+    );
+
     console.log(`Using database: ${databaseName}`);
     return db;
   } catch (error) {
@@ -62,4 +75,6 @@ const connectToDatabase = async () => {
   }
 };
 
-module.exports = { connectToDatabase };
+const getClient = () => client;
+
+module.exports = { connectToDatabase, getClient };
