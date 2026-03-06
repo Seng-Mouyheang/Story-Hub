@@ -61,10 +61,24 @@ const connectToDatabase = async () => {
         { userId: 1, storyId: 1 },
         { unique: true, name: "unique_user_story_like" },
       );
-    
-    await db.collection("storyLikes").createIndex(
-      { storyId: 1 },
-      { name: "storyId_lookup_index" }
+
+    await db
+      .collection("storyLikes")
+      .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
+
+    // For fetching comments per story quickly
+    await db.storyComments.createIndex({ storyId: 1, createdAt: -1, _id: -1 });
+
+    // For replies
+    await db.storyComments.createIndex({ parentId: 1 });
+
+    // For fetching user comments quickly
+    await db.storyComments.createIndex({ userId: 1 });
+
+    // Optional: prevent duplicate likes per user (if comment likes implemented)
+    await db.commentLikes.createIndex(
+      { userId: 1, commentId: 1 },
+      { unique: true },
     );
 
     console.log(`Using database: ${databaseName}`);
