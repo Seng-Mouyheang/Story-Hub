@@ -1,5 +1,6 @@
 const path = require("path");
 const { MongoClient } = require("mongodb");
+const { create } = require("domain");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const uri = process.env.ATLAS_URI;
@@ -62,24 +63,35 @@ const connectToDatabase = async () => {
         { unique: true, name: "unique_user_story_like" },
       );
 
+    // For fetching likes count per story quickly
     await db
       .collection("storyLikes")
       .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
 
     // For fetching comments per story quickly
-    await db.storyComments.createIndex({ storyId: 1, createdAt: -1, _id: -1 });
+    await db.collection("storyComments").createIndex({
+      storyId: 1,
+      parentId: 1,
+      deletedAt: 1,
+      createdAt: -1,
+      _id: -1,
+    });
 
-    // For replies
-    await db.storyComments.createIndex({ parentId: 1 });
+    // For replies comments
+    await db
+      .collection("storyComments")
+      .createIndex({ parentId: 1, createdAt: 1, _id: 1 });
 
     // For fetching user comments quickly
-    await db.storyComments.createIndex({ userId: 1 });
+    await db.collection("storyComments").createIndex({ userId: 1 });
+
+    // For soft delete of comments
+    await db.collection("storyComments").createIndex({ deletedAt: 1 });
 
     // Optional: prevent duplicate likes per user (if comment likes implemented)
-    await db.commentLikes.createIndex(
-      { userId: 1, commentId: 1 },
-      { unique: true },
-    );
+    await db
+      .collection("commentLikes")
+      .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
     console.log(`Using database: ${databaseName}`);
     return db;

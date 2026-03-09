@@ -5,6 +5,7 @@ const optionalAuthenticate = require("../middleware/optionalAuthMiddleware");
 const storyController = require("../controllers/storyController");
 const storyLikeController = require("../controllers/storyLikeController");
 const storyCommentController = require("../controllers/storyCommentController");
+const commentLikeController = require("../controllers/commentLikeController");
 const validate = require("../middleware/validate");
 
 const {
@@ -111,7 +112,7 @@ router.get(
 /*      PROTECTED LIKE ROUTE     */
 /* ============================= */
 
-// Toggle likes
+// Toggle likes on a story
 router.post(
   "/:id/toggle-like",
   authenticate, // must be logged in
@@ -123,7 +124,7 @@ router.post(
 /*      PUBLIC COMMENT ROUTE     */
 /* ============================= */
 
-// Get comments
+// Get comments for a story (story Id in params)
 router.get(
   "/:id/comments",
   optionalAuthenticate,
@@ -131,11 +132,19 @@ router.get(
   storyCommentController.getComments,
 );
 
+// Get replies for a comment (comment Id in params)
+router.get(
+  "/comments/:id/replies",
+  optionalAuthenticate,
+  validate(cursorPaginationSchema, "query"),
+  storyCommentController.getReplies,
+);
+
 /* ============================= */
 /*    PROTECTED COMMENT ROUTE    */
 /* ============================= */
 
-// Add a comment
+// Add a comment (story Id in params)
 router.post(
   "/:id/comments",
   authenticate,
@@ -144,7 +153,7 @@ router.post(
   storyCommentController.addComment,
 );
 
-// Update comment
+// Update comment (comment Id in params)
 router.put(
   "/comments/:id",
   authenticate,
@@ -153,12 +162,36 @@ router.put(
   storyCommentController.updateComment,
 );
 
-// Delete a comment
+// Delete a comment (comment Id in params)
 router.delete(
   "/comments/:id",
   authenticate,
   validate(idParamSchema, "params"),
   storyCommentController.deleteComment,
+);
+
+/* ============================= */
+/*   PUBLIC COMMENT LIKE ROUTE   */
+/* ============================= */
+
+// Get story likes (auth optional to show if current user liked it)
+// router.get(
+//   "/comments/:id/likes",
+//   optionalAuthenticate, // important
+//   validate(idParamSchema, "params"),
+//   commentLikeController.getCommentLikes,
+// );
+
+/* ============================= */
+/* PROTECTED COMMENT LIKE ROUTE  */
+/* ============================= */
+
+// Toggle likes on a comment
+router.post(
+  "/comments/:id/toggle-like",
+  authenticate, // must be logged in
+  validate(idParamSchema, "params"),
+  commentLikeController.toggleLikeComment,
 );
 
 module.exports = router;

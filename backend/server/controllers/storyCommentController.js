@@ -1,4 +1,5 @@
 const commentModel = require("../models/storyCommentModel");
+const storyModel = require("../models/storyModel");
 
 // POST /stories/:id/comments
 const addComment = async (req, res) => {
@@ -6,6 +7,12 @@ const addComment = async (req, res) => {
     const storyId = req.params.id;
     const userId = req.user.userId;
     const { content, parentId } = req.body;
+
+    const story = await storyModel.getStoryById(storyId);
+
+    if (!story) {
+      return res.status(404).json({ message: "Story not found" });
+    }
 
     const commentId = await commentModel.createComment({
       userId,
@@ -28,12 +35,19 @@ const addComment = async (req, res) => {
 const getComments = async (req, res) => {
   try {
     const storyId = req.params.id;
-    const { cursor } = req.query;
+    const { cursor } = req.query || null;
     const limit = parseInt(req.query.limit, 10) || 10;
+    const userId = req.user?.userId || null;
+
+    const story = await storyModel.getStoryById(storyId);
+
+    if (!story) {
+      return res.status(404).json({ message: "Story not found" });
+    }
 
     const result = await commentModel.getCommentsByStory(
       storyId,
-      req.user?.userId,
+      userId,
       limit,
       cursor,
     );
@@ -45,10 +59,45 @@ const getComments = async (req, res) => {
   }
 };
 
+// GET /comments/:id/replies
+const getReplies = async (req, res) => {
+  try {
+    const commentId = req.params.id;
+    const { cursor } = req.query || null;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const userId = req.user?.userId || null;
+
+    const comment = await commentModel.getCommentById(commentId);
+
+    if (!comment) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    const result = await commentModel.getRepliesByComment(
+      commentId,
+      userId,
+      limit,
+      cursor,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch replies" });
+  }
+};
+
 // PUT /comments/:id
 const updateComment = async (req, res) => {
   try {
-    await commentModel.updateComment(req.params.id, req.user.userId, req.body);
+    const commentId = req.params.id;
+    const comment = await commentModel.getCommentById(commentId);
+
+    if (!comment || comment.deletedAt) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    await commentModel.updateComment(commentId, req.user.userId, req.body);
 
     res.json({ message: "Comment updated" });
   } catch (error) {
@@ -58,6 +107,7 @@ const updateComment = async (req, res) => {
     if (error.message === "Unauthorized") {
       return res.status(403).json({ message: "Forbidden" });
     }
+    console.error(error);
     res.status(500).json({ message: "Failed to update comment" });
   }
 };
@@ -65,11 +115,19 @@ const updateComment = async (req, res) => {
 // DELETE /comments/:id
 const deleteComment = async (req, res) => {
   try {
-    await commentModel.deleteComment(req.user.userId, req.params.id);
+    const commentId = req.params.id;
+    const comment = await commentModel.getCommentById(commentId);
+
+    if (!comment) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    await commentModel.deleteComment(req.user.userId, commentId);
+
     res.json({ message: "Comment deleted" });
   } catch (error) {
     if (error.message === "not found") {
-      return res.status(404).json({ message: "Comment not found" });
+      return res.status(404).json({ message: "comment not found" });
     }
     if (error.message === "Unauthorized") {
       return res.status(403).json({ message: "Forbidden" });
@@ -82,6 +140,7 @@ const deleteComment = async (req, res) => {
 module.exports = {
   addComment,
   getComments,
+  getReplies,
   updateComment,
   deleteComment,
 };
