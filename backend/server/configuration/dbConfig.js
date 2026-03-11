@@ -1,5 +1,6 @@
 const path = require("path");
 const { MongoClient } = require("mongodb");
+const { create } = require("domain");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const uri = process.env.ATLAS_URI;
@@ -54,6 +55,15 @@ const connectToDatabase = async () => {
       },
     );
 
+    // Create TTL index on storyComments collection (Soft delete 7 days)
+    await db.collection("storyComments").createIndex(
+      { deletedAt: 1 },
+      {
+        expireAfterSeconds: 60 * 60 * 24 * 7,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
     // Unique index to prevent duplicate likes by the same user on the same story
     await db
       .collection("storyLikes")
@@ -61,11 +71,36 @@ const connectToDatabase = async () => {
         { userId: 1, storyId: 1 },
         { unique: true, name: "unique_user_story_like" },
       );
-    
-    await db.collection("storyLikes").createIndex(
-      { storyId: 1 },
-      { name: "storyId_lookup_index" }
-    );
+
+    // For fetching likes count per story quickly
+    await db
+      .collection("storyLikes")
+      .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
+
+    // For fetching comments per story quickly
+    await db.collection("storyComments").createIndex({
+      storyId: 1,
+      parentId: 1,
+      deletedAt: 1,
+      createdAt: -1,
+      _id: -1,
+    });
+
+    // For replies comments
+    await db
+      .collection("storyComments")
+      .createIndex({ parentId: 1, createdAt: 1, _id: 1 });
+
+    // For fetching user comments quickly
+    await db.collection("storyComments").createIndex({ userId: 1 });
+
+    // For soft delete of comments
+    await db.collection("storyComments").createIndex({ deletedAt: 1 });
+
+    // Optional: prevent duplicate likes per user (if comment likes implemented)
+    await db
+      .collection("commentLikes")
+      .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
     console.log(`Using database: ${databaseName}`);
     return db;
