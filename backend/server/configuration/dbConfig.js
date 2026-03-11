@@ -55,6 +55,15 @@ const connectToDatabase = async () => {
       },
     );
 
+    // Create TTL index on storyComments collection (Soft delete 7 days)
+    await db.collection("storyComments").createIndex(
+      { deletedAt: 1 },
+      {
+        expireAfterSeconds: 60 * 60 * 24 * 7,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
     // Unique index to prevent duplicate likes by the same user on the same story
     await db
       .collection("storyLikes")

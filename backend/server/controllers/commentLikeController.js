@@ -32,7 +32,7 @@ const toggleLikeComment = async (req, res) => {
     const userId = req.user.userId;
 
     await commentLikeModel.toggleLikeComment(userId, commentId);
-  
+
     const updatedComment = await commentModel.getCommentById(commentId, userId);
 
     res.json(updatedComment);

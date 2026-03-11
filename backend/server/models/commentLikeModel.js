@@ -9,13 +9,13 @@ const toggleLikeComment = async (userId, commentId) => {
   const commentObjectId = new ObjectId(commentId);
   const userObjectId = new ObjectId(userId);
 
+  const likesCollection = db.collection("commentLikes");
+  const commentsCollection = db.collection("storyComments");
+
   try {
     let toggleResult;
 
     await session.withTransaction(async () => {
-      const likesCollection = db.collection("commentLikes");
-      const commentsCollection = db.collection("storyComments");
-
       const existingLike = await likesCollection.findOne(
         { userId: userObjectId, commentId: commentObjectId },
         { session },
