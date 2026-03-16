@@ -23,12 +23,6 @@ const commentModel = require("../models/storyCommentModel");
 const toggleLikeComment = async (req, res) => {
   try {
     const commentId = req.params.id;
-    const comment = await commentModel.getCommentById(commentId);
-
-    if (!comment) {
-      return res.status(404).json({ message: "Comment not found" });
-    }
-
     const userId = req.user.userId;
 
     await commentLikeModel.toggleLikeComment(userId, commentId);
