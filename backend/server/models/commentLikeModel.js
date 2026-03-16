@@ -27,11 +27,17 @@ const toggleLikeComment = async (userId, commentId) => {
           { session },
         );
 
-        await commentsCollection.updateOne(
+        const updateResult = await commentsCollection.updateOne(
           { _id: commentObjectId, likesCount: { $gt: 0 } },
           { $inc: { likesCount: -1 } },
           { session },
         );
+
+        if (updateResult.matchedCount === 0) {
+          const notFoundError = new Error("Comment not found");
+          notFoundError.code = "COMMENT_NOT_FOUND";
+          throw notFoundError;
+        }
 
         toggleResult = { likedByCurrentUser: false };
       } else {
@@ -44,11 +50,17 @@ const toggleLikeComment = async (userId, commentId) => {
           { session },
         );
 
-        await commentsCollection.updateOne(
+        const updateResult = await commentsCollection.updateOne(
           { _id: commentObjectId, deletedAt: null },
           { $inc: { likesCount: 1 } },
           { session },
         );
+
+        if (updateResult.matchedCount === 0) {
+          const notFoundError = new Error("Comment not found");
+          notFoundError.code = "COMMENT_NOT_FOUND";
+          throw notFoundError;
+        }
 
         toggleResult = { likedByCurrentUser: true };
       }
