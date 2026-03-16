@@ -87,11 +87,15 @@ const createComment = async (commentData) => {
         }
       }
 
-      await storiesCollection.updateOne(
+      const storyUpdate = await storiesCollection.updateOne(
         { _id: storyId },
         { $inc: { commentCount: 1 } },
         { session },
       );
+
+      if (storyUpdate.matchedCount === 0) {
+        throw new Error("Invalid story");
+      }
     });
 
     return insertedId;
