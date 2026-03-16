@@ -25,19 +25,19 @@ const toggleLikeStory = async (userId, storyId) => {
 
       const existingLike = await likesCollection.findOne(
         { userId: userObjectId, storyId: storyObjectId },
-        { session }
+        { session },
       );
 
       if (existingLike) {
         await likesCollection.deleteOne(
           { userId: userObjectId, storyId: storyObjectId },
-          { session }
+          { session },
         );
 
         await storiesCollection.updateOne(
           { _id: storyObjectId, likesCount: { $gt: 0 } },
           { $inc: { likesCount: -1 } },
-          { session }
+          { session },
         );
 
         result = { likedByCurrentUser: false };
@@ -48,29 +48,27 @@ const toggleLikeStory = async (userId, storyId) => {
             storyId: storyObjectId,
             createdAt: new Date(),
           },
-          { session }
+          { session },
         );
 
         await storiesCollection.updateOne(
           { _id: storyObjectId },
           { $inc: { likesCount: 1 } },
-          { session }
+          { session },
         );
 
         result = { likedByCurrentUser: true };
       }
     });
 
-    const story = await db.collection("stories").findOne(
-      { _id: storyObjectId },
-      { projection: { likesCount: 1 } }
-    );
+    const story = await db
+      .collection("stories")
+      .findOne({ _id: storyObjectId }, { projection: { likesCount: 1 } });
 
     return {
       likedByCurrentUser: result.likedByCurrentUser,
       likesCount: story.likesCount,
     };
-
   } catch (error) {
     console.error("Transaction failed:", error);
     throw error;

@@ -7,6 +7,8 @@ const PROTECTED_FIELDS = [
   "_id",
   "authorId",
   "views",
+  "likesCount",
+  "commentCount",
   "createdAt",
   "deletedAt",
   "publishedAt",
@@ -39,6 +41,7 @@ const createStory = async (storyData) => {
     status: storyData.status || "draft",
     views: 0,
     likesCount: 0,
+    commentCount: 0,
     wordCount,
     readingTime,
     createdAt: new Date(),
@@ -204,7 +207,7 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   // Handle limit + 1 logic
   const hasMore = stories.length > limit;
   const data = hasMore ? stories.slice(0, limit) : stories;
-  
+
   let likedStoryIds = new Set();
 
   if (currentUserId && data.length > 0) {

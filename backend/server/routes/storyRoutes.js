@@ -4,6 +4,8 @@ const authenticate = require("../middleware/authMiddleware");
 const optionalAuthenticate = require("../middleware/optionalAuthMiddleware");
 const storyController = require("../controllers/storyController");
 const storyLikeController = require("../controllers/storyLikeController");
+const storyCommentController = require("../controllers/storyCommentController");
+const commentLikeController = require("../controllers/commentLikeController");
 const validate = require("../middleware/validate");
 
 const {
@@ -13,6 +15,11 @@ const {
   // paginationSchema,
   cursorPaginationSchema,
 } = require("../validators/storyValidator");
+
+const {
+  createCommentSchema,
+  updateCommentSchema,
+} = require("../validators/commentValidator");
 
 /* ============================= */
 /*            PUBLIC             */
@@ -74,7 +81,7 @@ router.delete(
 );
 
 /* ============================= */
-/*      PROTECTED LIKE ROUTE     */
+/*       PUBLIC LIKE ROUTE       */
 /* ============================= */
 
 // Like a story
@@ -101,12 +108,92 @@ router.get(
   storyLikeController.getStoryLikes,
 );
 
-// Toggle likes
+/* ============================= */
+/*      PROTECTED LIKE ROUTE     */
+/* ============================= */
+
+// Toggle likes on a story
 router.post(
   "/:id/toggle-like",
   authenticate, // must be logged in
   validate(idParamSchema, "params"),
   storyLikeController.toggleLikeStory,
+);
+
+/* ============================= */
+/*      PUBLIC COMMENT ROUTE     */
+/* ============================= */
+
+// Get comments for a story (story Id in params)
+router.get(
+  "/:id/comments",
+  optionalAuthenticate,
+  validate(idParamSchema, "params"),
+  validate(cursorPaginationSchema, "query"),
+  storyCommentController.getComments,
+);
+
+// Get replies for a comment (comment Id in params)
+router.get(
+  "/comments/:id/replies",
+  optionalAuthenticate,
+  validate(idParamSchema, "params"),
+  validate(cursorPaginationSchema, "query"),
+  storyCommentController.getReplies,
+);
+
+/* ============================= */
+/*    PROTECTED COMMENT ROUTE    */
+/* ============================= */
+
+// Add a comment (story Id in params)
+router.post(
+  "/:id/comments",
+  authenticate,
+  validate(idParamSchema, "params"),
+  validate(createCommentSchema),
+  storyCommentController.addComment,
+);
+
+// Update comment (comment Id in params)
+router.put(
+  "/comments/:id",
+  authenticate,
+  validate(idParamSchema, "params"),
+  validate(updateCommentSchema),
+  storyCommentController.updateComment,
+);
+
+// Delete a comment (comment Id in params)
+router.delete(
+  "/comments/:id",
+  authenticate,
+  validate(idParamSchema, "params"),
+  storyCommentController.deleteComment,
+);
+
+/* ============================= */
+/*   PUBLIC COMMENT LIKE ROUTE   */
+/* ============================= */
+
+// Get comment likes (auth optional to show if current user liked it)
+// router.get(
+//   "/comments/:id/likes",
+//   optionalAuthenticate, // important
+//   validate(idParamSchema, "params"),
+//   commentLikeController.getCommentLikes,
+// );
+
+/* ============================= */
+/* PROTECTED COMMENT LIKE ROUTE  */
+/* ============================= */
+
+// Toggle likes on a comment
+router.post(
+  "/comments/:id/toggle-like",
+  authenticate, // must be logged in
+  validate(idParamSchema, "params"),
+  commentLikeController.toggleLikeComment,
 );
 
 module.exports = router;
