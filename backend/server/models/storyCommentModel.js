@@ -116,18 +116,24 @@ const getCommentsByStory = async (
     deletedAt: null,
   };
 
-  if (cursor) {
+  if (typeof cursor === "string" && cursor.includes("_")) {
     const [createdAtStr, id] = cursor.split("_");
 
-    filter.$or = [
-      {
-        createdAt: { $lt: new Date(createdAtStr) },
-      },
-      {
-        createdAt: new Date(createdAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+    if (createdAtStr && id && ObjectId.isValid(id)) {
+      const createdAtDate = new Date(createdAtStr);
+
+      if (!isNaN(createdAtDate.getTime())) {
+        filter.$or = [
+          {
+            createdAt: { $lt: createdAtDate },
+          },
+          {
+            createdAt: createdAtDate,
+            _id: { $lt: new ObjectId(id) },
+          },
+        ];
+      }
+    }
   }
 
   const comments = await collection
