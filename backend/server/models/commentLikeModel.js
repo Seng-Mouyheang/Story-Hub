@@ -59,6 +59,12 @@ const toggleLikeComment = async (userId, commentId) => {
       { projection: { likesCount: 1 } },
     );
 
+    if (!comment) {
+      const notFoundError = new Error("Comment not found");
+      notFoundError.code = "COMMENT_NOT_FOUND";
+      throw notFoundError;
+    }
+
     return {
       likedByCurrentUser: toggleResult.likedByCurrentUser,
       likesCount: comment.likesCount,

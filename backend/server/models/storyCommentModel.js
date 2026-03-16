@@ -23,53 +23,81 @@ const getCollection = async () => {
 const createComment = async (commentData) => {
   const collection = await getCollection();
   const db = collection.db;
+  const storiesCollection = db.collection("stories");
+  const client = getClient();
+  const session = client.startSession();
 
   if (!commentData.content || !commentData.content.trim()) {
     throw new Error("Content is required");
   }
 
-  if (commentData.parentId) {
-    const parent = await collection.findOne({
-      _id: new ObjectId(commentData.parentId),
-      storyId: new ObjectId(commentData.storyId),
-      deletedAt: null,
-    });
-
-    if (!parent) throw new Error("Invalid parent comment");
-
-    if (parent.parentId) {
-      throw new Error("Nested replies not allowed");
-    }
-
-    await collection.updateOne(
-      { _id: new ObjectId(commentData.parentId) },
-      { $inc: { replyCount: 1 } },
-    );
-  }
+  const userId = new ObjectId(commentData.userId);
+  const storyId = new ObjectId(commentData.storyId);
+  const parentId = commentData.parentId
+    ? new ObjectId(commentData.parentId)
+    : null;
+  const now = new Date();
 
   const comment = {
-    userId: new ObjectId(commentData.userId),
-    storyId: new ObjectId(commentData.storyId),
+    userId,
+    storyId,
     content: commentData.content,
-    parentId: commentData.parentId ? new ObjectId(commentData.parentId) : null,
+    parentId,
     isEdited: false,
     likesCount: 0,
     replyCount: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    createdAt: now,
+    updatedAt: now,
     deletedAt: null,
   };
 
-  const result = await collection.insertOne(comment);
+  let insertedId;
 
-  await db
-    .collection("stories")
-    .updateOne(
-      { _id: new ObjectId(commentData.storyId) },
-      { $inc: { commentCount: 1 } },
-    );
+  try {
+    await session.withTransaction(async () => {
+      if (parentId) {
+        const parent = await collection.findOne(
+          {
+            _id: parentId,
+            storyId,
+            deletedAt: null,
+          },
+          { session },
+        );
 
-  return result.insertedId;
+        if (!parent) throw new Error("Invalid parent comment");
+
+        if (parent.parentId) {
+          throw new Error("Nested replies not allowed");
+        }
+      }
+
+      const result = await collection.insertOne(comment, { session });
+      insertedId = result.insertedId;
+
+      if (parentId) {
+        const parentUpdate = await collection.updateOne(
+          { _id: parentId, deletedAt: null },
+          { $inc: { replyCount: 1 } },
+          { session },
+        );
+
+        if (parentUpdate.matchedCount === 0) {
+          throw new Error("Invalid parent comment");
+        }
+      }
+
+      await storiesCollection.updateOne(
+        { _id: storyId },
+        { $inc: { commentCount: 1 } },
+        { session },
+      );
+    });
+
+    return insertedId;
+  } finally {
+    await session.endSession();
+  }
 };
 
 // Get comments for a story with pagination and like status

@@ -128,6 +128,7 @@ router.post(
 router.get(
   "/:id/comments",
   optionalAuthenticate,
+  validate(idParamSchema, "params"),
   validate(cursorPaginationSchema, "query"),
   storyCommentController.getComments,
 );
@@ -136,6 +137,7 @@ router.get(
 router.get(
   "/comments/:id/replies",
   optionalAuthenticate,
+  validate(idParamSchema, "params"),
   validate(cursorPaginationSchema, "query"),
   storyCommentController.getReplies,
 );
@@ -174,7 +176,7 @@ router.delete(
 /*   PUBLIC COMMENT LIKE ROUTE   */
 /* ============================= */
 
-// Get story likes (auth optional to show if current user liked it)
+// Get comment likes (auth optional to show if current user liked it)
 // router.get(
 //   "/comments/:id/likes",
 //   optionalAuthenticate, // important

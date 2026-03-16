@@ -1,6 +1,5 @@
 const path = require("path");
 const { MongoClient } = require("mongodb");
-const { create } = require("domain");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const uri = process.env.ATLAS_URI;
@@ -55,10 +54,14 @@ const connectToDatabase = async () => {
       },
     );
 
+    // For Hard delete Testing
+    // await db.collection("storyComments").dropIndex("deletedAt_1").catch(() => {});
+
     // Create TTL index on storyComments collection (Soft delete 7 days)
     await db.collection("storyComments").createIndex(
       { deletedAt: 1 },
       {
+        name: "storyComments_deletedAt_ttl",
         expireAfterSeconds: 60 * 60 * 24 * 7,
         partialFilterExpression: { deletedAt: { $type: "date" } },
       },
@@ -89,13 +92,10 @@ const connectToDatabase = async () => {
     // For replies comments
     await db
       .collection("storyComments")
-      .createIndex({ parentId: 1, createdAt: 1, _id: 1 });
+      .createIndex({ parentId: 1, deletedAt: 1, createdAt: 1, _id: 1 });
 
     // For fetching user comments quickly
     await db.collection("storyComments").createIndex({ userId: 1 });
-
-    // For soft delete of comments
-    await db.collection("storyComments").createIndex({ deletedAt: 1 });
 
     // Optional: prevent duplicate likes per user (if comment likes implemented)
     await db

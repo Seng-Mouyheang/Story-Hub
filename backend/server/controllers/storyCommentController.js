@@ -23,7 +23,12 @@ const addComment = async (req, res) => {
 
     res.status(201).json({ commentId });
   } catch (error) {
-    if (error.message === "Invalid parent comment") {
+    const validationMessages = [
+      "Invalid parent comment",
+      "Nested replies not allowed",
+      "Content is required",
+    ];
+    if (validationMessages.includes(error.message)) {
       return res.status(400).json({ message: error.message });
     }
     console.error(error);
