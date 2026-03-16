@@ -194,20 +194,29 @@ const getRepliesByComment = async (
   };
 
   // Cursor logic for oldest-to-newest pagination
-  if (cursor) {
-    const [createdAtStr, id] = cursor.split("_");
-    const cursorDate = new Date(createdAtStr);
-    const cursorId = new ObjectId(id);
+  if (cursor && typeof cursor === "string") {
+    const parts = cursor.split("_");
 
-    filter.$or = [
-      {
-        createdAt: { $gt: cursorDate }, // Get items AFTER this date
-      },
-      {
-        createdAt: cursorDate,
-        _id: { $gt: cursorId }, // Same date, get items with LARGER _id
-      },
-    ];
+    if (parts.length === 2) {
+      const [createdAtStr, id] = parts;
+      const timestamp = Date.parse(createdAtStr);
+
+      // Only apply cursor filter if both date and ObjectId are valid
+      if (!Number.isNaN(timestamp) && ObjectId.isValid(id)) {
+        const cursorDate = new Date(timestamp);
+        const cursorId = new ObjectId(id);
+
+        filter.$or = [
+          {
+            createdAt: { $gt: cursorDate }, // Get items AFTER this date
+          },
+          {
+            createdAt: cursorDate,
+            _id: { $gt: cursorId }, // Same date, get items with LARGER _id
+          },
+        ];
+      }
+    }
   }
 
   // Sort: oldest first (ascending)
