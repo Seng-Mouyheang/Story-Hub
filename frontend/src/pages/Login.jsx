@@ -1,19 +1,20 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState } from "react";
+import { Link } from "react-router-dom";
+import SiteFooter from "../components/SiteFooter";
 
 export default function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     // Handle login logic here
-    console.log('Login:', { email, password, remember });
+    console.log("Login:", { email, password, remember });
   };
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
       {/* Illustration Side */}
       <div className="hidden lg:flex w-1/2 bg-[#2d2424] items-center justify-center p-12">
         <div className="text-center">
@@ -28,78 +29,94 @@ export default function Login() {
           </div>
           <h2 className="text-white text-3xl font-bold mb-4">Welcome Back</h2>
           <p className="text-slate-400 max-w-sm mx-auto">
-            Visualize your thoughts, ideas, and confessions in a beautiful, minimalist space.
+            Visualize your thoughts, ideas, and confessions in a beautiful,
+            minimalist space.
           </p>
         </div>
       </div>
 
       {/* Form Side */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-white p-8">
-        <div className="w-full max-w-md">
-          <div className="mb-10">
-            <h1 className="text-4xl font-bold text-slate-900 mb-2">Login</h1>
-            <p className="text-slate-500">Welcome back! Please enter your details.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">
-                Email Address
-              </label>
-              <input
-                type="email"
-                placeholder="name@company.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
-              />
+      <div className="w-full lg:w-1/2 flex flex-col bg-white p-4 sm:p-8">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-full max-w-md">
+            <div className="mb-8 sm:mb-10">
+              <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
+                Login
+              </h1>
+              <p className="text-slate-500">
+                Welcome back! Please enter your details.
+              </p>
             </div>
 
-            <div>
-              <div className="flex justify-between mb-2">
-                <label className="block text-sm font-medium text-slate-700">Password</label>
-                <a href="#" className="text-sm font-semibold text-red-400">
-                  Forgot password?
-                </a>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="name@company.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
+                />
               </div>
-              <input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
-              />
-            </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                id="remember"
-                checked={remember}
-                onChange={(e) => setRemember(e.target.checked)}
-                className="w-4 h-4 text-red-400 border-slate-300 rounded focus:ring-red-400"
-              />
-              <label htmlFor="remember" className="ml-2 text-sm text-slate-600">
-                Remember for 30 days
-              </label>
-            </div>
+              <div>
+                <div className="flex justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <a href="#" className="text-sm font-semibold text-red-400">
+                    Forgot password?
+                  </a>
+                </div>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
+                />
+              </div>
 
-            <Link
-              to="/"
-              className="w-full bg-red-400 text-white py-3 rounded-xl font-bold text-lg shadow-lg shadow-red-100 hover:opacity-90 transition-all block text-center"
-            >
-              Sign In
-            </Link>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="remember"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                  className="w-4 h-4 text-red-400 border-slate-300 rounded focus:ring-red-400"
+                />
+                <label
+                  htmlFor="remember"
+                  className="ml-2 text-sm text-slate-600"
+                >
+                  Remember for 30 days
+                </label>
+              </div>
 
-          </form>
+              <Link
+                to="/"
+                className="w-full bg-red-400 text-white py-3 rounded-xl font-bold text-lg shadow-lg shadow-red-100 hover:opacity-90 transition-all block text-center"
+              >
+                Sign In
+              </Link>
+            </form>
 
-          <p className="mt-8 text-center text-sm text-slate-500">
-            Don't have an account?{' '}
-            <Link to="/signup" className="font-bold text-red-400 hover:text-red-500">
-              Sign up
-            </Link>
-          </p>
+            <p className="mt-8 text-center text-sm text-slate-500">
+              Don't have an account?{" "}
+              <Link
+                to="/signup"
+                className="font-bold text-red-400 hover:text-red-500"
+              >
+                Sign up
+              </Link>
+            </p>
+          </div>
         </div>
+
+        <SiteFooter />
       </div>
     </div>
   );

@@ -1,46 +1,55 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import Sidebar from '../components/Sidebar';
-import Navbar from '../components/Navbar';
-import { Camera } from 'lucide-react';
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import Sidebar from "../components/Sidebar";
+import Navbar from "../components/Navbar";
+import SiteFooter from "../components/SiteFooter";
+import { Camera } from "lucide-react";
 
 export default function EditProfile() {
-  const [name, setName] = useState('Felix Designer');
+  const [name, setName] = useState("Felix Designer");
   const [bio, setBio] = useState(
-    'UI Designer & Content Creator. Visualizing the world through simple interfaces.'
+    "UI Designer & Content Creator. Visualizing the world through simple interfaces.",
   );
   const navigate = useNavigate();
 
   const handleSave = () => {
-    console.log('Profile updated:', { name, bio });
-    navigate('/profile');
+    console.log("Profile updated:", { name, bio });
+    navigate("/profile");
   };
 
   const handleDiscard = () => {
-    navigate('/profile');
+    navigate("/profile");
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col bg-white">
         <Navbar title="Edit Dashboard" />
-        <main className="flex-1 overflow-y-auto pt-10 px-6 pb-10">
+        <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
           <div className="max-w-3xl mx-auto">
-            <div className="bg-white p-8 rounded-3xl border border-gray-100">
-              <h3 className="font-bold text-lg mb-8">Edit Profile Information</h3>
+            <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-gray-100">
+              <h3 className="font-bold text-lg mb-8">
+                Edit Profile Information
+              </h3>
               <div className="space-y-6">
                 {/* Profile Picture */}
-                <div className="flex items-center gap-6 mb-8">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 mb-8">
                   <div className="w-20 h-20 rounded-2xl bg-slate-100 relative group">
-                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" className="w-full h-full" alt="Profile" />
+                    <img
+                      src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
+                      className="w-full h-full"
+                      alt="Profile"
+                    />
                     <div className="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity">
                       <Camera className="text-white w-6 h-6" />
                     </div>
                   </div>
                   <div>
                     <h4 className="font-bold text-sm">Profile Picture</h4>
-                    <p className="text-xs text-slate-400">Recommended size: 400x400px</p>
+                    <p className="text-xs text-slate-400">
+                      Recommended size: 400x400px
+                    </p>
                   </div>
                 </div>
 
@@ -70,7 +79,7 @@ export default function EditProfile() {
                 </div>
 
                 {/* Buttons */}
-                <div className="flex gap-4 pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
                   <button
                     onClick={handleDiscard}
                     className="flex-1 px-6 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200"
@@ -88,6 +97,8 @@ export default function EditProfile() {
             </div>
           </div>
         </main>
+
+        <SiteFooter />
       </div>
     </div>
   );
