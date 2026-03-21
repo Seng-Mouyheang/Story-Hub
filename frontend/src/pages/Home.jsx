@@ -1,6 +1,7 @@
-import React from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
+import SiteFooter from "../components/SiteFooter";
 import {
   Heart,
   MessageCircle,
@@ -11,14 +12,56 @@ import {
   Plus,
 } from "lucide-react";
 
+const formatCount = (value) => {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  }
+
+  return String(value);
+};
+
+const getRelativeTime = (dateString) => {
+  const sourceDate = new Date(dateString);
+
+  if (Number.isNaN(sourceDate.getTime())) {
+    return "Recently";
+  }
+
+  const diffMs = Date.now() - sourceDate.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60)
+    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
+  }
+
+  const diffYears = Math.floor(diffDays / 365);
+  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
+};
+
 /* -------------------- Story Circle -------------------- */
 const StoryCircle = ({ name, isAdd = false, image }) => (
-  <div className="flex flex-col items-center gap-2 flex-shrink-0 cursor-pointer group">
+  <div className="flex flex-col items-center gap-2 flex-shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
     <div
-      className={`w-20 h-20 rounded-full border-2 ${
-        isAdd
-          ? "border-gray-200 border-dashed p-1"
-          : "border-blue-400 p-1"
+      className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 ${
+        isAdd ? "border-gray-200 border-dashed p-1" : "border-blue-400 p-1"
       } relative`}
     >
       <div className="w-full h-full rounded-full bg-gray-200 overflow-hidden">
@@ -32,40 +75,70 @@ const StoryCircle = ({ name, isAdd = false, image }) => (
       </div>
 
       {isAdd && (
-        <div className="absolute bottom-0 right-0 bg-black text-white rounded-full p-1 border-2 border-white">
+        <div className="absolute bottom-0 right-0 bg-black text-white rounded-full p-1 border-2 border-white shadow-sm">
           <Plus size={12} />
         </div>
       )}
     </div>
 
-    <span className="text-xs font-medium text-gray-700">{name}</span>
+    <span className="text-[11px] sm:text-xs font-medium text-gray-700 whitespace-nowrap">
+      {name}
+    </span>
   </div>
 );
 
 /* -------------------- Post Card -------------------- */
 const PostCard = ({
+  id,
   author,
   genre,
   time,
   title,
   excerpt,
-  likes,
-  comments,
+  likesCount,
+  commentCount,
+  avatar,
+  likedByCurrentUser,
+  savedByCurrentUser,
+  commentsActive,
+  shareStatus,
+  onToggleLike,
+  onOpenComments,
+  onToggleSave,
+  onShare,
+  onDoubleTapLike,
+  showLikeBurst,
+  showLikePulse,
+  showCommentCountPulse,
 }) => (
-  <div className="bg-white rounded-3xl p-6 mb-6 border border-gray-100 shadow-sm">
-    {/* Header */}
+  <div
+    onDoubleClick={() => onDoubleTapLike(id)}
+    className="relative bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-5 sm:mb-6 border border-gray-100 shadow-sm transition-all duration-300 hover:shadow-md"
+  >
+    {showLikeBurst && (
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <Heart
+          size={54}
+          className="text-red-500 animate-pulse"
+          fill="currentColor"
+        />
+      </div>
+    )}
+
     <div className="flex justify-between items-start mb-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
           <img
-            src={`https://api.dicebear.com/7.x/bottts/svg?seed=${author}`}
+            src={
+              avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${author}`
+            }
             alt="avatar"
           />
         </div>
 
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-gray-900">{author}</h3>
+        <div className="min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+            <h3 className="font-bold text-gray-900 truncate">{author}</h3>
             <span className="text-gray-400 text-xs">• {time}</span>
           </div>
 
@@ -75,48 +148,92 @@ const PostCard = ({
         </div>
       </div>
 
-      <button className="text-gray-400 hover:text-gray-600">
+      <button className="text-gray-400 hover:text-gray-600 transition-colors duration-200">
         <MoreHorizontal size={20} />
       </button>
     </div>
 
-    {/* Content */}
-    <h2 className="text-2xl font-bold mb-3 text-gray-900">{title}</h2>
+    <h2 className="text-xl sm:text-2xl font-bold mb-3 text-gray-900">
+      {title}
+    </h2>
+    <p className="text-gray-600 text-sm leading-relaxed mb-6">{excerpt}</p>
 
-    <p className="text-gray-600 text-sm leading-relaxed mb-6">
-      {excerpt}
-    </p>
-
-    {/* Actions */}
-    <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-      <div className="flex items-center gap-6">
-        <button className="flex items-center gap-2 text-gray-500 hover:text-red-500 transition">
-          <Heart size={20} />
-          <span className="text-sm font-medium">{likes}</span>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-gray-50">
+      <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+        <button
+          onClick={() => onToggleLike(id)}
+          className={`flex items-center gap-2 transition-all duration-200 ${
+            likedByCurrentUser
+              ? "text-red-500"
+              : "text-gray-500 hover:text-red-500"
+          }`}
+        >
+          <Heart
+            size={20}
+            className={
+              showLikePulse
+                ? "scale-110 transition-transform duration-200"
+                : "transition-transform duration-200"
+            }
+            fill={likedByCurrentUser ? "currentColor" : "none"}
+          />
+          <span className="text-xs sm:text-sm font-medium">
+            {formatCount(likesCount)}
+          </span>
         </button>
 
-        <button className="flex items-center gap-2 text-gray-500 hover:text-blue-500 transition">
+        <button
+          onClick={() => onOpenComments(id)}
+          className={`flex items-center gap-2 transition-all duration-200 ${
+            commentsActive
+              ? "text-blue-500"
+              : "text-gray-500 hover:text-blue-500"
+          }`}
+        >
           <MessageCircle size={20} />
-          <span className="text-sm font-medium">{comments}</span>
+          <span
+            className={`text-xs sm:text-sm font-medium transition-transform duration-300 ${
+              showCommentCountPulse ? "scale-110" : "scale-100"
+            }`}
+          >
+            {formatCount(commentCount)}
+          </span>
         </button>
       </div>
 
-      <div className="flex items-center gap-4">
-        <button className="text-gray-500 hover:text-black">
-          <Bookmark size={20} />
+      <div className="flex items-center gap-4 sm:ml-auto">
+        <button
+          onClick={() => onToggleSave(id)}
+          className={`transition-colors duration-200 ${
+            savedByCurrentUser ? "text-black" : "text-gray-500 hover:text-black"
+          }`}
+          aria-label="Save story"
+        >
+          <Bookmark
+            size={20}
+            fill={savedByCurrentUser ? "currentColor" : "none"}
+          />
         </button>
-        <button className="text-gray-500 hover:text-black">
+        <button
+          onClick={() => onShare(id, title)}
+          className="text-gray-500 hover:text-black transition-colors duration-200"
+          aria-label="Share story"
+        >
           <Share2 size={20} />
         </button>
       </div>
     </div>
+
+    {shareStatus && (
+      <p className="mt-3 text-xs text-green-600">{shareStatus}</p>
+    )}
   </div>
 );
 
 /* -------------------- Author Row -------------------- */
 const AuthorRow = ({ name, role }) => (
-  <div className="flex items-center justify-between py-3">
-    <div className="flex items-center gap-3">
+  <div className="flex items-center justify-between gap-3 py-3">
+    <div className="flex items-center gap-3 min-w-0">
       <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden">
         <img
           src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
@@ -124,13 +241,13 @@ const AuthorRow = ({ name, role }) => (
         />
       </div>
 
-      <div>
-        <h4 className="font-bold text-sm text-gray-900">{name}</h4>
+      <div className="min-w-0">
+        <h4 className="font-bold text-sm text-gray-900 truncate">{name}</h4>
         <p className="text-[10px] text-red-500 font-medium">{role}</p>
       </div>
     </div>
 
-    <button className="bg-red-400 hover:bg-red-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-full transition">
+    <button className="bg-red-400 hover:bg-red-500 text-white text-[10px] font-bold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
       Follow
     </button>
   </div>
@@ -138,37 +255,476 @@ const AuthorRow = ({ name, role }) => (
 
 /* -------------------- Home Page -------------------- */
 export default function Home() {
-  const stories = [
-    { name: "Add Story", isAdd: true },
-    { name: "Jane Doe", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Jane" },
-    { name: "Alex Smith", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex" },
-    { name: "Bob Wilson", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Bob" },
-    { name: "Sarah Chen", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Sarah" },
-    { name: "Maria Garcia", image: "https://api.dicebear.com/7.x/avataaars/svg?seed=Maria" },
-  ];
+  const [posts, setPosts] = useState([]);
+  const [cursor, setCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(true);
+  const [postsError, setPostsError] = useState("");
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [savedStoryIds, setSavedStoryIds] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("savedStoryIds") || "[]");
+      return new Set(saved);
+    } catch {
+      return new Set();
+    }
+  });
+  const [shareFeedback, setShareFeedback] = useState({});
+  const [commentsByStory, setCommentsByStory] = useState({});
+  const [activeCommentStoryId, setActiveCommentStoryId] = useState(null);
+  const [likeBurstStoryId, setLikeBurstStoryId] = useState(null);
+  const [likePulseStoryId, setLikePulseStoryId] = useState(null);
+  const [commentCountPulseStoryId, setCommentCountPulseStoryId] =
+    useState(null);
+  const endOfFeedRef = useRef(null);
 
-  const posts = [
-    {
-      author: "Jane Doe",
-      genre: "LIFESTYLE",
-      time: "2 hours ago",
-      title: "A Day in My Creative Journey",
-      excerpt:
-        "Just started my new project with amazing UI components! The design system is so clean and intuitive. I'm excited to share my progress with everyone.",
-      likes: "118K",
-      comments: "3K",
+  useEffect(() => {
+    if (!activeCommentStoryId) return;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setActiveCommentStoryId(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeCommentStoryId]);
+
+  useEffect(() => {
+    localStorage.setItem("savedStoryIds", JSON.stringify([...savedStoryIds]));
+  }, [savedStoryIds]);
+
+  const loadStories = useCallback(async (signal, paginationCursor = null) => {
+    const isInitial = paginationCursor === null;
+    if (isInitial) {
+      setIsLoadingPosts(true);
+      setPostsError("");
+      setPosts([]);
+      setCursor(null);
+      setHasMore(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const cursorParam = paginationCursor ? `&cursor=${paginationCursor}` : "";
+      const response = await fetch(`/api/stories?limit=10${cursorParam}`, {
+        signal,
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const rawStories = Array.isArray(payload?.data) ? payload.data : [];
+      const nextCursor = payload?.nextCursor || null;
+      const hasMoreStories = payload?.hasMore || false;
+
+      const mappedStories = rawStories.map((story) => {
+        const authorSeed = String(story.authorId || story._id || "author");
+
+        return {
+          id: String(story._id),
+          author:
+            story.authorName || `Author ${authorSeed.slice(-4).toUpperCase()}`,
+          genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+          time: getRelativeTime(story.publishedAt || story.createdAt),
+          title: story.title || "Untitled Story",
+          excerpt:
+            story.summary ||
+            story.content?.slice(0, 180) ||
+            "No preview is available for this story.",
+          likesCount: Number(story.likesCount || 0),
+          commentCount: Number(story.commentCount || 0),
+          likedByCurrentUser: Boolean(story.likedByCurrentUser),
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${authorSeed}`,
+        };
+      });
+
+      if (isInitial) {
+        setPosts(mappedStories);
+      } else {
+        setPosts((prev) => [...prev, ...mappedStories]);
+      }
+      setCursor(nextCursor);
+      setHasMore(hasMoreStories);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        if (isInitial) {
+          setPostsError("Unable to load stories right now. Please try again.");
+        }
+      }
+    } finally {
+      if (!signal?.aborted) {
+        if (isInitial) {
+          setIsLoadingPosts(false);
+        } else {
+          setIsLoadingMore(false);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadStories(controller.signal, null);
+
+    return () => controller.abort();
+  }, [loadStories]);
+
+  useEffect(() => {
+    if (!hasMore || isLoadingMore || isLoadingPosts) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && cursor) {
+          loadStories(new AbortController().signal, cursor);
+        }
+      },
+      { threshold: 0.1, rootMargin: "100px" },
+    );
+
+    const currentEndOfFeedRef = endOfFeedRef.current;
+
+    if (currentEndOfFeedRef) {
+      observer.observe(currentEndOfFeedRef);
+    }
+
+    return () => {
+      if (currentEndOfFeedRef) {
+        observer.unobserve(currentEndOfFeedRef);
+      }
+    };
+  }, [cursor, hasMore, isLoadingMore, isLoadingPosts, loadStories]);
+
+  const fetchComments = useCallback(async (storyId) => {
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...prev[storyId],
+        loading: true,
+        error: "",
+      },
+    }));
+
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await fetch(
+        `/api/stories/${storyId}/comments?limit=10`,
+        {
+          headers,
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...prev[storyId],
+          loading: false,
+          error: "",
+          loaded: true,
+          items: comments,
+        },
+      }));
+    } catch {
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...prev[storyId],
+          loading: false,
+          error: "Unable to load comments.",
+        },
+      }));
+    }
+  }, []);
+
+  const handleToggleLike = useCallback(async (storyId) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setPostsError("Please login to react to stories.");
+      return;
+    }
+
+    setLikePulseStoryId(storyId);
+    setTimeout(() => {
+      setLikePulseStoryId((currentId) =>
+        currentId === storyId ? null : currentId,
+      );
+    }, 220);
+
+    try {
+      const response = await fetch(`/api/stories/${storyId}/toggle-like`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const payload = await response.json();
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === storyId
+            ? {
+                ...post,
+                likedByCurrentUser: Boolean(payload.likedByCurrentUser),
+                likesCount: Number(payload.likesCount || 0),
+              }
+            : post,
+        ),
+      );
+    } catch {
+      setPostsError("Failed to update reaction. Please try again.");
+    }
+  }, []);
+
+  const handleToggleComments = useCallback(
+    (storyId) => {
+      const current = commentsByStory[storyId] || {
+        open: false,
+        loaded: false,
+        loading: false,
+        error: "",
+        items: [],
+        input: "",
+        submitting: false,
+      };
+
+      const nextOpen = !current.open;
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...current,
+          open: nextOpen,
+        },
+      }));
+
+      if (nextOpen && !current.loaded && !current.loading) {
+        fetchComments(storyId);
+      }
     },
-    {
-      author: "Alex Smith",
-      genre: "TECHNOLOGY",
-      time: "5 hours ago",
-      title: "Building the Future of Web Design",
-      excerpt:
-        "Looking for collaborators on a new open source design system. DM me if interested! We're creating something revolutionary.",
-      likes: "45K",
-      comments: "1.2K",
+    [commentsByStory, fetchComments],
+  );
+
+  const handleOpenCommentsModal = useCallback(
+    (storyId) => {
+      if (activeCommentStoryId === storyId) {
+        setActiveCommentStoryId(null);
+        return;
+      }
+
+      setActiveCommentStoryId(storyId);
+      handleToggleComments(storyId);
     },
-  ];
+    [activeCommentStoryId, handleToggleComments],
+  );
+
+  const handleDoubleTapLike = useCallback(
+    (storyId) => {
+      setLikeBurstStoryId(storyId);
+      setTimeout(() => {
+        setLikeBurstStoryId((currentId) =>
+          currentId === storyId ? null : currentId,
+        );
+      }, 600);
+
+      const post = posts.find((item) => item.id === storyId);
+      if (post && !post.likedByCurrentUser) {
+        handleToggleLike(storyId);
+      }
+    },
+    [posts, handleToggleLike],
+  );
+
+  const handleCommentInputChange = useCallback((storyId, input) => {
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...(prev[storyId] || {
+          open: true,
+          loaded: true,
+          loading: false,
+          error: "",
+          items: [],
+          submitting: false,
+        }),
+        input,
+      },
+    }));
+  }, []);
+
+  const handleSubmitComment = useCallback(
+    async (storyId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setPostsError("Please login to comment.");
+        return;
+      }
+
+      const current = commentsByStory[storyId];
+      const content = current?.input?.trim();
+      if (!content) return;
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...prev[storyId],
+          submitting: true,
+          error: "",
+        },
+      }));
+
+      try {
+        const response = await fetch(`/api/stories/${storyId}/comments`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ content }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const newComment = {
+          _id: payload.commentId || `${Date.now()}`,
+          content,
+          createdAt: new Date().toISOString(),
+        };
+
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...prev[storyId],
+            submitting: false,
+            input: "",
+            loaded: true,
+            items: [newComment, ...(prev[storyId]?.items || [])],
+          },
+        }));
+
+        setCommentCountPulseStoryId(storyId);
+        setTimeout(() => {
+          setCommentCountPulseStoryId((currentId) =>
+            currentId === storyId ? null : currentId,
+          );
+        }, 260);
+
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === storyId
+              ? { ...post, commentCount: Number(post.commentCount || 0) + 1 }
+              : post,
+          ),
+        );
+      } catch {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...prev[storyId],
+            submitting: false,
+            error: "Failed to post comment.",
+          },
+        }));
+      }
+    },
+    [commentsByStory],
+  );
+
+  const handleToggleSave = useCallback((storyId) => {
+    setSavedStoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(storyId)) {
+        next.delete(storyId);
+      } else {
+        next.add(storyId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleShare = useCallback(async (storyId, storyTitle) => {
+    const url = `${window.location.origin}/stories/${storyId}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: storyTitle,
+          text: "Check out this story on Story-Hub",
+          url,
+        });
+        setShareFeedback((prev) => ({
+          ...prev,
+          [storyId]: "Shared successfully",
+        }));
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setShareFeedback((prev) => ({ ...prev, [storyId]: "Link copied" }));
+      } else {
+        setShareFeedback((prev) => ({
+          ...prev,
+          [storyId]: "Share not supported",
+        }));
+      }
+
+      setTimeout(() => {
+        setShareFeedback((prev) => {
+          const next = { ...prev };
+          delete next[storyId];
+          return next;
+        });
+      }, 1800);
+    } catch {
+      setShareFeedback((prev) => ({ ...prev, [storyId]: "Share cancelled" }));
+      setTimeout(() => {
+        setShareFeedback((prev) => {
+          const next = { ...prev };
+          delete next[storyId];
+          return next;
+        });
+      }, 1800);
+    }
+  }, []);
+
+  const stories = useMemo(() => {
+    const circles = [{ name: "Add Story", isAdd: true }];
+    const seenAuthors = new Set();
+
+    posts.forEach((post) => {
+      if (seenAuthors.has(post.author)) {
+        return;
+      }
+
+      seenAuthors.add(post.author);
+      circles.push({
+        name: post.author,
+        image: post.avatar,
+      });
+    });
+
+    return circles;
+  }, [posts]);
 
   const topAuthors = [
     { name: "Hannah Rose", role: "Top Mystery Writer" },
@@ -177,46 +733,115 @@ export default function Home() {
     { name: "Lisa Park", role: "Top Romance Author" },
   ];
 
+  const activeCommentStory = posts.find(
+    (post) => post.id === activeCommentStoryId,
+  );
+  const activeCommentState = activeCommentStoryId
+    ? commentsByStory[activeCommentStoryId] || {
+        open: true,
+        loaded: false,
+        loading: false,
+        error: "",
+        items: [],
+        input: "",
+        submitting: false,
+      }
+    : null;
+
   return (
-    <div className="flex min-h-screen bg-white text-gray-900">
-      {/* Sidebar */}
+    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
       <Sidebar />
 
-      {/* Main Section */}
-      <div className="flex-1 flex flex-col">
-        {/* Navbar */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <Navbar title="Home Feed" />
 
-        {/* Page Content */}
-        <main className="pt-10 px-6 pb-10">
-          <div className="max-w-6xl mx-auto flex gap-8">
-            {/* Feed */}
-            <div className="flex-1">
-              {/* Stories */}
-              <section className="bg-white border border-gray-100 rounded-[40px] p-6 mb-8 shadow-sm">
-                <h2 className="text-2xl font-black mb-6 px-2">
+        <main className="h-[calc(100vh-64px)] overflow-hidden">
+          <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
+            <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              <section className="bg-white border border-gray-100 rounded-0 sm:rounded-0 lg:rounded-3xl p-4 sm:p-6 mb-6 sm:mb-8 shadow-none lg:shadow-sm transition-all duration-300 hover:shadow-md">
+                <h2 className="text-xl sm:text-2xl font-black mb-5 sm:mb-6 px-1 sm:px-2">
                   Stories
                 </h2>
 
-                <div className="flex gap-6 overflow-x-auto pb-2">
+                <div className="flex gap-4 sm:gap-6 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {stories.map((story, i) => (
-                    <StoryCircle key={i} {...story} />
+                    <div key={i} className="snap-start">
+                      <StoryCircle {...story} />
+                    </div>
                   ))}
                 </div>
               </section>
 
-              {/* Posts */}
-              <section>
-                {posts.map((post, i) => (
-                  <PostCard key={i} {...post} />
-                ))}
+              <section className="flex-1 min-h-0 flex flex-col py-4">
+                {isLoadingPosts && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-500">
+                    Loading stories...
+                  </div>
+                )}
+
+                {!isLoadingPosts && postsError && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-red-100 shadow-sm">
+                    <p className="text-sm text-red-500 mb-3">{postsError}</p>
+                    <button
+                      className="text-xs font-bold text-red-500 hover:underline"
+                      onClick={() =>
+                        loadStories(new AbortController().signal, null)
+                      }
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
+
+                {!isLoadingPosts && !postsError && posts.length === 0 && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-500">
+                    No published stories yet.
+                  </div>
+                )}
+
+                {!isLoadingPosts &&
+                  !postsError &&
+                  posts.map((post) => {
+                    return (
+                      <PostCard
+                        key={post.id}
+                        {...post}
+                        savedByCurrentUser={savedStoryIds.has(post.id)}
+                        commentsActive={activeCommentStoryId === post.id}
+                        shareStatus={shareFeedback[post.id]}
+                        onToggleLike={handleToggleLike}
+                        onOpenComments={handleOpenCommentsModal}
+                        onToggleSave={handleToggleSave}
+                        onShare={handleShare}
+                        onDoubleTapLike={handleDoubleTapLike}
+                        showLikeBurst={likeBurstStoryId === post.id}
+                        showLikePulse={likePulseStoryId === post.id}
+                        showCommentCountPulse={
+                          commentCountPulseStoryId === post.id
+                        }
+                      />
+                    );
+                  })}
+
+                {isLoadingMore && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-500 text-center">
+                    Loading more stories...
+                  </div>
+                )}
+
+                {!hasMore && posts.length > 0 && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-400 text-center">
+                    No more stories to load
+                  </div>
+                )}
+
+                <div ref={endOfFeedRef} className="h-1" />
               </section>
             </div>
 
-            {/* Right Sidebar */}
-            <aside className="w-80 sticky top-24 h-fit">
-              <div className="bg-white border border-gray-100 rounded-[40px] p-8 shadow-sm">
-                <h2 className="text-xl font-black mb-6">
+            <aside className="hidden lg:block w-64 shrink-0 h-full">
+              <div className="sticky top-4 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
+                <h2 className="text-lg sm:text-xl font-black mb-5 sm:mb-6">
                   Top Authors
                 </h2>
 
@@ -230,14 +855,104 @@ export default function Home() {
                   Show more
                 </button>
               </div>
-
-              <p className="text-[10px] text-gray-400 text-right mt-6">
-                © 2026 Story Hub. All rights reserved.
-              </p>
             </aside>
           </div>
         </main>
+
+        <SiteFooter className="text-left lg:text-right" />
       </div>
+
+      {activeCommentStory && activeCommentState && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => setActiveCommentStoryId(null)}
+        >
+          <div
+            className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-gray-100 max-h-[85vh] flex flex-col"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="font-bold text-gray-900">Comments</h3>
+                <p className="text-xs text-gray-400 truncate max-w-[260px]">
+                  {activeCommentStory.title}
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveCommentStoryId(null)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+              {activeCommentState.loading && (
+                <p className="text-xs text-gray-500">Loading comments...</p>
+              )}
+
+              {!activeCommentState.loading && activeCommentState.error && (
+                <p className="text-xs text-red-500">
+                  {activeCommentState.error}
+                </p>
+              )}
+
+              {!activeCommentState.loading &&
+                !activeCommentState.error &&
+                activeCommentState.items.length === 0 && (
+                  <p className="text-xs text-gray-500">
+                    No comments yet. Be the first to comment.
+                  </p>
+                )}
+
+              {!activeCommentState.loading &&
+                !activeCommentState.error &&
+                activeCommentState.items.map((comment) => (
+                  <div
+                    key={comment._id}
+                    className="rounded-xl bg-gray-50 px-3 py-2"
+                  >
+                    <p className="text-xs font-semibold text-gray-700 mb-1">
+                      Anonymous
+                    </p>
+                    <p className="text-sm text-gray-700">{comment.content}</p>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      {getRelativeTime(comment.createdAt)}
+                    </p>
+                  </div>
+                ))}
+            </div>
+
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleSubmitComment(activeCommentStory.id);
+              }}
+              className="px-5 py-4 border-t border-gray-100 flex items-center gap-2"
+            >
+              <input
+                type="text"
+                value={activeCommentState.input || ""}
+                onChange={(event) =>
+                  handleCommentInputChange(
+                    activeCommentStory.id,
+                    event.target.value,
+                  )
+                }
+                placeholder="Write a comment..."
+                className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-red-300"
+              />
+              <button
+                type="submit"
+                disabled={activeCommentState.submitting}
+                className="rounded-xl bg-red-400 text-white px-3 py-2 text-xs font-bold disabled:opacity-60"
+              >
+                {activeCommentState.submitting ? "Posting..." : "Post"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
