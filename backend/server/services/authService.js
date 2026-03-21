@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
+const { createHash, randomUUID } = require("node:crypto");
 const jwt = require("jsonwebtoken");
-const path = require("path");
+const path = require("node:path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const SALT_ROUNDS = 10;
@@ -32,10 +33,18 @@ const generateToken = (user) => {
     {
       userId: user._id,
       role: user.role,
+      jti: randomUUID(),
     },
     JWT_SECRET,
     { expiresIn: "7d" },
   );
+};
+
+/**
+ * Hash raw token string for safe storage/comparison
+ */
+const hashToken = (token) => {
+  return createHash("sha256").update(token).digest("hex");
 };
 
 /**
@@ -49,5 +58,6 @@ module.exports = {
   hashPassword,
   comparePassword,
   generateToken,
+  hashToken,
   verifyToken,
 };

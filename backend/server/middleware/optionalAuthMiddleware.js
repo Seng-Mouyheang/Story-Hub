@@ -1,18 +1,24 @@
-const jwt = require("jsonwebtoken");
+const authService = require("../services/authService");
+const revokedTokenModel = require("../models/revokedTokenModel");
 
-const optionalAuthenticate = (req, res, next) => {
+const optionalAuthenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     return next(); // continue without user
   }
 
   try {
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = authService.verifyToken(token);
+    const tokenHash = authService.hashToken(token);
+    const revoked = await revokedTokenModel.isTokenRevoked(tokenHash);
 
-    req.user = decoded; // attach user
-  } catch (err) {
+    if (!revoked) {
+      req.user = decoded; // attach user
+      req.authToken = token;
+    }
+  } catch {
     // ignore invalid token, continue as guest
   }
 

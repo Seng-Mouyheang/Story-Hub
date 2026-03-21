@@ -3,6 +3,12 @@ const { ObjectId } = require("mongodb");
 
 const COLLECTION_NAME = "users";
 
+const normalizeEmail = (email) => {
+  return String(email || "")
+    .trim()
+    .toLowerCase();
+};
+
 const getCollection = async () => {
   const db = await connectToDatabase();
   return db.collection(COLLECTION_NAME);
@@ -11,7 +17,7 @@ const getCollection = async () => {
 /**
  * Create a new user
  * @param {Object} userData
- * @returns {ObjectId}
+ * @returns {Promise<ObjectId>}
  */
 
 const createUser = async (userData) => {
@@ -19,7 +25,7 @@ const createUser = async (userData) => {
 
   const user = {
     username: userData.username,
-    email: userData.email,
+    email: normalizeEmail(userData.email),
     password: userData.password, // hash later
     role: userData.role || "user",
     createdAt: new Date(),
@@ -37,7 +43,10 @@ const createUser = async (userData) => {
  */
 const findUserByEmail = async (email) => {
   const collection = await getCollection();
-  return collection.findOne({ email });
+  return collection.findOne({
+    email: normalizeEmail(email),
+    deletedAt: null,
+  });
 };
 
 /**

@@ -10,6 +10,13 @@ app.use(express.json());
 
 app.disable("x-powered-by");
 
+const trustProxy = process.env.TRUST_PROXY_HOPS;
+if (trustProxy) {
+  app.set("trust proxy", Number(trustProxy));
+} else if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
+}
+
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/stories", storyRoutes);
@@ -28,6 +35,7 @@ connectToDatabase()
 ║   Routes:                                      ║
 ║   - POST /api/auth/login                       ║
 ║   - POST /api/auth/signup                      ║
+║   - POST /api/auth/logout                      ║
 ║                                                ║
 ║   - GET /api/stories/                          ║
 ║   - GET /api/stories/me                        ║
@@ -55,4 +63,5 @@ connectToDatabase()
       "Failed to connect to the database. Server not started.",
       error,
     );
+    process.exit(1);
   });

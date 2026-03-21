@@ -1,4 +1,4 @@
-const path = require("path");
+const path = require("node:path");
 const { MongoClient } = require("mongodb");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -101,6 +101,11 @@ const connectToDatabase = async () => {
     await db
       .collection("commentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
+
+    // Prevent duplicate user accounts with the same normalized email
+    await db
+      .collection("users")
+      .createIndex({ email: 1 }, { unique: true, name: "unique_user_email" });
 
     console.log(`Using database: ${databaseName}`);
     return db;
