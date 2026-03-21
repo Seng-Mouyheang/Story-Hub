@@ -110,25 +110,26 @@ export default function Bookmarks() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
+    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
       {/* Sidebar */}
       <Sidebar />
 
       {/* Main Section */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Navbar */}
         <Navbar title="Saved Items" />
 
         {/* Page Content */}
-        <main className="flex-1 pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
-          <div className="max-w-6xl mx-auto">
-            {bookmarks.map((post, i) => (
-              <PostCard key={i} {...post} />
-            ))}
+        <main className="flex-1 min-h-0 overflow-hidden">
+          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="max-w-6xl mx-auto">
+              {bookmarks.map((post, i) => (
+                <PostCard key={i} {...post} />
+              ))}
+            </div>
+            <SiteFooter />
           </div>
         </main>
-
-        <SiteFooter />
       </div>
     </div>
   );

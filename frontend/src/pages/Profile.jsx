@@ -40,151 +40,154 @@ export default function Profile() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
+    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col min-w-0 bg-white">
         <Navbar title="User Profile" />
 
-        <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
-          <div className="max-w-6xl mx-auto">
-            {/* Profile Header Card */}
-            <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-100 relative shadow-sm">
-              <div className="h-36 sm:h-48 bg-gradient-to-r from-red-100 to-amber-50"></div>
-              <div className="px-4 sm:px-8 pb-6 sm:pb-8">
-                {/* Avatar */}
-                <div className="relative -mt-12 sm:-mt-16 mb-4">
-                  <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white overflow-hidden bg-white shadow-xl">
-                    <img
-                      src={userData.avatar}
-                      className="w-full h-full object-cover"
-                      alt="Profile"
-                    />
+        <main className="flex-1 min-h-0 overflow-hidden">
+          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="max-w-6xl mx-auto">
+              {/* Profile Header Card */}
+              <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-100 relative shadow-sm">
+                <div className="h-36 sm:h-48 bg-gradient-to-r from-red-100 to-amber-50"></div>
+                <div className="px-4 sm:px-8 pb-6 sm:pb-8">
+                  {/* Avatar */}
+                  <div className="relative -mt-12 sm:-mt-16 mb-4">
+                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white overflow-hidden bg-white shadow-xl">
+                      <img
+                        src={userData.avatar}
+                        className="w-full h-full object-cover"
+                        alt="Profile"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                  <div className="min-w-0">
-                    <h1 className="text-xl sm:text-2xl font-bold truncate">
-                      {userData.name}
-                    </h1>
-                    <p className="text-slate-500 truncate">{userData.handle}</p>
-                    <p className="mt-4 text-slate-600 max-w-lg">
-                      {userData.bio}
-                    </p>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                    <div className="min-w-0">
+                      <h1 className="text-xl sm:text-2xl font-bold truncate">
+                        {userData.name}
+                      </h1>
+                      <p className="text-slate-500 truncate">
+                        {userData.handle}
+                      </p>
+                      <p className="mt-4 text-slate-600 max-w-lg">
+                        {userData.bio}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Link
+                        to="/edit-profile"
+                        className="px-4 py-2 border border-slate-200 rounded-xl font-medium text-sm hover:bg-slate-50"
+                      >
+                        Edit Profile
+                      </Link>
+                      <button className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50">
+                        <Share className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <Link
-                      to="/edit-profile"
-                      className="px-4 py-2 border border-slate-200 rounded-xl font-medium text-sm hover:bg-slate-50"
-                    >
-                      Edit Profile
-                    </Link>
-                    <button className="p-2 border border-slate-200 rounded-xl hover:bg-slate-50">
-                      <Share className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">
-                  <div>
-                    <span className="font-bold">{stories.length}</span>{" "}
-                    <span className="text-slate-400 text-sm">Posts</span>
-                  </div>
-                  <div>
-                    <span className="font-bold">{userData.followers}</span>{" "}
-                    <span className="text-slate-400 text-sm">Followers</span>
-                  </div>
-                  <div>
-                    <span className="font-bold">{userData.following}</span>{" "}
-                    <span className="text-slate-400 text-sm">Following</span>
+                  <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">
+                    <div>
+                      <span className="font-bold">{stories.length}</span>{" "}
+                      <span className="text-slate-400 text-sm">Posts</span>
+                    </div>
+                    <div>
+                      <span className="font-bold">{userData.followers}</span>{" "}
+                      <span className="text-slate-400 text-sm">Followers</span>
+                    </div>
+                    <div>
+                      <span className="font-bold">{userData.following}</span>{" "}
+                      <span className="text-slate-400 text-sm">Following</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Main Content: Bio, Genres, Stories/Saved/Activity */}
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6">
-              {/* Sidebar: Bio & Genres */}
-              <div className="md:col-span-4">
-                <div className="bg-white rounded-2xl shadow-sm p-6">
-                  <h2 className="text-xs font-bold text-gray-900 tracking-widest uppercase mb-4">
-                    Bio
-                  </h2>
-                  <p className="text-sm text-gray-500 italic leading-relaxed mb-8">
-                    {userData.bio}
-                  </p>
+              {/* Main Content: Bio, Genres, Stories/Saved/Activity */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 mt-6">
+                {/* Sidebar: Bio & Genres */}
+                <div className="md:col-span-4">
+                  <div className="bg-white rounded-2xl shadow-sm p-6">
+                    <h2 className="text-xs font-bold text-gray-900 tracking-widest uppercase mb-4">
+                      Bio
+                    </h2>
+                    <p className="text-sm text-gray-500 italic leading-relaxed mb-8">
+                      {userData.bio}
+                    </p>
 
-                  <h2 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4">
-                    Preferred Genres
-                  </h2>
-                  <div className="flex flex-wrap gap-2">
-                    {userData.genres.map((genre) => (
-                      <span
-                        key={genre}
-                        className="px-3 py-1 bg-red-400 text-white text-[10px] font-bold rounded-full cursor-default"
+                    <h2 className="text-xs font-bold text-gray-400 tracking-widest uppercase mb-4">
+                      Preferred Genres
+                    </h2>
+                    <div className="flex flex-wrap gap-2">
+                      {userData.genres.map((genre) => (
+                        <span
+                          key={genre}
+                          className="px-3 py-1 bg-red-400 text-white text-[10px] font-bold rounded-full cursor-default"
+                        >
+                          {genre}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stories / Tabs Area */}
+                <div className="md:col-span-8">
+                  {/* Tabs */}
+                  <div className="flex gap-4 sm:gap-8 border-b border-gray-200 mb-6 px-2 overflow-x-auto">
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`pb-3 text-sm font-bold tracking-wide transition-colors relative ${
+                          activeTab === tab
+                            ? "text-gray-900"
+                            : "text-gray-400 hover:text-gray-600"
+                        }`}
                       >
-                        {genre}
-                      </span>
+                        {tab}
+                        {activeTab === tab && (
+                          <div className="absolute bottom-0 left-0 w-full h-0.5 bg-red-400" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Tab Content */}
+                  <div className="space-y-4">
+                    {stories.map((story) => (
+                      <div
+                        key={story.id}
+                        className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                      >
+                        <div className="mb-2">
+                          <h3 className="text-xl font-serif font-bold text-gray-800">
+                            {story.title}
+                          </h3>
+                        </div>
+                        <p className="text-sm text-gray-400 italic mb-6">
+                          {story.excerpt}
+                        </p>
+                        <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
+                          <div className="flex items-center gap-1">
+                            <span>{story.likes} likes</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span>{story.saves} Saves</span>
+                          </div>
+                          <div>{story.date}</div>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
               </div>
-
-              {/* Stories / Tabs Area */}
-              <div className="md:col-span-8">
-                {/* Tabs */}
-                <div className="flex gap-4 sm:gap-8 border-b border-gray-200 mb-6 px-2 overflow-x-auto">
-                  {tabs.map((tab) => (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`pb-3 text-sm font-bold tracking-wide transition-colors relative ${
-                        activeTab === tab
-                          ? "text-gray-900"
-                          : "text-gray-400 hover:text-gray-600"
-                      }`}
-                    >
-                      {tab}
-                      {activeTab === tab && (
-                        <div className="absolute bottom-0 left-0 w-full h-0.5 bg-red-400" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Tab Content */}
-                <div className="space-y-4">
-                  {stories.map((story) => (
-                    <div
-                      key={story.id}
-                      className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                    >
-                      <div className="mb-2">
-                        <h3 className="text-xl font-serif font-bold text-gray-800">
-                          {story.title}
-                        </h3>
-                      </div>
-                      <p className="text-sm text-gray-400 italic mb-6">
-                        {story.excerpt}
-                      </p>
-                      <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6 text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
-                        <div className="flex items-center gap-1">
-                          <span>{story.likes} likes</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span>{story.saves} Saves</span>
-                        </div>
-                        <div>{story.date}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
+            <SiteFooter />
           </div>
         </main>
-
-        <SiteFooter />
       </div>
     </div>
   );

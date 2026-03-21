@@ -22,66 +22,67 @@ const StatCard = ({ title, value, subtitle }) => (
 
 export default function Dashboard() {
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
+    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
       <Sidebar />
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col min-w-0 bg-white">
         <Navbar title="Analytics Dashboard" />
-        <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
-          <div className="max-w-6xl mx-auto">
-            {/* Header */}
-            <header className="mb-8 sm:mb-10">
-              <h1 className="text-2xl sm:text-3xl font-serif font-medium tracking-tight text-gray-800">
-                Writing Analytics
-              </h1>
-            </header>
+        <main className="flex-1 min-h-0 overflow-hidden">
+          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="max-w-6xl mx-auto">
+              {/* Header */}
+              <header className="mb-8 sm:mb-10">
+                <h1 className="text-2xl sm:text-3xl font-serif font-medium tracking-tight text-gray-800">
+                  Writing Analytics
+                </h1>
+              </header>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-              <StatCard
-                title="Published Stories"
-                value="0"
-                subtitle="Total works"
-              />
-              <StatCard
-                title="Total Word Count"
-                value="0"
-                subtitle="Across all drafts"
-              />
-              <StatCard
-                title="Total Reader Loves"
-                value="0"
-                subtitle="total likes"
-              />
-            </div>
-
-            {/* Recent Activity Card */}
-            <div className="bg-white border border-gray-200 rounded-2xl sm:rounded-3xl overflow-hidden min-h-[420px] sm:min-h-[500px] flex flex-col shadow-sm">
-              <div className="px-4 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center">
-                <h3 className="text-lg font-serif font-medium text-gray-700">
-                  Your Recent Activity
-                </h3>
-                <button className="p-2 hover:bg-gray-50 rounded-full transition-colors group">
-                  <Filter className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
-                </button>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                <StatCard
+                  title="Published Stories"
+                  value="0"
+                  subtitle="Total works"
+                />
+                <StatCard
+                  title="Total Word Count"
+                  value="0"
+                  subtitle="Across all drafts"
+                />
+                <StatCard
+                  title="Total Reader Loves"
+                  value="0"
+                  subtitle="total likes"
+                />
               </div>
 
-              {/* Empty State Body */}
-              <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                <div className="bg-gray-50 p-6 rounded-full mb-6">
-                  <PenTool
-                    className="w-12 h-12 text-gray-200"
-                    strokeWidth={1.5}
-                  />
+              {/* Recent Activity Card */}
+              <div className="bg-white border border-gray-200 rounded-2xl sm:rounded-3xl overflow-hidden min-h-[420px] sm:min-h-[500px] flex flex-col shadow-sm">
+                <div className="px-4 sm:px-8 py-5 border-b border-gray-100 flex justify-between items-center">
+                  <h3 className="text-lg font-serif font-medium text-gray-700">
+                    Your Recent Activity
+                  </h3>
+                  <button className="p-2 hover:bg-gray-50 rounded-full transition-colors group">
+                    <Filter className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+                  </button>
                 </div>
-                <p className="text-gray-400 text-sm md:text-base font-medium">
-                  You haven't written any stories yet. Start your journey!
-                </p>
+
+                {/* Empty State Body */}
+                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                  <div className="bg-gray-50 p-6 rounded-full mb-6">
+                    <PenTool
+                      className="w-12 h-12 text-gray-200"
+                      strokeWidth={1.5}
+                    />
+                  </div>
+                  <p className="text-gray-400 text-sm md:text-base font-medium">
+                    You haven't written any stories yet. Start your journey!
+                  </p>
+                </div>
               </div>
             </div>
+            <SiteFooter />
           </div>
         </main>
-
-        <SiteFooter />
       </div>
     </div>
   );

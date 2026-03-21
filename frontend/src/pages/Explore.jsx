@@ -25,7 +25,7 @@ const AuthorRow = ({ name, role }) => (
 
       <div className="min-w-0">
         <h4 className="font-bold text-sm text-gray-900 truncate">{name}</h4>
-        <p className="text-[10px] text-red-500 font-medium truncate">{role}</p>
+        <p className="text-[10px] text-red-500 font-medium">{role}</p>
       </div>
     </div>
 
@@ -79,42 +79,44 @@ export default function Explore() {
   ];
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
+    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col bg-white">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white">
         <Navbar title="Explore Communities" />
 
-        <main className="flex-1 overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
-          <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 lg:gap-8">
+        <main className="h-[calc(100vh-64px)] overflow-hidden">
+          <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
             {/* LEFT Content */}
-            <div className="flex-1 min-w-0">
+            <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {/* Categories */}
-              <div className="flex items-center gap-2 sm:gap-3 mb-8 sm:mb-10 overflow-x-auto pb-2">
-                <button className="bg-red-400 text-white px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  All
-                </button>
-                <button className="border border-gray-400 text-gray-600 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Most visited
-                </button>
-                <button className="border border-gray-400 text-gray-600 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Fantasy
-                </button>
-                <button className="border border-gray-400 text-gray-600 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Drama
-                </button>
-                <button className="border border-gray-400 text-gray-600 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Romance
-                </button>
-                <button className="border border-gray-400 text-gray-600 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Thriller
-                </button>
-                <button className="border border-gray-400 text-gray-600 px-4 sm:px-6 py-2 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap">
-                  Action
-                </button>
-                <button className="hidden sm:inline-flex text-gray-400 ml-2">
-                  <ChevronRight className="w-6 h-6" />
-                </button>
+              <div className="mb-8 sm:mb-10">
+                <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                  <button className="h-10 bg-red-400 text-white px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    All
+                  </button>
+                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    Most visited
+                  </button>
+                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    Fantasy
+                  </button>
+                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    Drama
+                  </button>
+                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    Romance
+                  </button>
+                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    Thriller
+                  </button>
+                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                    Action
+                  </button>
+                  <button className="hidden sm:inline-flex h-10 items-center text-gray-400 ml-2">
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </div>
               </div>
 
               {/* Recommended Section */}
@@ -249,9 +251,11 @@ export default function Explore() {
             </div>
 
             {/* Right Sidebar */}
-            <aside className="w-full lg:w-72 xl:w-80 h-fit lg:sticky lg:top-24">
-              <div className="bg-white border border-gray-100 rounded-3xl sm:rounded-[40px] p-5 sm:p-8 shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-xl font-black mb-6">Top Authors</h2>
+            <aside className="hidden lg:block w-64 shrink-0 h-full">
+              <div className="sticky top-4 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
+                <h2 className="text-lg sm:text-xl font-black mb-5 sm:mb-6">
+                  Top Authors
+                </h2>
 
                 <div className="space-y-4 mb-8">
                   {topAuthors.map((author, i) => (
