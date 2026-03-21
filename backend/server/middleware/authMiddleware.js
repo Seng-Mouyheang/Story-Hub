@@ -1,9 +1,10 @@
 const authService = require("../services/authService");
+const revokedTokenModel = require("../models/revokedTokenModel");
 
-const authenticate = (req, res, next) => {
+const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
@@ -11,9 +12,17 @@ const authenticate = (req, res, next) => {
 
   try {
     const decoded = authService.verifyToken(token);
+    const tokenHash = authService.hashToken(token);
+    const revoked = await revokedTokenModel.isTokenRevoked(tokenHash);
+
+    if (revoked) {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
     req.user = decoded;
+    req.authToken = token;
     next();
-  } catch (error) {
+  } catch {
     res.status(401).json({ message: "Invalid or expired token" });
   }
 };
