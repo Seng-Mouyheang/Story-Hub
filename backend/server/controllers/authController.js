@@ -1,12 +1,7 @@
 const userModel = require("../models/userModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
 const authService = require("../services/authService");
-
-const normalizeEmail = (email) => {
-  return String(email || "")
-    .trim()
-    .toLowerCase();
-};
+const { normalizeEmail } = require("../utils/email");
 
 const register = async (req, res) => {
   try {

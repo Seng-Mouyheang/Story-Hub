@@ -3,13 +3,13 @@ const revokedTokenModel = require("../models/revokedTokenModel");
 
 const optionalAuthenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
+  const [scheme, token] = authHeader?.trim()?.split(/\s+/, 2) ?? [];
 
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
     return next(); // continue without user
   }
 
   try {
-    const token = authHeader.split(" ")[1];
     const decoded = authService.verifyToken(token);
     const tokenHash = authService.hashToken(token);
     const revoked = await revokedTokenModel.isTokenRevoked(tokenHash);

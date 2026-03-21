@@ -26,8 +26,9 @@ const validatePassword = (password) => {
 };
 
 const validateLoginPassword = (password) => {
-  if (!password) return "Password is required";
-  return null;
+  if (typeof password !== "string" || !password.trim()) {
+    return "Password is required";
+  }
 };
 
 const validateUserLogin = (req, res, next) => {

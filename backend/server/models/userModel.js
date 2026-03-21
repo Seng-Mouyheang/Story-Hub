@@ -1,12 +1,14 @@
 const { connectToDatabase } = require("../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
+const { normalizeEmail } = require("../utils/email");
 
 const COLLECTION_NAME = "users";
 
-const normalizeEmail = (email) => {
-  return String(email || "")
-    .trim()
-    .toLowerCase();
+const setNormalizedEmail = (userData) => {
+  return {
+    ...userData,
+    email: normalizeEmail(userData.email),
+  };
 };
 
 const getCollection = async () => {
@@ -22,12 +24,13 @@ const getCollection = async () => {
 
 const createUser = async (userData) => {
   const collection = await getCollection();
+  const normalizedUserData = setNormalizedEmail(userData);
 
   const user = {
-    username: userData.username,
-    email: normalizeEmail(userData.email),
-    password: userData.password, // hash later
-    role: userData.role || "user",
+    username: normalizedUserData.username,
+    email: normalizedUserData.email,
+    password: normalizedUserData.password, // hash later
+    role: normalizedUserData.role || "user",
     createdAt: new Date(),
     updatedAt: new Date(),
     deletedAt: null,
@@ -62,4 +65,5 @@ module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
+  setNormalizedEmail,
 };

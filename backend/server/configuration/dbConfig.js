@@ -1,5 +1,9 @@
 const path = require("node:path");
 const { MongoClient } = require("mongodb");
+const {
+  ensureUserEmailBackfillAndDedup,
+  ensureNormalizedUniqueUserEmailIndex,
+} = require("../migrations/userEmailMigration");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const uri = process.env.ATLAS_URI;
@@ -102,10 +106,11 @@ const connectToDatabase = async () => {
       .collection("commentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
-    // Prevent duplicate user accounts with the same normalized email
-    await db
-      .collection("users")
-      .createIndex({ email: 1 }, { unique: true, name: "unique_user_email" });
+    // One-off safety backfill for historical users before enforcing uniqueness.
+    await ensureUserEmailBackfillAndDedup(db);
+
+    // Prevent duplicate active user accounts with the same normalized email.
+    await ensureNormalizedUniqueUserEmailIndex(db);
 
     console.log(`Using database: ${databaseName}`);
     return db;
