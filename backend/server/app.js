@@ -79,7 +79,7 @@ connectToDatabase()
 ╚════════════════════════════════════════════════╝
 
 ╔════════════════════════════════════════════════╗
-║   Story Comment Likes Routes                   ║
+║   Story Comment's Likes / Replies Routes       ║
 ╠════════════════════════════════════════════════╣
 ║   - GET /api/stories/comments/:id/replies      ║
 ║   - POST /api/stories/comments/:id/toggle-like ║

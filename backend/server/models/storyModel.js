@@ -54,59 +54,12 @@ const createStory = async (storyData) => {
   return result.insertedId;
 };
 
-/**
- * Get stories by Status
- * no @param
- */
-
-// Offset Pagination
-// const getPublishedStories = async (page, limit) => {
-//   const collection = await getCollection();
-
-//   const filter = {
-//     status: "published",
-//     visibility: "public",
-//     deletedAt: null,
-//   };
-
-//   const skip = (page - 1) * limit;
-
-//   const [stories, totalItems] = await Promise.all([
-//     collection
-//       .find(filter)
-//       .sort({ publishedAt: -1 })
-//       .skip(skip)
-//       .limit(limit)
-//       .toArray(),
-//     collection.countDocuments(filter),
-//   ]);
-
-//   const totalPages = Math.ceil(totalItems / limit);
-
-//   return {
-//     data: stories,
-//     pagination: {
-//       page,
-//       limit,
-//       totalItems,
-//       totalPages,
-//       hasNextPage: page < totalPages,
-//       hasPrevPage: page > 1,
-//     },
-//   };
-// };
-
 // Cursor Pagination
 const getPublishedStories = async (cursor, limit, currentUserId) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
 
-  // const userObjectId = currentUserId ? new ObjectId(currentUserId) : null;
-
-  // console.log("currentUserId:", currentUserId);
-  // console.log("userObjectId:", userObjectId);
-
-  const filter = {
+  const matchStage = {
     status: "published",
     visibility: "public",
     deletedAt: null,
@@ -116,7 +69,7 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   if (cursor) {
     const [publishedAtStr, id] = cursor.split("_");
 
-    filter.$or = [
+    matchStage.$or = [
       {
         publishedAt: { $lt: new Date(publishedAtStr) },
       },
@@ -127,82 +80,37 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
     ];
   }
 
-  // const pipeline = [
-  //   { $match: filter },
+  const pipeline = [
+    { $match: matchStage },
+    { $sort: { publishedAt: -1, _id: -1 } },
+    { $limit: limit + 1 },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { authorId: "$authorId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$authorId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
 
-  //   {
-  //     $sort: { publishedAt: -1, _id: -1 },
-  //   },
-
-  //   {
-  //     $limit: limit + 1,
-  //   },
-
-  //   {
-  //     $lookup: {
-  //       from: "storyLikes",
-  //       let: { storyId: "$_id" },
-  //       pipeline: [
-  //         {
-  //           $match: {
-  //             $expr: {
-  //               $eq: ["$storyId", "$$storyId"],
-  //             },
-  //           },
-  //         },
-  //         {
-  //           $group: {
-  //             _id: null,
-  //             count: { $sum: 1 },
-  //             likedByCurrentUser: {
-  //               $max: {
-  //                 $cond: [
-  //                   {
-  //                     $and: [
-  //                       { $ne: [userObjectId, null] },
-  //                       { $eq: ["$userId", userObjectId] },
-  //                     ],
-  //                   },
-  //                   1,
-  //                   0,
-  //                 ],
-  //               },
-  //             },
-  //           },
-  //         },
-  //       ],
-  //       as: "likesData",
-  //     },
-  //   },
-  //   {
-  //     $addFields: {
-  //       likesCount: {
-  //         $ifNull: [{ $arrayElemAt: ["$likesData.count", 0] }, 0],
-  //       },
-  //       likedByCurrentUser: {
-  //         $toBool: {
-  //           $ifNull: [
-  //             { $arrayElemAt: ["$likesData.likedByCurrentUser", 0] },
-  //             0,
-  //           ],
-  //         },
-  //       },
-  //     },
-  //   },
-  //   {
-  //     $project: {
-  //       likesData: 0,
-  //     },
-  //   },
-  // ];
-
-  // const stories = await collection.aggregate(pipeline).toArray();
-
-  const stories = await collection
-    .find(filter)
-    .sort({ publishedAt: -1, _id: -1 })
-    .limit(limit + 1)
-    .toArray();
+  const stories = await collection.aggregate(pipeline).toArray();
 
   // Handle limit + 1 logic
   const hasMore = stories.length > limit;
@@ -228,6 +136,7 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   const finalData = data.map((story) => ({
     ...story,
     likedByCurrentUser: likedStoryIds.has(story._id.toString()),
+    authorDisplayName: story.author?.displayName || null,
   }));
 
   let nextCursor = null;
@@ -238,7 +147,6 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   }
 
   return {
-    // data,
     data: finalData,
     nextCursor,
     hasMore,
@@ -252,10 +160,50 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
 
 const getStoryById = async (id) => {
   const collection = await getCollection();
-  return collection.findOne({
-    _id: new ObjectId(id),
-    deletedAt: null,
-  });
+
+  const pipeline = [
+    {
+      $match: {
+        _id: new ObjectId(id),
+        deletedAt: null,
+      },
+    },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { authorId: "$authorId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$authorId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
+
+  const story = await collection.aggregate(pipeline).next();
+
+  if (story) {
+    return {
+      ...story,
+      authorDisplayName: story.author?.displayName || null,
+    };
+  }
+
+  return null;
 };
 
 /**
@@ -341,11 +289,6 @@ const deleteStory = async (id, userId) => {
     { $set: { deletedAt: new Date() } },
   );
 
-  // return collection.updateOne(
-  //   { _id: new ObjectId(id) },
-  //   { $set: { deletedAt: new Date() }, },
-  // );
-
   // Cascade delete likes
   await db.collection("storyLikes").deleteMany({
     storyId: new ObjectId(id),
@@ -356,9 +299,9 @@ const deleteStory = async (id, userId) => {
 
 const getUserStories = async (userId, cursor, limit) => {
   const collection = await getCollection();
-  limit = parseInt(limit, 10) || 10;
+  limit = Number.parseInt(limit, 10) || 10;
 
-  const filter = {
+  const matchStage = {
     authorId: new ObjectId(userId),
     deletedAt: null,
   };
@@ -366,7 +309,7 @@ const getUserStories = async (userId, cursor, limit) => {
   if (typeof cursor === "string" && cursor.includes("_")) {
     const [updatedAtStr, id] = cursor.split("_");
 
-    filter.$or = [
+    matchStage.$or = [
       { updatedAt: { $lt: new Date(updatedAtStr) } },
       {
         updatedAt: new Date(updatedAtStr),
@@ -375,23 +318,57 @@ const getUserStories = async (userId, cursor, limit) => {
     ];
   }
 
-  const stories = await collection
-    .find(filter)
-    .sort({ updatedAt: -1, _id: -1 })
-    .limit(limit)
-    .toArray();
+  const pipeline = [
+    { $match: matchStage },
+    { $sort: { updatedAt: -1, _id: -1 } },
+    { $limit: limit + 1 },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { authorId: "$authorId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$authorId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
+
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  const hasMore = stories.length > limit;
+  const data = hasMore ? stories.slice(0, limit) : stories;
+
+  const finalData = data.map((story) => ({
+    ...story,
+    authorDisplayName: story.author?.displayName || null,
+  }));
 
   let nextCursor = null;
 
-  if (stories.length === limit) {
-    const lastStory = stories[stories.length - 1];
+  if (hasMore) {
+    const lastStory = data[data.length - 1];
     nextCursor = `${lastStory.updatedAt.toISOString()}_${lastStory._id}`;
   }
 
   return {
-    data: stories,
+    data: finalData,
     nextCursor,
-    hasMore: stories.length === limit,
+    hasMore,
   };
 };
 
