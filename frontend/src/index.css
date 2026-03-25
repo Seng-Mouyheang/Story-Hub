@@ -1,5 +1,5 @@
-@import "tailwindcss";
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
+@import "tailwindcss";
 
 * {
   font-family: "Inter", sans-serif;
@@ -23,8 +23,8 @@ body {
 }
 
 .active-link {
-  color: #f87171;
+  color: #f43f5e;
   font-weight: 600;
-  border-right: 4px solid #f87171;
+  border-right: 4px solid #f43f5e;
   background: #fff1f2;
 }

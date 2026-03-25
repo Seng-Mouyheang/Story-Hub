@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
-import { Eye, EyeOff } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { Eye, EyeOff, Feather } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
 
 export default function Signup() {
@@ -11,195 +11,239 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle signup logic here
-    console.log("Signup:", {
-      name,
-      email,
-      password,
-      confirmPassword,
-      agreeTerms,
-    });
+
+    setErrorMessage("");
+
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords do not match.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: name,
+          email,
+          password,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Signup failed.");
+      }
+
+      navigate("/login", {
+        state: { message: "Account created successfully. Please log in." },
+      });
+    } catch (error) {
+      setErrorMessage(error.message || "Unable to sign up right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
-      {/* Illustration Side */}
-      <div className="hidden lg:flex w-1/2 bg-[#2d2424] items-center justify-center p-12">
-        <div className="text-center">
-          <div className="relative inline-block">
-            <div className="w-64 h-64 bg-amber-100 rounded-full flex items-center justify-center mb-8 overflow-hidden">
-              <img
-                src="https://api.dicebear.com/7.x/shapes/svg?seed=book"
-                className="w-48 h-48 opacity-20 absolute"
-              />
-              <div className="text-9xl">📖</div>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="grid min-h-screen lg:grid-cols-2">
+        <aside className="relative hidden lg:flex overflow-hidden bg-slate-900 text-white">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(244,63,94,0.22),transparent_42%),radial-gradient(circle_at_80%_80%,rgba(251,191,36,0.14),transparent_40%)]" />
+          <div className="relative z-10 flex w-full flex-col justify-between p-12 xl:p-16">
+            <div className="inline-flex items-center gap-3 text-sm font-semibold tracking-wide text-slate-200">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+                <Feather size={18} />
+              </span>
+              StoryHub
             </div>
-          </div>
-          <h2 className="text-white text-3xl font-bold mb-4">
-            Create Your Story
-          </h2>
-          <p className="text-slate-400 max-w-sm mx-auto">
-            Join our community and share your thoughts, ideas, and confessions
-            in a beautiful, minimalist space.
-          </p>
-        </div>
-      </div>
 
-      {/* Form Side */}
-      <div className="w-full lg:w-1/2 flex flex-col bg-white p-4 sm:p-8">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-full max-w-md">
-            <div className="mb-8 sm:mb-10">
-              <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
-                Sign Up
-              </h1>
-              <p className="text-slate-500">
-                Create your account to get started.
+            <div className="max-w-md">
+              <h2 className="text-4xl font-semibold leading-tight tracking-tight">
+                Start your StoryHub account
+              </h2>
+              <p className="mt-4 text-base leading-relaxed text-slate-300">
+                Share your stories with the world and build your voice with a
+                calm, premium writing experience.
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Name Field */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Full Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="John Doe"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
-                  required
-                />
+            <p className="text-sm text-slate-400">Publish your perspective.</p>
+          </div>
+        </aside>
+
+        <section className="flex flex-col px-4 py-6 sm:px-6 lg:px-10">
+          <div className="flex flex-1 items-center justify-center">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
+              <div className="mb-8">
+                <div className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 lg:hidden">
+                  <Feather size={14} />
+                  StoryHub
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[32px]">
+                  Create account
+                </h1>
+                <p className="mt-2 text-sm text-slate-500">
+                  Join StoryHub and start sharing today.
+                </p>
               </div>
 
-              {/* Email Field */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
-                  required
-                />
-              </div>
-
-              {/* Password Field */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Password
-                </label>
-                <div className="relative">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Username
+                  </label>
                   <input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all pr-10"
+                    type="text"
+                    placeholder="username"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
                 </div>
-              </div>
 
-              {/* Confirm Password Field */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Confirm Password
-                </label>
-                <div className="relative">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Email Address
+                  </label>
                   <input
-                    type={showConfirmPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all pr-10"
+                    type="email"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
                     required
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    {showConfirmPassword ? (
-                      <EyeOff size={18} />
-                    ) : (
-                      <Eye size={18} />
-                    )}
-                  </button>
                 </div>
-              </div>
 
-              {/* Terms Agreement */}
-              <div className="flex items-start">
-                <input
-                  type="checkbox"
-                  id="agreeTerms"
-                  checked={agreeTerms}
-                  onChange={(e) => setAgreeTerms(e.target.checked)}
-                  className="w-4 h-4 text-red-400 border-slate-300 rounded focus:ring-red-400"
-                  required
-                />
-                <label
-                  htmlFor="agreeTerms"
-                  className="ml-3 text-sm text-slate-600 leading-relaxed"
-                >
-                  I agree to the
-                  <a
-                    href="#"
-                    className="font-semibold text-slate-900 hover:text-red-400 mx-1"
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-11 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Confirm Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-11 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff size={18} />
+                      ) : (
+                        <Eye size={18} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="agreeTerms"
+                    checked={agreeTerms}
+                    onChange={(e) => setAgreeTerms(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
+                    required
+                  />
+                  <label
+                    htmlFor="agreeTerms"
+                    className="text-sm leading-relaxed text-slate-600"
                   >
-                    Terms of Service
-                  </a>
-                  and
-                  <a
-                    href="#"
-                    className="font-semibold text-slate-900 hover:text-red-400 mx-1"
+                    I agree to the
+                    <a
+                      href="#"
+                      className="mx-1 font-medium text-slate-900 transition hover:text-rose-500"
+                    >
+                      Terms of Service
+                    </a>
+                    and
+                    <a
+                      href="#"
+                      className="mx-1 font-medium text-slate-900 transition hover:text-rose-500"
+                    >
+                      Privacy Policy
+                    </a>
+                  </label>
+                </div>
+
+                {errorMessage && (
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
                   >
-                    Privacy Policy
-                  </a>
-                </label>
-              </div>
+                    {errorMessage}
+                  </p>
+                )}
 
-              {/* Sign Up Button */}
-              <button
-                type="submit"
-                className="w-full py-3 px-4 bg-red-400 text-white font-semibold rounded-xl hover:bg-red-500 transition-colors shadow-lg shadow-red-100 mt-8"
-              >
-                Create Account
-              </button>
-            </form>
-
-            {/* Sign In Link */}
-            <div className="mt-8 text-center">
-              <p className="text-slate-600">
-                Already have an account?
-                <Link
-                  to="/login"
-                  className="font-semibold text-red-400 hover:text-red-500 ml-1"
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Log in
-                </Link>
-              </p>
+                  {isSubmitting ? "Creating Account..." : "Create Account"}
+                </button>
+              </form>
+
+              <div className="mt-8 text-center">
+                <p className="text-sm text-slate-600">
+                  Already have an account?
+                  <Link
+                    to="/login"
+                    className="ml-1 font-semibold text-rose-500 transition hover:text-rose-600"
+                  >
+                    Log in
+                  </Link>
+                </p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <SiteFooter />
+          <SiteFooter />
+        </section>
       </div>
     </div>
   );

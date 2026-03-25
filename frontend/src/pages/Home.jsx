@@ -61,27 +61,27 @@ const StoryCircle = ({ name, isAdd = false, image }) => (
   <div className="flex flex-col items-center gap-2 flex-shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
     <div
       className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 ${
-        isAdd ? "border-gray-200 border-dashed p-1" : "border-blue-400 p-1"
+        isAdd ? "border-slate-300 border-dashed p-1" : "border-rose-300 p-1"
       } relative`}
     >
-      <div className="w-full h-full rounded-full bg-gray-200 overflow-hidden">
+      <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden">
         {image ? (
           <img src={image} alt={name} className="w-full h-full object-cover" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gray-100 text-gray-400">
+          <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
             <User size={30} />
           </div>
         )}
       </div>
 
       {isAdd && (
-        <div className="absolute bottom-0 right-0 bg-black text-white rounded-full p-1 border-2 border-white shadow-sm">
+        <div className="absolute bottom-0 right-0 bg-slate-900 text-white rounded-full p-1 border-2 border-white shadow-sm">
           <Plus size={12} />
         </div>
       )}
     </div>
 
-    <span className="text-[11px] sm:text-xs font-medium text-gray-700 whitespace-nowrap">
+    <span className="text-[11px] sm:text-xs font-medium text-slate-700 whitespace-nowrap">
       {name}
     </span>
   </div>
@@ -113,7 +113,7 @@ const PostCard = ({
 }) => (
   <div
     onDoubleClick={() => onDoubleTapLike(id)}
-    className="relative bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-5 sm:mb-6 border border-gray-100 shadow-sm transition-all duration-300 hover:shadow-md"
+    className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
   >
     {showLikeBurst && (
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -127,7 +127,7 @@ const PostCard = ({
 
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
           <img
             src={
               avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${author}`
@@ -138,34 +138,34 @@ const PostCard = ({
 
         <div className="min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <h3 className="font-bold text-gray-900 truncate">{author}</h3>
-            <span className="text-gray-400 text-xs">• {time}</span>
+            <h3 className="font-semibold text-slate-900 truncate">{author}</h3>
+            <span className="text-slate-400 text-xs">• {time}</span>
           </div>
 
-          <span className="text-[10px] font-bold text-red-500 uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
             {genre}
           </span>
         </div>
       </div>
 
-      <button className="text-gray-400 hover:text-gray-600 transition-colors duration-200">
+      <button className="text-slate-400 hover:text-slate-600 transition-colors duration-200">
         <MoreHorizontal size={20} />
       </button>
     </div>
 
-    <h2 className="text-xl sm:text-2xl font-bold mb-3 text-gray-900">
+    <h2 className="text-xl sm:text-2xl font-semibold mb-3 text-slate-900">
       {title}
     </h2>
-    <p className="text-gray-600 text-sm leading-relaxed mb-6">{excerpt}</p>
+    <p className="text-slate-600 text-sm leading-relaxed mb-6">{excerpt}</p>
 
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-gray-50">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-slate-100">
       <div className="flex flex-wrap items-center gap-4 sm:gap-6">
         <button
           onClick={() => onToggleLike(id)}
           className={`flex items-center gap-2 transition-all duration-200 ${
             likedByCurrentUser
-              ? "text-red-500"
-              : "text-gray-500 hover:text-red-500"
+              ? "text-rose-500"
+              : "text-slate-500 hover:text-rose-500"
           }`}
         >
           <Heart
@@ -186,8 +186,8 @@ const PostCard = ({
           onClick={() => onOpenComments(id)}
           className={`flex items-center gap-2 transition-all duration-200 ${
             commentsActive
-              ? "text-blue-500"
-              : "text-gray-500 hover:text-blue-500"
+              ? "text-sky-500"
+              : "text-slate-500 hover:text-sky-500"
           }`}
         >
           <MessageCircle size={20} />
@@ -205,7 +205,9 @@ const PostCard = ({
         <button
           onClick={() => onToggleSave(id)}
           className={`transition-colors duration-200 ${
-            savedByCurrentUser ? "text-black" : "text-gray-500 hover:text-black"
+            savedByCurrentUser
+              ? "text-slate-900"
+              : "text-slate-500 hover:text-slate-900"
           }`}
           aria-label="Save story"
         >
@@ -216,7 +218,7 @@ const PostCard = ({
         </button>
         <button
           onClick={() => onShare(id, title)}
-          className="text-gray-500 hover:text-black transition-colors duration-200"
+          className="text-slate-500 hover:text-slate-900 transition-colors duration-200"
           aria-label="Share story"
         >
           <Share2 size={20} />
@@ -225,7 +227,7 @@ const PostCard = ({
     </div>
 
     {shareStatus && (
-      <p className="mt-3 text-xs text-green-600">{shareStatus}</p>
+      <p className="mt-3 text-xs text-emerald-600">{shareStatus}</p>
     )}
   </div>
 );
@@ -234,7 +236,7 @@ const PostCard = ({
 const AuthorRow = ({ name, role }) => (
   <div className="flex items-center justify-between gap-3 py-3">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden">
+      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden">
         <img
           src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
           alt={name}
@@ -242,12 +244,14 @@ const AuthorRow = ({ name, role }) => (
       </div>
 
       <div className="min-w-0">
-        <h4 className="font-bold text-sm text-gray-900 truncate">{name}</h4>
-        <p className="text-[10px] text-red-500 font-medium">{role}</p>
+        <h4 className="font-semibold text-sm text-slate-900 truncate">
+          {name}
+        </h4>
+        <p className="text-[10px] text-rose-500 font-medium">{role}</p>
       </div>
     </div>
 
-    <button className="bg-red-400 hover:bg-red-500 text-white text-[10px] font-bold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
+    <button className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
       Follow
     </button>
   </div>
@@ -749,17 +753,17 @@ export default function Home() {
     : null;
 
   return (
-    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
         <Navbar title="Home Feed" />
 
         <main className="h-[calc(100vh-64px)] overflow-hidden">
-          <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
+          <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-5 sm:py-6">
             <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              <section className="bg-white border border-gray-100 rounded-0 sm:rounded-0 lg:rounded-3xl p-4 sm:p-6 mb-6 sm:mb-8 shadow-none lg:shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-xl sm:text-2xl font-black mb-5 sm:mb-6 px-1 sm:px-2">
+              <section className="bg-white/95 border border-slate-200 rounded-xl lg:rounded-3xl p-4 sm:p-6 mb-6 sm:mb-8 shadow-sm transition-all duration-300 hover:shadow-md">
+                <h2 className="text-xl sm:text-2xl font-semibold mb-5 sm:mb-6 px-1 sm:px-2 text-slate-900">
                   Stories
                 </h2>
 
@@ -774,16 +778,16 @@ export default function Home() {
 
               <section className="flex-1 min-h-0 flex flex-col py-4">
                 {isLoadingPosts && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-500">
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
                     Loading stories...
                   </div>
                 )}
 
                 {!isLoadingPosts && postsError && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-red-100 shadow-sm">
-                    <p className="text-sm text-red-500 mb-3">{postsError}</p>
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm">
+                    <p className="text-sm text-rose-600 mb-3">{postsError}</p>
                     <button
-                      className="text-xs font-bold text-red-500 hover:underline"
+                      className="text-xs font-semibold text-rose-600 hover:underline"
                       onClick={() =>
                         loadStories(new AbortController().signal, null)
                       }
@@ -794,7 +798,7 @@ export default function Home() {
                 )}
 
                 {!isLoadingPosts && !postsError && posts.length === 0 && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-500">
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
                     No published stories yet.
                   </div>
                 )}
@@ -824,13 +828,13 @@ export default function Home() {
                   })}
 
                 {isLoadingMore && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-500 text-center">
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500 text-center">
                     Loading more stories...
                   </div>
                 )}
 
                 {!hasMore && posts.length > 0 && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-gray-100 shadow-sm text-sm text-gray-400 text-center">
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-400 text-center">
                     No more stories to load
                   </div>
                 )}
@@ -840,8 +844,8 @@ export default function Home() {
             </div>
 
             <aside className="hidden lg:block w-64 shrink-0 h-full">
-              <div className="sticky top-4 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-lg sm:text-xl font-black mb-5 sm:mb-6">
+              <div className="sticky top-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
+                <h2 className="text-lg sm:text-xl font-semibold mb-5 sm:mb-6 text-slate-900">
                   Top Authors
                 </h2>
 
@@ -851,7 +855,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                <button className="w-full text-red-400 text-xs font-bold hover:underline py-2">
+                <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">
                   Show more
                 </button>
               </div>
@@ -868,19 +872,19 @@ export default function Home() {
           onClick={() => setActiveCommentStoryId(null)}
         >
           <div
-            className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-gray-100 max-h-[85vh] flex flex-col"
+            className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[85vh] flex flex-col"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
               <div>
-                <h3 className="font-bold text-gray-900">Comments</h3>
-                <p className="text-xs text-gray-400 truncate max-w-[260px]">
+                <h3 className="font-semibold text-slate-900">Comments</h3>
+                <p className="text-xs text-slate-400 truncate max-w-[260px]">
                   {activeCommentStory.title}
                 </p>
               </div>
               <button
                 onClick={() => setActiveCommentStoryId(null)}
-                className="text-sm text-gray-500 hover:text-gray-700"
+                className="text-sm text-slate-500 hover:text-slate-700"
               >
                 Close
               </button>
@@ -888,7 +892,7 @@ export default function Home() {
 
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               {activeCommentState.loading && (
-                <p className="text-xs text-gray-500">Loading comments...</p>
+                <p className="text-xs text-slate-500">Loading comments...</p>
               )}
 
               {!activeCommentState.loading && activeCommentState.error && (
@@ -912,11 +916,11 @@ export default function Home() {
                     key={comment._id}
                     className="rounded-xl bg-gray-50 px-3 py-2"
                   >
-                    <p className="text-xs font-semibold text-gray-700 mb-1">
+                    <p className="text-xs font-semibold text-slate-700 mb-1">
                       Anonymous
                     </p>
-                    <p className="text-sm text-gray-700">{comment.content}</p>
-                    <p className="text-[11px] text-gray-400 mt-1">
+                    <p className="text-sm text-slate-700">{comment.content}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
                       {getRelativeTime(comment.createdAt)}
                     </p>
                   </div>
@@ -928,7 +932,7 @@ export default function Home() {
                 event.preventDefault();
                 handleSubmitComment(activeCommentStory.id);
               }}
-              className="px-5 py-4 border-t border-gray-100 flex items-center gap-2"
+              className="px-5 py-4 border-t border-slate-100 flex items-center gap-2"
             >
               <input
                 type="text"
@@ -940,12 +944,12 @@ export default function Home() {
                   )
                 }
                 placeholder="Write a comment..."
-                className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-red-300"
+                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
               />
               <button
                 type="submit"
                 disabled={activeCommentState.submitting}
-                className="rounded-xl bg-red-400 text-white px-3 py-2 text-xs font-bold disabled:opacity-60"
+                className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
               >
                 {activeCommentState.submitting ? "Posting..." : "Post"}
               </button>
