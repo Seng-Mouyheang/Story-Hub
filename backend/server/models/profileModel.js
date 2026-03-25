@@ -26,15 +26,19 @@ const getCollection = async () => {
 
 const createProfile = async (userId, profileData) => {
   const collection = await getCollection();
+  const userObjectId = new ObjectId(userId);
 
-  const existingProfile = await collection.findOne({ userId, deletedAt: null });
+  const existingProfile = await collection.findOne({
+    userId: userObjectId,
+    deletedAt: null,
+  });
   if (existingProfile) {
     throw new Error("Profile already exists");
   }
 
   const newProfile = {
     _id: new ObjectId(),
-    userId,
+    userId: userObjectId,
     displayName: profileData.displayName,
     bio: profileData.bio || "",
     interest: profileData.interest || [],
@@ -45,18 +49,32 @@ const createProfile = async (userId, profileData) => {
     updatedAt: new Date(),
     deletedAt: null,
   };
-  const result = await collection.insertOne(newProfile);
-  return result.insertedId;
+
+  try {
+    const result = await collection.insertOne(newProfile);
+    return result.insertedId;
+  } catch (error) {
+    // Handle race conditions where two requests pass pre-check simultaneously.
+    if (error?.code === 11000) {
+      throw new Error("Profile already exists", { cause: error });
+    }
+    throw error;
+  }
 };
 
 /**
  * Get user profile by userId
  * @param {string} userId
- * @returns {Object}
+ * @returns {Promise<Object|null>}
  */
 const getProfileByUserId = async (userId) => {
   const collection = await getCollection();
-  return await collection.findOne({ userId, deletedAt: null });
+  if (!ObjectId.isValid(userId)) return null;
+
+  return await collection.findOne({
+    userId: new ObjectId(userId),
+    deletedAt: null,
+  });
 };
 
 /**
@@ -66,8 +84,12 @@ const getProfileByUserId = async (userId) => {
  */
 const updateProfile = async (userId, profileData) => {
   const collection = await getCollection();
+  const userObjectId = new ObjectId(userId);
 
-  const existingProfile = await collection.findOne({ userId, deletedAt: null });
+  const existingProfile = await collection.findOne({
+    userId: userObjectId,
+    deletedAt: null,
+  });
 
   if (!existingProfile) {
     throw new Error("Profile not found");
@@ -104,7 +126,7 @@ const updateProfile = async (userId, profileData) => {
   }
 
   await collection.updateOne(
-    { userId, deletedAt: null },
+    { userId: userObjectId, deletedAt: null },
     { $set: updateFields },
   );
 };

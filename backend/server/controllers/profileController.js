@@ -18,7 +18,9 @@ const createProfile = async (req, res) => {
 
 const getProfile = async (req, res) => {
   try {
-    const profile = await profileModel.getProfileByUserId(req.params.userId);
+    const profile = await Promise.resolve(
+      profileModel.getProfileByUserId(req.params.userId),
+    );
 
     if (!profile) {
       return res.status(404).json({ message: "Profile not found" });

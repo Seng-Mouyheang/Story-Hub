@@ -4,7 +4,7 @@ const Joi = require("joi");
 /* COMMON FIELDS */
 /* ============================= */
 
-const usernamePattern = /^[a-zA-Z0-9_]{3,30}$/;
+const usernamePattern = /^\w{3,30}$/;
 const objectIdPattern = /^[0-9a-fA-F]{24}$/;
 
 const baseFields = {

@@ -27,7 +27,7 @@ const createComment = async (commentData) => {
   const client = getClient();
   const session = client.startSession();
 
-  if (!commentData.content || !commentData.content.trim()) {
+  if (!commentData.content?.trim()) {
     throw new Error("Content is required");
   }
 
@@ -114,7 +114,7 @@ const getCommentsByStory = async (
   const collection = await getCollection();
   const db = collection.db;
 
-  const filter = {
+  const matchStage = {
     storyId: new ObjectId(storyId),
     parentId: null, // only top-level comments
     deletedAt: null,
@@ -126,8 +126,8 @@ const getCommentsByStory = async (
     if (createdAtStr && id && ObjectId.isValid(id)) {
       const createdAtDate = new Date(createdAtStr);
 
-      if (!isNaN(createdAtDate.getTime())) {
-        filter.$or = [
+      if (!Number.isNaN(createdAtDate.getTime())) {
+        matchStage.$or = [
           {
             createdAt: { $lt: createdAtDate },
           },
@@ -140,11 +140,37 @@ const getCommentsByStory = async (
     }
   }
 
-  const comments = await collection
-    .find(filter)
-    .sort({ createdAt: -1, _id: -1 })
-    .limit(limit + 1)
-    .toArray();
+  const pipeline = [
+    { $match: matchStage },
+    { $sort: { createdAt: -1, _id: -1 } },
+    { $limit: limit + 1 },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { userId: "$userId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$userId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
+
+  const comments = await collection.aggregate(pipeline).toArray();
 
   const hasMore = comments.length > limit;
   const data = hasMore ? comments.slice(0, limit) : comments;
@@ -170,6 +196,7 @@ const getCommentsByStory = async (
     ...comment,
     likedByCurrentUser: likedCommentIds.has(comment._id.toString()),
     replyCount: comment.replyCount || 0,
+    authorDisplayName: comment.author?.displayName || null,
   }));
 
   let nextCursor = null;
@@ -192,7 +219,7 @@ const getRepliesByComment = async (
   const collection = await getCollection();
   const db = collection.db;
 
-  const filter = {
+  const matchStage = {
     parentId: new ObjectId(commentId),
     deletedAt: null,
   };
@@ -210,7 +237,7 @@ const getRepliesByComment = async (
         const cursorDate = new Date(timestamp);
         const cursorId = new ObjectId(id);
 
-        filter.$or = [
+        matchStage.$or = [
           {
             createdAt: { $gt: cursorDate }, // Get items AFTER this date
           },
@@ -223,12 +250,37 @@ const getRepliesByComment = async (
     }
   }
 
-  // Sort: oldest first (ascending)
-  const replies = await collection
-    .find(filter)
-    .sort({ createdAt: 1, _id: 1 }) // ASCENDING order for oldest-first
-    .limit(limit + 1)
-    .toArray();
+  const pipeline = [
+    { $match: matchStage },
+    { $sort: { createdAt: 1, _id: 1 } }, // ASCENDING order for oldest-first
+    { $limit: limit + 1 },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { userId: "$userId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$userId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
+
+  const replies = await collection.aggregate(pipeline).toArray();
 
   const hasMore = replies.length > limit;
   const data = hasMore ? replies.slice(0, limit) : replies;
@@ -252,6 +304,7 @@ const getRepliesByComment = async (
   const finalData = data.map((reply) => ({
     ...reply,
     likedByCurrentUser: likedReplyIds.has(reply._id.toString()),
+    authorDisplayName: reply.author?.displayName || null,
   }));
 
   // Create next cursor from the LAST item in current page
@@ -264,73 +317,6 @@ const getRepliesByComment = async (
 
   return { replies: finalData, nextCursor, hasMore };
 };
-
-// Get comments for a story
-// const getCommentsByStory = async (
-//   storyId,
-//   currentUserId,
-//   limit = 10,
-//   cursor = null,
-// ) => {
-//   const collection = await getCollection();
-//   const db = collection.db;
-//   const filter = { storyId: new ObjectId(storyId), deletedAt: null };
-
-//   if (cursor) {
-//     const [createdAtStr, id] = cursor.split("_");
-
-//     filter.$or = [
-//       {
-//         createdAt: { $lt: new Date(createdAtStr) },
-//       },
-//       {
-//         createdAt: new Date(createdAtStr),
-//         _id: { $lt: new ObjectId(id) },
-//       },
-//     ];
-//   }
-
-//   const comments = await collection
-//     .find(filter)
-//     .sort({ createdAt: -1, _id: -1 })
-//     .limit(limit + 1)
-//     .toArray();
-
-//   const hasMore = comments.length > limit;
-//   const data = hasMore ? comments.slice(0, limit) : comments;
-
-//   let likedCommentIds = new Set();
-
-//   if (currentUserId && data.length > 0) {
-//     const commentIds = data.map((comment) => comment._id);
-
-//     const likes = await db
-//       .collection("commentLikes") // separate collection
-//       .find({
-//         userId: new ObjectId(currentUserId),
-//         commentId: { $in: commentIds },
-//       })
-//       .project({ commentId: 1 })
-//       .toArray();
-
-//     likedCommentIds = new Set(likes.map((like) => like.commentId.toString()));
-//   }
-
-//   const finalData = data.map((comment) => ({
-//     ...comment,
-//     likedByCurrentUser: likedCommentIds.has(comment._id.toString()),
-//     replyCount: comment.replyCount || 0, // safe fallback
-//   }));
-
-//   let nextCursor = null;
-
-//   if (hasMore) {
-//     const lastComment = data[data.length - 1];
-//     nextCursor = `${lastComment.createdAt.toISOString()}_${lastComment._id}`;
-//   }
-
-//   return { comments: finalData, nextCursor, hasMore };
-// };
 
 // Get a single comment
 const getCommentById = async (id, currentUserId = null) => {
@@ -481,73 +467,6 @@ const deleteComment = async (userId, id) => {
     await session.endSession();
   }
 };
-
-// Soft delete comment
-// const deleteComment = async (userId, id) => {
-//   const collection = await getCollection();
-//   const likesCollection = db.collection("commentLikes");
-//   const storiesCollection = db.collection("stories");
-//   const db = collection.db;
-
-//   const commentId = new ObjectId(id);
-
-//   const comment = await collection.findOne({
-//     _id: commentId,
-//     deletedAt: null,
-//   });
-
-//   if (!comment) throw new Error("not found");
-
-//   if (comment.userId.toString() !== userId.toString()) {
-//     throw new Error("Unauthorized");
-//   }
-
-//   const now = new Date();
-
-//   // Soft delete the main comment
-//   await collection.updateOne({ _id: commentId, deletedAt: null }, { $set: { deletedAt: now } });
-
-//   // Find replies
-//   const replies = await collection
-//     .find({ parentId: commentId, deletedAt: null })
-//     .project({ _id: 1 })
-//     .toArray();
-
-//   const replyIds = replies.map((r) => r._id);
-
-//   // Soft delete replies
-//   if (replyIds.length > 0) {
-//     await collection.updateMany(
-//       { _id: { $in: replyIds }, deletedAt: null },
-//       { $set: { deletedAt: now } },
-//     );
-//   }
-
-//   // Update parent's replyCount if this comment is a reply
-//   if (comment.parentId) {
-//     await collection.updateOne(
-//       { _id: comment.parentId, replyCount: { $gt: 0 } },
-//       { $inc: { replyCount: -1 } },
-//     );
-//   }
-
-//   // Delete likes for comment + replies
-//   const allIds = [commentId, ...replyIds];
-
-//   await likesCollection.deleteMany({
-//     commentId: { $in: allIds },
-//   });
-
-//   const totalDeleted = 1 + replyIds.length;
-
-//   await storiesCollection
-//     .updateOne(
-//       { _id: comment.storyId },
-//       { $inc: { commentCount: -totalDeleted } },
-//     );
-
-//   return { success: true };
-// };
 
 module.exports = {
   createComment,
