@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -10,6 +11,11 @@ export default function Write() {
   const [genres, setGenres] = useState(["MYSTERY", "FANTASY", "ROMANCE"]);
   const [newGenre, setNewGenre] = useState("");
   const [tags, setTags] = useState("");
+  const [visibility, setVisibility] = useState("public");
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const navigate = useNavigate();
 
   // Derived statistics
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
@@ -29,13 +35,88 @@ export default function Write() {
     }
   };
 
+  const parseTagsArray = () => {
+    return tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0);
+  };
+
+  const submitStory = async (status) => {
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (!title.trim()) {
+      setErrorMessage("Title is required.");
+      return;
+    }
+
+    if (!content.trim()) {
+      setErrorMessage("Story content is required.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setErrorMessage("Unauthorized. Please log in first.");
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch("/api/stories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: title.trim(),
+          content: content.trim(),
+          genres: genres.length > 0 ? genres : [],
+          tags: parseTagsArray(),
+          visibility,
+          status,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.message || `Failed to ${status} story.`);
+      }
+
+      setSuccessMessage(
+        `Story ${status === "published" ? "published" : "saved"} successfully!`,
+      );
+
+      setTimeout(() => {
+        navigate("/dashboard");
+      }, 1500);
+    } catch (error) {
+      setErrorMessage(error.message || "An error occurred.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = () => {
+    submitStory("draft");
+  };
+
+  const handlePublish = () => {
+    submitStory("published");
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
         <Navbar title="Write Story" />
 
-        {/* Top Header - Public Button */}
+        {/* Top Header - Visibility Dropdown */}
         <div className="h-16 px-4 sm:px-6 lg:px-12 border-b border-slate-200 bg-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-slate-700">
@@ -47,11 +128,14 @@ export default function Write() {
             />
           </div>
 
-          <button className="flex items-center gap-2 px-5 py-2 bg-rose-50 text-rose-600 rounded-full text-sm font-semibold border border-rose-200 hover:bg-rose-100 transition-all">
-            <Globe size={16} className="text-rose-600" />
-            <span className="hidden sm:inline text-rose-600">Public</span>
-            <ChevronDown size={14} className="ml-1 text-rose-600" />
-          </button>
+          <select
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value)}
+            className="flex items-center gap-2 px-5 py-2 bg-rose-50 text-rose-600 rounded-full text-sm font-semibold border border-rose-200 hover:bg-rose-100 transition-all outline-none cursor-pointer"
+          >
+            <option value="public">Public</option>
+            <option value="private">Private</option>
+          </select>
         </div>
 
         <main className="flex-1 min-h-0 overflow-hidden">
@@ -142,13 +226,41 @@ export default function Write() {
                   />
                 </section>
 
+                {/* Error Message */}
+                {errorMessage && (
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+                  >
+                    {errorMessage}
+                  </p>
+                )}
+
+                {/* Success Message */}
+                {successMessage && (
+                  <p
+                    role="status"
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+                  >
+                    {successMessage}
+                  </p>
+                )}
+
                 {/* Action Buttons */}
                 <div className="flex gap-3 sm:gap-4 mt-2 sm:mt-4">
-                  <button className="flex-1 py-3 border border-slate-300 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors">
-                    Save
+                  <button
+                    onClick={handleSave}
+                    disabled={isLoading}
+                    className="flex-1 py-3 border border-slate-300 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? "Saving..." : "Save"}
                   </button>
-                  <button className="flex-1 py-3 bg-rose-500 text-white text-sm font-semibold rounded-xl hover:bg-rose-600 shadow-sm shadow-rose-200 transition-all">
-                    Publish
+                  <button
+                    onClick={handlePublish}
+                    disabled={isLoading}
+                    className="flex-1 py-3 bg-rose-500 text-white text-sm font-semibold rounded-xl hover:bg-rose-600 shadow-sm shadow-rose-200 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? "Publishing..." : "Publish"}
                   </button>
                 </div>
               </aside>
