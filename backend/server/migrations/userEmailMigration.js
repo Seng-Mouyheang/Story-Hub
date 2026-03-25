@@ -110,7 +110,7 @@ const ensureNormalizedUniqueUserEmailIndex = async (database) => {
       JSON.stringify(uniqueEmailIndex.key) === JSON.stringify({ email: 1 });
     const hasExpectedPartialFilter =
       JSON.stringify(uniqueEmailIndex.partialFilterExpression || {}) ===
-      JSON.stringify({ deletedAt: null, email: { $type: "string", $ne: "" } });
+      JSON.stringify({ deletedAt: null, email: { $gt: "" } });
 
     if (!hasSameKey || !uniqueEmailIndex.unique || !hasExpectedPartialFilter) {
       await users.dropIndex("unique_user_email");
@@ -124,7 +124,8 @@ const ensureNormalizedUniqueUserEmailIndex = async (database) => {
       name: "unique_user_email",
       partialFilterExpression: {
         deletedAt: null,
-        email: { $type: "string", $ne: "" },
+        // MongoDB partial indexes do not support $ne on all deployments.
+        email: { $gt: "" },
       },
     },
   );

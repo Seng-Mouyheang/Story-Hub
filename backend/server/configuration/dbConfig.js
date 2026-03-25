@@ -106,6 +106,16 @@ const connectToDatabase = async () => {
       .collection("commentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
+    // Unique index to prevent duplicate active profiles for the same user
+    await db.collection("profiles").createIndex(
+      { userId: 1 },
+      {
+        unique: true,
+        name: "unique_user_profile",
+        partialFilterExpression: { deletedAt: null },
+      },
+    );
+
     // One-off safety backfill for historical users before enforcing uniqueness.
     await ensureUserEmailBackfillAndDedup(db);
 
