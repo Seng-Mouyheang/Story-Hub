@@ -25,6 +25,12 @@ const validatePassword = (password) => {
   return null;
 };
 
+const validateLoginPassword = (password) => {
+  if (typeof password !== "string" || !password.trim()) {
+    return "Password is required";
+  }
+};
+
 const validateUserLogin = (req, res, next) => {
   const { email, password } = req.body;
 
@@ -32,7 +38,7 @@ const validateUserLogin = (req, res, next) => {
   if (!validator.isEmail(email))
     return res.status(400).json({ message: "Invalid email format" });
 
-  const passwordError = validatePassword(password);
+  const passwordError = validateLoginPassword(password);
   if (passwordError) return res.status(400).json({ message: passwordError });
 
   next();

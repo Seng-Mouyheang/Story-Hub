@@ -31,9 +31,7 @@ const createStory = async (req, res) => {
 const getAllStories = async (req, res) => {
   try {
     const { cursor } = req.query;
-    const limit = parseInt(req.query.limit, 10) || 10;
-
-    // console.log("Current user:", req.user);
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
 
     const result = await storyModel.getPublishedStories(
       cursor,
@@ -107,7 +105,6 @@ const deleteStory = async (req, res) => {
     if (error.message === "Unauthorized") {
       return res.status(403).json({ message: "Forbidden" });
     }
-    // console.error(error);
     res.status(500).json({ message: "Failed to delete story" });
   }
 };
@@ -115,7 +112,7 @@ const deleteStory = async (req, res) => {
 const getMyStories = async (req, res) => {
   try {
     const { cursor } = req.query;
-    const limit = parseInt(req.query.limit, 10) || 10;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
 
     const result = await storyModel.getUserStories(
       req.user.userId,
@@ -125,7 +122,6 @@ const getMyStories = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    // console.error(error);
     res.status(500).json({ message: "Failed to fetch user stories" });
   }
 };
