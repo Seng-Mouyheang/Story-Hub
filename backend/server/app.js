@@ -88,7 +88,7 @@ connectToDatabase()
 ╔════════════════════════════════════════════════╗
 ║   Profile Routes                               ║
 ╠════════════════════════════════════════════════╣
-║   - GET /api/profile/:id                       ║
+║   - GET /api/profile/:userId                   ║
 ║   - POST /api/profile/                         ║
 ║   - PUT /api/profile/                          ║
 ╚════════════════════════════════════════════════╝

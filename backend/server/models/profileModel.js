@@ -45,14 +45,23 @@ const createProfile = async (userId, profileData) => {
     updatedAt: new Date(),
     deletedAt: null,
   };
-  const result = await collection.insertOne(newProfile);
-  return result.insertedId;
+
+  try {
+    const result = await collection.insertOne(newProfile);
+    return result.insertedId;
+  } catch (error) {
+    // Handle race conditions where two requests pass pre-check simultaneously.
+    if (error?.code === 11000) {
+      throw new Error("Profile already exists", { cause: error });
+    }
+    throw error;
+  }
 };
 
 /**
  * Get user profile by userId
  * @param {string} userId
- * @returns {Object}
+ * @returns {Promise<Object|null>}
  */
 const getProfileByUserId = async (userId) => {
   const collection = await getCollection();
