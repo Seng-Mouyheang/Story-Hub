@@ -1,122 +1,189 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Feather } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const successMessage = location.state?.message || "";
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle login logic here
-    console.log("Login:", { email, password, remember });
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Login failed.");
+      }
+
+      if (payload?.token) {
+        localStorage.setItem("token", payload.token);
+      }
+
+      if (payload?.user) {
+        localStorage.setItem("currentUser", JSON.stringify(payload.user));
+      }
+
+      localStorage.setItem("rememberLogin", remember ? "true" : "false");
+      navigate("/");
+    } catch (error) {
+      setErrorMessage(error.message || "Unable to login right now.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 overflow-x-hidden">
-      {/* Illustration Side */}
-      <div className="hidden lg:flex w-1/2 bg-[#2d2424] items-center justify-center p-12">
-        <div className="text-center">
-          <div className="relative inline-block">
-            <div className="w-64 h-64 bg-amber-100 rounded-full flex items-center justify-center mb-8 overflow-hidden">
-              <img
-                src="https://api.dicebear.com/7.x/shapes/svg?seed=book"
-                className="w-48 h-48 opacity-20 absolute"
-              />
-              <div className="text-9xl">📚</div>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="grid min-h-screen lg:grid-cols-2">
+        <aside className="relative hidden lg:flex overflow-hidden bg-slate-900 text-white">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(244,63,94,0.22),transparent_42%),radial-gradient(circle_at_80%_80%,rgba(251,191,36,0.14),transparent_40%)]" />
+          <div className="relative z-10 flex w-full flex-col justify-between p-12 xl:p-16">
+            <div className="inline-flex items-center gap-3 text-sm font-semibold tracking-wide text-slate-200">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
+                <Feather size={18} />
+              </span>
+              StoryHub
             </div>
-          </div>
-          <h2 className="text-white text-3xl font-bold mb-4">Welcome Back</h2>
-          <p className="text-slate-400 max-w-sm mx-auto">
-            Visualize your thoughts, ideas, and confessions in a beautiful,
-            minimalist space.
-          </p>
-        </div>
-      </div>
 
-      {/* Form Side */}
-      <div className="w-full lg:w-1/2 flex flex-col bg-white p-4 sm:p-8">
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-full max-w-md">
-            <div className="mb-8 sm:mb-10">
-              <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-2">
-                Login
-              </h1>
-              <p className="text-slate-500">
-                Welcome back! Please enter your details.
+            <div className="max-w-md">
+              <h2 className="text-4xl font-semibold leading-tight tracking-tight">
+                Welcome back to StoryHub
+              </h2>
+              <p className="mt-4 text-base leading-relaxed text-slate-300">
+                Share your stories with the world in a clean, focused space
+                inspired by modern social platforms.
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">
-                  Email Address
-                </label>
-                <input
-                  type="email"
-                  placeholder="name@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between mb-2">
-                  <label className="block text-sm font-medium text-slate-700">
-                    Password
-                  </label>
-                  <a href="#" className="text-sm font-semibold text-red-400">
-                    Forgot password?
-                  </a>
-                </div>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all"
-                />
-              </div>
-
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="remember"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                  className="w-4 h-4 text-red-400 border-slate-300 rounded focus:ring-red-400"
-                />
-                <label
-                  htmlFor="remember"
-                  className="ml-2 text-sm text-slate-600"
-                >
-                  Remember for 30 days
-                </label>
-              </div>
-
-              <Link
-                to="/"
-                className="w-full bg-red-400 text-white py-3 rounded-xl font-bold text-lg shadow-lg shadow-red-100 hover:opacity-90 transition-all block text-center"
-              >
-                Sign In
-              </Link>
-            </form>
-
-            <p className="mt-8 text-center text-sm text-slate-500">
-              Don't have an account?{" "}
-              <Link
-                to="/signup"
-                className="font-bold text-red-400 hover:text-red-500"
-              >
-                Sign up
-              </Link>
-            </p>
+            <p className="text-sm text-slate-400">Write. Reflect. Connect.</p>
           </div>
-        </div>
+        </aside>
 
-        <SiteFooter />
+        <section className="flex flex-col px-4 py-6 sm:px-6 lg:px-10">
+          <div className="flex flex-1 items-center justify-center">
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
+              <div className="mb-8">
+                <div className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 lg:hidden">
+                  <Feather size={14} />
+                  StoryHub
+                </div>
+                <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-[32px]">
+                  Welcome back
+                </h1>
+                <p className="mt-2 text-sm text-slate-500">
+                  Login to continue your writing journey.
+                </p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {successMessage && (
+                  <p
+                    role="status"
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
+                  >
+                    {successMessage}
+                  </p>
+                )}
+
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="name@company.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-slate-700">
+                      Password
+                    </label>
+                    <a
+                      href="#"
+                      className="text-sm font-medium text-rose-500 transition hover:text-rose-600"
+                    >
+                      Forgot password?
+                    </a>
+                  </div>
+                  <input
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                  />
+                </div>
+
+                {errorMessage && (
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                  >
+                    {errorMessage}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    id="remember"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
+                  />
+                  <label htmlFor="remember" className="text-sm text-slate-600">
+                    Remember for 30 days
+                  </label>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmitting ? "Logging in..." : "Login"}
+                </button>
+              </form>
+
+              <p className="mt-8 text-center text-sm text-slate-500">
+                Don&apos;t have an account?{" "}
+                <Link
+                  to="/signup"
+                  className="font-semibold text-rose-500 transition hover:text-rose-600"
+                >
+                  Sign up
+                </Link>
+              </p>
+            </div>
+          </div>
+
+          <SiteFooter />
+        </section>
       </div>
     </div>
   );

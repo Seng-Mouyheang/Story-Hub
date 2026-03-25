@@ -23,8 +23,8 @@ body {
 }
 
 .active-link {
-  color: #f87171;
+  color: #f43f5e;
   font-weight: 600;
-  border-right: 4px solid #f87171;
+  border-right: 4px solid #f43f5e;
   background: #fff1f2;
 }

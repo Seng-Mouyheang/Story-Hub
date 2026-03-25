@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useLocation, Link } from "react-router-dom";
+import { useLocation, Link, useNavigate } from "react-router-dom";
 import {
   Home,
   Compass,
@@ -18,10 +18,19 @@ import {
 
 export default function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (path) => (location.pathname === path ? "active-link" : "");
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("currentUser");
+    localStorage.removeItem("rememberLogin");
+    setMobileOpen(false);
+    navigate("/login", { replace: true });
+  };
 
   const navItems = [
     { path: "/", icon: Home, label: "Home" },
@@ -37,8 +46,8 @@ export default function Sidebar() {
       {/* Logo + Toggle */}
       <div className="p-4 flex items-center justify-between">
         {!isCollapsed && (
-          <h1 className="text-lg font-bold flex items-center gap-2">
-            <div className="w-8 h-8 bg-red-400 rounded-lg flex items-center justify-center text-white">
+          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <div className="w-8 h-8 bg-rose-500 rounded-lg flex items-center justify-center text-white shadow-sm">
               <BookOpen className="w-5 h-5" />
             </div>
             Story-Hub
@@ -47,7 +56,7 @@ export default function Sidebar() {
 
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="hidden lg:inline-flex p-2 rounded-lg hover:bg-slate-100 transition-colors"
+          className="hidden lg:inline-flex p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
           aria-label="Toggle sidebar"
         >
           {isCollapsed ? (
@@ -72,7 +81,7 @@ export default function Sidebar() {
                 ${
                   isActive(item.path)
                     ? "active-link"
-                    : "text-slate-500 hover:bg-slate-50"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                 }
               `}
             >
@@ -89,7 +98,7 @@ export default function Sidebar() {
       {/* Trending Tags */}
       {!isCollapsed && (
         <div className="px-4 mt-2">
-          <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-4">
+          <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
             Trending Tags #
           </h3>
 
@@ -103,7 +112,7 @@ export default function Sidebar() {
               <a
                 key={index}
                 href="#"
-                className="block text-gray-600 text-sm hover:text-black transition-colors"
+                className="block text-slate-600 text-sm hover:text-rose-500 transition-colors"
               >
                 {tag}
               </a>
@@ -113,24 +122,24 @@ export default function Sidebar() {
       )}
 
       {/* Bottom Buttons */}
-      <div className="w-full p-3 border-t border-slate-100 space-y-2 bg-white">
+      <div className="w-full p-3 border-t border-slate-200 space-y-2 bg-white/95">
         <Link
           to="/write"
           onClick={() => setMobileOpen(false)}
-          className="bg-red-400 text-white py-2 rounded-xl font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+          className="bg-rose-500 hover:bg-rose-600 text-white py-2 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
         >
           <FileText className="w-4 h-4" />
           {!isCollapsed && "Write Post"}
         </Link>
 
-        <Link
-          to="/login"
-          onClick={() => setMobileOpen(false)}
-          className="text-slate-400 py-2 text-sm flex items-center justify-center gap-2 hover:text-slate-600 transition-colors"
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="text-slate-500 py-2 text-sm flex items-center justify-center gap-2 hover:text-rose-500 transition-colors"
         >
           <LogOut className="w-4 h-4" />
           {!isCollapsed && "Logout"}
-        </Link>
+        </button>
       </div>
     </>
   );
@@ -141,7 +150,7 @@ export default function Sidebar() {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white border border-slate-200 shadow-sm"
+        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white/95 border border-slate-200 shadow-sm"
         aria-label="Open navigation"
       >
         <Menu className="w-5 h-5 text-slate-700" />
@@ -163,7 +172,7 @@ export default function Sidebar() {
         />
 
         <aside
-          className={`relative h-full w-72 max-w-[85vw] bg-white border-r border-slate-100 flex flex-col transition-transform duration-300 ${
+          className={`relative h-full w-72 max-w-[85vw] bg-white/95 border-r border-slate-200 flex flex-col transition-transform duration-300 ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
@@ -171,7 +180,7 @@ export default function Sidebar() {
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
-              className="p-2 rounded-lg hover:bg-slate-100"
+              className="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100"
               aria-label="Close navigation"
             >
               <X className="w-5 h-5" />
@@ -184,7 +193,7 @@ export default function Sidebar() {
 
       {/* Desktop sidebar */}
       <aside
-        className={`hidden lg:flex lg:flex-col bg-white border-r border-slate-100 h-screen sticky top-0 transition-all duration-300 ${
+        className={`hidden lg:flex lg:flex-col bg-white/95 border-r border-slate-200 h-screen sticky top-0 transition-all duration-300 ${
           isCollapsed ? "w-20" : "w-64"
         }`}
       >

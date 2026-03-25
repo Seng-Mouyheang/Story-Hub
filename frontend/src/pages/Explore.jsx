@@ -16,7 +16,7 @@ import {
 const AuthorRow = ({ name, role }) => (
   <div className="flex items-center justify-between gap-3 py-3">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden">
+      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden">
         <img
           src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
           alt={name}
@@ -24,12 +24,14 @@ const AuthorRow = ({ name, role }) => (
       </div>
 
       <div className="min-w-0">
-        <h4 className="font-bold text-sm text-gray-900 truncate">{name}</h4>
-        <p className="text-[10px] text-red-500 font-medium">{role}</p>
+        <h4 className="font-semibold text-sm text-slate-900 truncate">
+          {name}
+        </h4>
+        <p className="text-[10px] text-rose-500 font-medium">{role}</p>
       </div>
     </div>
 
-    <button className="bg-red-400 hover:bg-red-500 text-white text-[10px] font-bold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
+    <button className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
       Follow
     </button>
   </div>
@@ -79,10 +81,10 @@ export default function Explore() {
   ];
 
   return (
-    <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-white">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
         <Navbar title="Explore Communities" />
 
         <main className="h-[calc(100vh-64px)] overflow-hidden">
@@ -92,28 +94,28 @@ export default function Explore() {
               {/* Categories */}
               <div className="mb-8 sm:mb-10">
                 <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  <button className="h-10 bg-red-400 text-white px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 bg-rose-500 text-white px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     All
                   </button>
-                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     Most visited
                   </button>
-                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     Fantasy
                   </button>
-                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     Drama
                   </button>
-                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     Romance
                   </button>
-                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     Thriller
                   </button>
-                  <button className="h-10 border border-gray-400 text-gray-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
+                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
                     Action
                   </button>
-                  <button className="hidden sm:inline-flex h-10 items-center text-gray-400 ml-2">
+                  <button className="hidden sm:inline-flex h-10 items-center text-slate-400 ml-2">
                     <ChevronRight className="w-6 h-6" />
                   </button>
                 </div>
@@ -121,7 +123,7 @@ export default function Explore() {
 
               {/* Recommended Section */}
               <div className="mb-12">
-                <h3 className="font-bold text-lg mb-6 text-gray-800">
+                <h3 className="font-semibold text-lg mb-6 text-slate-900">
                   Recommended for you
                 </h3>
 
@@ -129,21 +131,21 @@ export default function Explore() {
                   {recommendedStories.map((story, i) => (
                     <div
                       key={i}
-                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-gray-50 shadow-md transition-all duration-300 hover:shadow-lg h-full flex flex-col"
+                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                         <div className="flex flex-wrap gap-2">
                           {story.tags.map((tag, idx) => (
                             <span
                               key={idx}
-                              className="bg-red-50 text-red-400 text-[10px] font-bold px-3 py-1 rounded-md uppercase"
+                              className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-3 py-1 rounded-md uppercase"
                             >
                               {tag}
                             </span>
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-3 text-gray-600 shrink-0">
+                        <div className="flex items-center gap-3 text-slate-500 shrink-0">
                           <button>
                             <Bookmark className="w-5 h-5" />
                           </button>
@@ -153,11 +155,11 @@ export default function Explore() {
                         </div>
                       </div>
 
-                      <h4 className="font-bold text-lg sm:text-xl mb-3">
+                      <h4 className="font-semibold text-lg sm:text-xl mb-3 text-slate-900">
                         {story.title}
                       </h4>
 
-                      <p className="text-gray-500 text-sm leading-relaxed mb-6 italic">
+                      <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
                         {story.excerpt}
                       </p>
 
@@ -165,12 +167,12 @@ export default function Explore() {
                       <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
                         <a
                           href="#"
-                          className="text-red-400 text-xs font-bold flex items-center gap-1"
+                          className="text-rose-500 text-xs font-semibold flex items-center gap-1"
                         >
                           Read More <ArrowRightCircle className="w-4 h-4" />
                         </a>
 
-                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-gray-400 text-[10px] font-medium">
+                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
                           <span className="flex items-center gap-1">
                             <Heart className="w-3 h-3" /> {story.likes}
                           </span>
@@ -186,7 +188,7 @@ export default function Explore() {
 
               {/* Most Popular Section */}
               <div className="mb-12">
-                <h3 className="font-bold text-lg mb-6 text-gray-800">
+                <h3 className="font-semibold text-lg mb-6 text-slate-900">
                   Most Popular
                 </h3>
 
@@ -194,21 +196,21 @@ export default function Explore() {
                   {popularStories.map((story, i) => (
                     <div
                       key={i}
-                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-gray-50 shadow-md transition-all duration-300 hover:shadow-lg h-full flex flex-col"
+                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                         <div className="flex flex-wrap gap-2">
                           {story.tags.map((tag, idx) => (
                             <span
                               key={idx}
-                              className="bg-red-50 text-red-400 text-[10px] font-bold px-3 py-1 rounded-md uppercase"
+                              className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-3 py-1 rounded-md uppercase"
                             >
                               {tag}
                             </span>
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-3 text-gray-600 shrink-0">
+                        <div className="flex items-center gap-3 text-slate-500 shrink-0">
                           <button>
                             <Bookmark className="w-5 h-5" />
                           </button>
@@ -218,11 +220,11 @@ export default function Explore() {
                         </div>
                       </div>
 
-                      <h4 className="font-bold text-lg sm:text-xl mb-3">
+                      <h4 className="font-semibold text-lg sm:text-xl mb-3 text-slate-900">
                         {story.title}
                       </h4>
 
-                      <p className="text-gray-500 text-sm leading-relaxed mb-6 italic">
+                      <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
                         {story.excerpt}
                       </p>
 
@@ -230,12 +232,12 @@ export default function Explore() {
                       <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
                         <a
                           href="#"
-                          className="text-red-400 text-xs font-bold flex items-center gap-1"
+                          className="text-rose-500 text-xs font-semibold flex items-center gap-1"
                         >
                           Read More <ArrowRightCircle className="w-4 h-4" />
                         </a>
 
-                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-gray-400 text-[10px] font-medium">
+                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
                           <span className="flex items-center gap-1">
                             <Heart className="w-3 h-3" /> {story.likes}
                           </span>
@@ -252,8 +254,8 @@ export default function Explore() {
 
             {/* Right Sidebar */}
             <aside className="hidden lg:block w-64 shrink-0 h-full">
-              <div className="sticky top-4 bg-white border border-gray-100 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-lg sm:text-xl font-black mb-5 sm:mb-6">
+              <div className="sticky top-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
+                <h2 className="text-lg sm:text-xl font-semibold mb-5 sm:mb-6 text-slate-900">
                   Top Authors
                 </h2>
 
@@ -263,7 +265,7 @@ export default function Explore() {
                   ))}
                 </div>
 
-                <button className="w-full text-red-400 text-xs font-bold hover:underline py-2">
+                <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">
                   Show more
                 </button>
               </div>
