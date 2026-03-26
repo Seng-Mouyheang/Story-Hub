@@ -336,7 +336,8 @@ export default function Home() {
         return {
           id: String(story._id),
           author:
-            story.authorName || `Author ${authorSeed.slice(-4).toUpperCase()}`,
+            story.authorDisplayName ||
+            `Author ${authorSeed.slice(-4).toUpperCase()}`,
           genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
           time: getRelativeTime(story.publishedAt || story.createdAt),
           title: story.title || "Untitled Story",
@@ -917,7 +918,7 @@ export default function Home() {
                     className="rounded-xl bg-gray-50 px-3 py-2"
                   >
                     <p className="text-xs font-semibold text-slate-700 mb-1">
-                      Anonymous
+                      {comment.authorDisplayName || "Anonymous"}
                     </p>
                     <p className="text-sm text-slate-700">{comment.content}</p>
                     <p className="text-[11px] text-slate-400 mt-1">
