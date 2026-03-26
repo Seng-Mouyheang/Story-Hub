@@ -103,7 +103,7 @@ const StoryCircle = ({ name, isAdd = false, image }) => (
 const PostCard = ({
   id,
   author,
-  genre,
+  genres,
   time,
   title,
   excerpt,
@@ -161,7 +161,10 @@ const PostCard = ({
           </div>
 
           <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
-            {genre}
+            {(Array.isArray(genres) && genres.length > 0
+              ? genres
+              : ["GENERAL"]
+            ).join(" • ")}
           </span>
         </div>
       </div>
@@ -428,7 +431,9 @@ export default function Home() {
 
         const mappedStories = rawStories.map((story) => {
           const authorId = normalizeId(story.authorId);
-          const authorSeed = String(authorId || story._id || "author");
+          const authorSeed = String(
+            authorId || story.authorDisplayName || story.authorName || "author",
+          );
 
           return {
             id: String(story._id),
@@ -436,7 +441,10 @@ export default function Home() {
             author:
               story.authorDisplayName ||
               `Author ${authorSeed.slice(-4).toUpperCase()}`,
-            genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+            genres:
+              Array.isArray(story.genres) && story.genres.length > 0
+                ? story.genres.map((item) => String(item).toUpperCase())
+                : ["GENERAL"],
             time: getRelativeTime(story.publishedAt || story.createdAt),
             title: story.title || "Untitled Story",
             excerpt:
@@ -1048,6 +1056,10 @@ export default function Home() {
     const seenAuthors = new Set();
 
     posts.forEach((post) => {
+      if (post.authorId && String(post.authorId) === String(currentUserId)) {
+        return;
+      }
+
       if (seenAuthors.has(post.author)) {
         return;
       }
@@ -1060,7 +1072,7 @@ export default function Home() {
     });
 
     return circles;
-  }, [posts]);
+  }, [posts, currentUserId]);
 
   const topAuthors = [
     { name: "Hannah Rose", role: "Top Mystery Writer" },

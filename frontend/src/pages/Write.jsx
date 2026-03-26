@@ -170,6 +170,11 @@ export default function Write() {
           return;
         }
 
+        if (status === "published") {
+          navigate("/");
+          return;
+        }
+
         navigate("/dashboard");
       }, 1500);
     } catch (error) {
