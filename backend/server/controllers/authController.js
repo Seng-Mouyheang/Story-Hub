@@ -1,8 +1,23 @@
 const userModel = require("../models/userModel");
+const profileModel = require("../models/profileModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
 const authService = require("../services/authService");
 const { normalizeEmail } = require("../utils/email");
 
+/**
+ * Register a new user and auto-generate their profile.
+ *
+ * Flow:
+ * 1. Create user with username, email, and hashed password
+ * 2. Automatically generate a profile with displayName set to the username
+ * 3. User can update displayName later via PUT /api/profile/
+ *
+ * Note: Username is immutable and cannot be changed after registration.
+ * displayName can be changed independently of username via profile update endpoint.
+ *
+ * @param {Object} req - Express request object with body: { username, email, password }
+ * @param {Object} res - Express response object
+ */
 const register = async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -20,6 +35,17 @@ const register = async (req, res) => {
       email: normalizedEmail,
       password: hashedPassword,
     });
+
+    // Auto-generate profile with displayName set to username
+    try {
+      await profileModel.createProfile(userId.toString(), {
+        displayName: username,
+      });
+    } catch (profileError) {
+      // Log profile creation error but don't fail registration
+      // User can retry profile creation via POST /api/profile/ if needed
+      console.error("Profile creation failed for user:", userId, profileError);
+    }
 
     res.status(201).json({ userId });
   } catch (error) {
