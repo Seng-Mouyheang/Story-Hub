@@ -1,27 +1,83 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import {
-  Heart,
-  MessageCircle,
-  Bookmark,
-  Share2,
-  MoreHorizontal,
-  User,
-} from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Share2 } from "lucide-react";
+
+const formatCount = (value) => {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  }
+
+  return String(value);
+};
+
+const getRelativeTime = (dateString) => {
+  const sourceDate = new Date(dateString);
+
+  if (Number.isNaN(sourceDate.getTime())) {
+    return "Recently";
+  }
+
+  const diffMs = Date.now() - sourceDate.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60)
+    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
+  }
+
+  const diffYears = Math.floor(diffDays / 365);
+  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
+};
+
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    if (typeof value.$oid === "string") return value.$oid;
+    if (typeof value.toString === "function") return value.toString();
+  }
+
+  return String(value);
+};
 
 /* -------------------- Post Card -------------------- */
-const PostCard = ({ author, genre, time, title, excerpt, likes, comments }) => (
+const PostCard = ({
+  id,
+  author,
+  avatar,
+  genre,
+  time,
+  title,
+  excerpt,
+  likes,
+  comments,
+  onUnsave,
+}) => (
   <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md">
     {/* Header */}
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-          <img
-            src={`https://api.dicebear.com/7.x/bottts/svg?seed=${author}`}
-            alt="avatar"
-          />
+          <img src={avatar} alt="avatar" />
         </div>
 
         <div className="min-w-0">
@@ -36,8 +92,12 @@ const PostCard = ({ author, genre, time, title, excerpt, likes, comments }) => (
         </div>
       </div>
 
-      <button className="text-slate-400 hover:text-slate-600 transition-colors">
-        <MoreHorizontal size={20} />
+      <button
+        onClick={() => onUnsave(id)}
+        className="text-rose-500 hover:text-rose-600 transition-colors"
+        aria-label="Remove bookmark"
+      >
+        <Bookmark size={20} fill="currentColor" />
       </button>
     </div>
 
@@ -76,38 +136,102 @@ const PostCard = ({ author, genre, time, title, excerpt, likes, comments }) => (
 
 /* -------------------- Bookmarks Page -------------------- */
 export default function Bookmarks() {
-  const bookmarks = [
-    {
-      author: "Jane Doe",
-      genre: "LIFESTYLE",
-      time: "2 days ago",
-      title: "Visualizing System Design",
-      excerpt:
-        "A deep dive into how we created the visualize platform architecture and best practices...",
-      likes: "1.2K",
-      comments: "300",
-    },
-    {
-      author: "Alex Smith",
-      genre: "TECHNOLOGY",
-      time: "5 days ago",
-      title: "UI Component Library",
-      excerpt:
-        "Comprehensive guide to building reusable UI components for faster design and development...",
-      likes: "800",
-      comments: "120",
-    },
-    {
-      author: "Bob Wilson",
-      genre: "DESIGN",
-      time: "1 week ago",
-      title: "Design Trends 2024",
-      excerpt:
-        "Latest trends and predictions for UI/UX design in 2024. Stay ahead of the curve...",
-      likes: "950",
-      comments: "210",
-    },
-  ];
+  const [bookmarks, setBookmarks] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const loadBookmarks = useCallback(async () => {
+    setErrorMessage("");
+    setIsLoading(true);
+
+    try {
+      const savedIds = JSON.parse(
+        localStorage.getItem("savedStoryIds") || "[]",
+      );
+
+      if (!Array.isArray(savedIds) || savedIds.length === 0) {
+        setBookmarks([]);
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const responses = await Promise.allSettled(
+        savedIds.map((id) =>
+          fetch(`/api/stories/${id}`, {
+            headers,
+          }),
+        ),
+      );
+
+      const successfulStories = await Promise.all(
+        responses.map(async (result) => {
+          if (result.status !== "fulfilled") {
+            return null;
+          }
+
+          const response = result.value;
+          if (!response.ok) {
+            return null;
+          }
+
+          const story = await response.json();
+          return story;
+        }),
+      );
+
+      const mapped = successfulStories.filter(Boolean).map((story) => {
+        const authorId = normalizeId(story.authorId);
+        const authorSeed = String(
+          authorId || story.authorDisplayName || story.authorName || "author",
+        );
+
+        return {
+          id: String(story._id),
+          author:
+            story.authorDisplayName ||
+            `Author ${authorSeed.slice(-4).toUpperCase()}`,
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorSeed)}`,
+          genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+          time: getRelativeTime(story.publishedAt || story.createdAt),
+          title: story.title || "Untitled Story",
+          excerpt:
+            story.summary ||
+            story.content?.slice(0, 180) ||
+            "No preview is available for this story.",
+          likes: formatCount(Number(story.likesCount || 0)),
+          comments: formatCount(Number(story.commentCount || 0)),
+        };
+      });
+
+      setBookmarks(mapped);
+    } catch {
+      setErrorMessage("Unable to load bookmarks right now.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBookmarks();
+  }, [loadBookmarks]);
+
+  const handleUnsave = useCallback((storyId) => {
+    try {
+      const savedIds = JSON.parse(
+        localStorage.getItem("savedStoryIds") || "[]",
+      );
+      const nextIds = Array.isArray(savedIds)
+        ? savedIds.filter((id) => String(id) !== String(storyId))
+        : [];
+
+      localStorage.setItem("savedStoryIds", JSON.stringify(nextIds));
+      setBookmarks((prev) => prev.filter((story) => story.id !== storyId));
+    } catch {
+      setErrorMessage("Unable to update bookmarks.");
+    }
+  }, []);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -132,9 +256,35 @@ export default function Bookmarks() {
                 </p>
               </div>
 
-              {bookmarks.map((post, i) => (
-                <PostCard key={i} {...post} />
-              ))}
+              {isLoading && (
+                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
+                  Loading bookmarks...
+                </div>
+              )}
+
+              {!isLoading && errorMessage && (
+                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm">
+                  <p className="text-sm text-rose-600 mb-3">{errorMessage}</p>
+                  <button
+                    className="text-xs font-semibold text-rose-600 hover:underline"
+                    onClick={loadBookmarks}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {!isLoading && !errorMessage && bookmarks.length === 0 && (
+                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
+                  No bookmarked stories yet.
+                </div>
+              )}
+
+              {!isLoading &&
+                !errorMessage &&
+                bookmarks.map((post) => (
+                  <PostCard key={post.id} {...post} onUnsave={handleUnsave} />
+                ))}
             </div>
             <SiteFooter />
           </div>

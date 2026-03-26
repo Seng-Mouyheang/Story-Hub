@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -56,6 +57,17 @@ const getRelativeTime = (dateString) => {
   return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
 };
 
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    if (typeof value.$oid === "string") return value.$oid;
+    if (typeof value.toString === "function") return value.toString();
+  }
+
+  return String(value);
+};
+
 /* -------------------- Story Circle -------------------- */
 const StoryCircle = ({ name, isAdd = false, image }) => (
   <div className="flex flex-col items-center gap-2 flex-shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
@@ -91,13 +103,14 @@ const StoryCircle = ({ name, isAdd = false, image }) => (
 const PostCard = ({
   id,
   author,
-  genre,
+  genres,
   time,
   title,
   excerpt,
   likesCount,
   commentCount,
   avatar,
+  canManage,
   likedByCurrentUser,
   savedByCurrentUser,
   commentsActive,
@@ -107,6 +120,11 @@ const PostCard = ({
   onToggleSave,
   onShare,
   onDoubleTapLike,
+  onToggleMenu,
+  onReportStory,
+  onEditStory,
+  onDeleteStory,
+  isMenuOpen,
   showLikeBurst,
   showLikePulse,
   showCommentCountPulse,
@@ -143,14 +161,63 @@ const PostCard = ({
           </div>
 
           <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
-            {genre}
+            {(Array.isArray(genres) && genres.length > 0
+              ? genres
+              : ["GENERAL"]
+            ).join(" • ")}
           </span>
         </div>
       </div>
 
-      <button className="text-slate-400 hover:text-slate-600 transition-colors duration-200">
-        <MoreHorizontal size={20} />
-      </button>
+      <div className="relative">
+        <button
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleMenu(id);
+          }}
+          className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+          aria-label="Story actions"
+        >
+          <MoreHorizontal size={20} />
+        </button>
+
+        {isMenuOpen && (
+          <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+            {canManage ? (
+              <>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEditStory(id);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Edit
+                </button>
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteStory(id);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                >
+                  Delete
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onReportStory(id);
+                }}
+                className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+              >
+                Report
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
 
     <h2 className="text-xl sm:text-2xl font-semibold mb-3 text-slate-900">
@@ -259,6 +326,7 @@ const AuthorRow = ({ name, role }) => (
 
 /* -------------------- Home Page -------------------- */
 export default function Home() {
+  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
@@ -280,7 +348,35 @@ export default function Home() {
   const [likePulseStoryId, setLikePulseStoryId] = useState(null);
   const [commentCountPulseStoryId, setCommentCountPulseStoryId] =
     useState(null);
+  const [menuStoryId, setMenuStoryId] = useState(null);
+  const [deleteTargetStoryId, setDeleteTargetStoryId] = useState(null);
+  const [menuCommentId, setMenuCommentId] = useState(null);
+  const [deleteTargetComment, setDeleteTargetComment] = useState(null);
+  const [commentActionFeedback, setCommentActionFeedback] = useState({});
   const endOfFeedRef = useRef(null);
+  const commentInputRef = useRef(null);
+
+  const currentUserId = useMemo(() => {
+    try {
+      const currentUser = JSON.parse(
+        localStorage.getItem("currentUser") || "null",
+      );
+      return normalizeId(currentUser?.id || currentUser?._id || "");
+    } catch {
+      return "";
+    }
+  }, []);
+
+  const currentUsername = useMemo(() => {
+    try {
+      const currentUser = JSON.parse(
+        localStorage.getItem("currentUser") || "null",
+      );
+      return currentUser?.username || "You";
+    } catch {
+      return "You";
+    }
+  }, []);
 
   useEffect(() => {
     if (!activeCommentStoryId) return;
@@ -299,82 +395,97 @@ export default function Home() {
     localStorage.setItem("savedStoryIds", JSON.stringify([...savedStoryIds]));
   }, [savedStoryIds]);
 
-  const loadStories = useCallback(async (signal, paginationCursor = null) => {
-    const isInitial = paginationCursor === null;
-    if (isInitial) {
-      setIsLoadingPosts(true);
-      setPostsError("");
-      setPosts([]);
-      setCursor(null);
-      setHasMore(true);
-    } else {
-      setIsLoadingMore(true);
-    }
-
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const cursorParam = paginationCursor ? `&cursor=${paginationCursor}` : "";
-      const response = await fetch(`/api/stories?limit=10${cursorParam}`, {
-        signal,
-        headers,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
-      const rawStories = Array.isArray(payload?.data) ? payload.data : [];
-      const nextCursor = payload?.nextCursor || null;
-      const hasMoreStories = payload?.hasMore || false;
-
-      const mappedStories = rawStories.map((story) => {
-        const authorSeed = String(story.authorId || story._id || "author");
-
-        return {
-          id: String(story._id),
-          author:
-            story.authorDisplayName ||
-            `Author ${authorSeed.slice(-4).toUpperCase()}`,
-          genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
-          time: getRelativeTime(story.publishedAt || story.createdAt),
-          title: story.title || "Untitled Story",
-          excerpt:
-            story.summary ||
-            story.content?.slice(0, 180) ||
-            "No preview is available for this story.",
-          likesCount: Number(story.likesCount || 0),
-          commentCount: Number(story.commentCount || 0),
-          likedByCurrentUser: Boolean(story.likedByCurrentUser),
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${authorSeed}`,
-        };
-      });
-
+  const loadStories = useCallback(
+    async (signal, paginationCursor = null) => {
+      const isInitial = paginationCursor === null;
       if (isInitial) {
-        setPosts(mappedStories);
+        setIsLoadingPosts(true);
+        setPostsError("");
+        setPosts([]);
+        setCursor(null);
+        setHasMore(true);
       } else {
-        setPosts((prev) => [...prev, ...mappedStories]);
+        setIsLoadingMore(true);
       }
-      setCursor(nextCursor);
-      setHasMore(hasMoreStories);
-    } catch (error) {
-      if (error.name !== "AbortError") {
-        if (isInitial) {
-          setPostsError("Unable to load stories right now. Please try again.");
+
+      try {
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+        const cursorParam = paginationCursor
+          ? `&cursor=${paginationCursor}`
+          : "";
+        const response = await fetch(`/api/stories?limit=10${cursorParam}`, {
+          signal,
+          headers,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
         }
-      }
-    } finally {
-      if (!signal?.aborted) {
+
+        const payload = await response.json();
+        const rawStories = Array.isArray(payload?.data) ? payload.data : [];
+        const nextCursor = payload?.nextCursor || null;
+        const hasMoreStories = payload?.hasMore || false;
+
+        const mappedStories = rawStories.map((story) => {
+          const authorId = normalizeId(story.authorId);
+          const authorSeed = String(
+            authorId || story.authorDisplayName || story.authorName || "author",
+          );
+
+          return {
+            id: String(story._id),
+            authorId,
+            author:
+              story.authorDisplayName ||
+              `Author ${authorSeed.slice(-4).toUpperCase()}`,
+            genres:
+              Array.isArray(story.genres) && story.genres.length > 0
+                ? story.genres.map((item) => String(item).toUpperCase())
+                : ["GENERAL"],
+            time: getRelativeTime(story.publishedAt || story.createdAt),
+            title: story.title || "Untitled Story",
+            excerpt:
+              story.summary ||
+              story.content?.slice(0, 180) ||
+              "No preview is available for this story.",
+            likesCount: Number(story.likesCount || 0),
+            commentCount: Number(story.commentCount || 0),
+            canManage: Boolean(currentUserId) && authorId === currentUserId,
+            likedByCurrentUser: Boolean(story.likedByCurrentUser),
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${authorSeed}`,
+          };
+        });
+
         if (isInitial) {
-          setIsLoadingPosts(false);
+          setPosts(mappedStories);
         } else {
-          setIsLoadingMore(false);
+          setPosts((prev) => [...prev, ...mappedStories]);
+        }
+        setCursor(nextCursor);
+        setHasMore(hasMoreStories);
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          if (isInitial) {
+            setPostsError(
+              "Unable to load stories right now. Please try again.",
+            );
+          }
+        }
+      } finally {
+        if (!signal?.aborted) {
+          if (isInitial) {
+            setIsLoadingPosts(false);
+          } else {
+            setIsLoadingMore(false);
+          }
         }
       }
-    }
-  }, []);
+    },
+    [currentUserId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -509,6 +620,7 @@ export default function Home() {
         error: "",
         items: [],
         input: "",
+        editingCommentId: null,
         submitting: false,
       };
 
@@ -569,6 +681,7 @@ export default function Home() {
           loading: false,
           error: "",
           items: [],
+          editingCommentId: null,
           submitting: false,
         }),
         input,
@@ -586,6 +699,7 @@ export default function Home() {
 
       const current = commentsByStory[storyId];
       const content = current?.input?.trim();
+      const editingCommentId = current?.editingCommentId || null;
       if (!content) return;
 
       setCommentsByStory((prev) => ({
@@ -598,8 +712,13 @@ export default function Home() {
       }));
 
       try {
-        const response = await fetch(`/api/stories/${storyId}/comments`, {
-          method: "POST",
+        const endpoint = editingCommentId
+          ? `/api/stories/comments/${editingCommentId}`
+          : `/api/stories/${storyId}/comments`;
+        const method = editingCommentId ? "PUT" : "POST";
+
+        const response = await fetch(endpoint, {
+          method,
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -611,50 +730,75 @@ export default function Home() {
           throw new Error(`Request failed with status ${response.status}`);
         }
 
-        const payload = await response.json();
-        const newComment = {
-          _id: payload.commentId || `${Date.now()}`,
-          content,
-          createdAt: new Date().toISOString(),
-        };
+        if (editingCommentId) {
+          setCommentsByStory((prev) => ({
+            ...prev,
+            [storyId]: {
+              ...prev[storyId],
+              submitting: false,
+              input: "",
+              editingCommentId: null,
+              loaded: true,
+              items: (prev[storyId]?.items || []).map((item) =>
+                String(item._id) === String(editingCommentId)
+                  ? { ...item, content, isEdited: true }
+                  : item,
+              ),
+            },
+          }));
 
-        setCommentsByStory((prev) => ({
-          ...prev,
-          [storyId]: {
-            ...prev[storyId],
-            submitting: false,
-            input: "",
-            loaded: true,
-            items: [newComment, ...(prev[storyId]?.items || [])],
-          },
-        }));
+          showCommentActionFeedback(editingCommentId, "Comment updated");
+        } else {
+          const payload = await response.json();
+          const newComment = {
+            _id: payload.commentId || `${Date.now()}`,
+            userId: currentUserId,
+            authorDisplayName: currentUsername,
+            content,
+            createdAt: new Date().toISOString(),
+          };
 
-        setCommentCountPulseStoryId(storyId);
-        setTimeout(() => {
-          setCommentCountPulseStoryId((currentId) =>
-            currentId === storyId ? null : currentId,
+          setCommentsByStory((prev) => ({
+            ...prev,
+            [storyId]: {
+              ...prev[storyId],
+              submitting: false,
+              input: "",
+              editingCommentId: null,
+              loaded: true,
+              items: [newComment, ...(prev[storyId]?.items || [])],
+            },
+          }));
+
+          setCommentCountPulseStoryId(storyId);
+          setTimeout(() => {
+            setCommentCountPulseStoryId((currentId) =>
+              currentId === storyId ? null : currentId,
+            );
+          }, 260);
+
+          setPosts((prev) =>
+            prev.map((post) =>
+              post.id === storyId
+                ? { ...post, commentCount: Number(post.commentCount || 0) + 1 }
+                : post,
+            ),
           );
-        }, 260);
-
-        setPosts((prev) =>
-          prev.map((post) =>
-            post.id === storyId
-              ? { ...post, commentCount: Number(post.commentCount || 0) + 1 }
-              : post,
-          ),
-        );
+        }
       } catch {
         setCommentsByStory((prev) => ({
           ...prev,
           [storyId]: {
             ...prev[storyId],
             submitting: false,
-            error: "Failed to post comment.",
+            error: editingCommentId
+              ? "Failed to update comment."
+              : "Failed to post comment.",
           },
         }));
       }
     },
-    [commentsByStory],
+    [commentsByStory, currentUserId, currentUsername],
   );
 
   const handleToggleSave = useCallback((storyId) => {
@@ -668,6 +812,77 @@ export default function Home() {
       return next;
     });
   }, []);
+
+  const handleToggleMenu = useCallback((storyId) => {
+    setMenuStoryId((currentId) => (currentId === storyId ? null : storyId));
+  }, []);
+
+  const handleReportStory = useCallback((storyId) => {
+    setMenuStoryId(null);
+
+    setShareFeedback((prev) => ({
+      ...prev,
+      [storyId]: "Report submitted",
+    }));
+
+    setTimeout(() => {
+      setShareFeedback((prev) => {
+        const next = { ...prev };
+        delete next[storyId];
+        return next;
+      });
+    }, 1800);
+  }, []);
+
+  const handleEditStory = useCallback(
+    (storyId) => {
+      setMenuStoryId(null);
+      navigate(`/write?storyId=${storyId}&returnTo=home`);
+    },
+    [navigate],
+  );
+
+  const handleDeleteStory = useCallback((storyId) => {
+    setMenuStoryId(null);
+    setDeleteTargetStoryId(storyId);
+  }, []);
+
+  const handleConfirmDeleteStory = useCallback(async () => {
+    if (!deleteTargetStoryId) {
+      return;
+    }
+
+    const storyId = deleteTargetStoryId;
+    setDeleteTargetStoryId(null);
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setPostsError("Please login to delete stories.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/stories/${storyId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to delete story.");
+      }
+
+      setPosts((prev) => prev.filter((post) => post.id !== storyId));
+      if (activeCommentStoryId === storyId) {
+        setActiveCommentStoryId(null);
+      }
+    } catch (error) {
+      setPostsError(error.message || "Failed to delete story.");
+    }
+  }, [activeCommentStoryId, deleteTargetStoryId]);
 
   const handleShare = useCallback(async (storyId, storyTitle) => {
     const url = `${window.location.origin}/stories/${storyId}`;
@@ -712,11 +927,139 @@ export default function Home() {
     }
   }, []);
 
+  const handleToggleCommentMenu = useCallback((commentId) => {
+    setMenuCommentId((currentId) =>
+      currentId === commentId ? null : commentId,
+    );
+  }, []);
+
+  const showCommentActionFeedback = useCallback((commentId, message) => {
+    setCommentActionFeedback((prev) => ({ ...prev, [commentId]: message }));
+
+    setTimeout(() => {
+      setCommentActionFeedback((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
+    }, 1800);
+  }, []);
+
+  const handleReportComment = useCallback(
+    (commentId) => {
+      setMenuCommentId(null);
+      showCommentActionFeedback(commentId, "Comment reported");
+    },
+    [showCommentActionFeedback],
+  );
+
+  const handleEditComment = useCallback((storyId, comment) => {
+    setMenuCommentId(null);
+
+    const commentId = String(comment._id);
+
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...(prev[storyId] || {
+          open: true,
+          loaded: true,
+          loading: false,
+          error: "",
+          items: [],
+          submitting: false,
+        }),
+        input: comment.content || "",
+        editingCommentId: commentId,
+      },
+    }));
+
+    setTimeout(() => {
+      if (commentInputRef.current) {
+        commentInputRef.current.focus();
+        commentInputRef.current.setSelectionRange(
+          (comment.content || "").length,
+          (comment.content || "").length,
+        );
+      }
+    }, 0);
+  }, []);
+
+  const handleDeleteComment = useCallback((storyId, commentId) => {
+    setMenuCommentId(null);
+    setDeleteTargetComment({ storyId, commentId });
+  }, []);
+
+  const handleConfirmDeleteComment = useCallback(async () => {
+    if (!deleteTargetComment) {
+      return;
+    }
+
+    const { storyId, commentId } = deleteTargetComment;
+    setDeleteTargetComment(null);
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setPostsError("Please login to delete comments.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/stories/comments/${commentId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to delete comment.");
+      }
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...prev[storyId],
+          editingCommentId:
+            String(prev[storyId]?.editingCommentId || "") === String(commentId)
+              ? null
+              : prev[storyId]?.editingCommentId || null,
+          input:
+            String(prev[storyId]?.editingCommentId || "") === String(commentId)
+              ? ""
+              : prev[storyId]?.input || "",
+          items: (prev[storyId]?.items || []).filter(
+            (item) => item._id !== commentId,
+          ),
+        },
+      }));
+
+      setPosts((prev) =>
+        prev.map((post) =>
+          post.id === storyId
+            ? {
+                ...post,
+                commentCount: Math.max(0, Number(post.commentCount || 0) - 1),
+              }
+            : post,
+        ),
+      );
+    } catch (error) {
+      setPostsError(error.message || "Failed to delete comment.");
+    }
+  }, [deleteTargetComment]);
+
   const stories = useMemo(() => {
     const circles = [{ name: "Add Story", isAdd: true }];
     const seenAuthors = new Set();
 
     posts.forEach((post) => {
+      if (post.authorId && String(post.authorId) === String(currentUserId)) {
+        return;
+      }
+
       if (seenAuthors.has(post.author)) {
         return;
       }
@@ -729,7 +1072,7 @@ export default function Home() {
     });
 
     return circles;
-  }, [posts]);
+  }, [posts, currentUserId]);
 
   const topAuthors = [
     { name: "Hannah Rose", role: "Top Mystery Writer" },
@@ -749,6 +1092,7 @@ export default function Home() {
         error: "",
         items: [],
         input: "",
+        editingCommentId: null,
         submitting: false,
       }
     : null;
@@ -819,6 +1163,11 @@ export default function Home() {
                         onToggleSave={handleToggleSave}
                         onShare={handleShare}
                         onDoubleTapLike={handleDoubleTapLike}
+                        onToggleMenu={handleToggleMenu}
+                        onReportStory={handleReportStory}
+                        onEditStory={handleEditStory}
+                        onDeleteStory={handleDeleteStory}
+                        isMenuOpen={menuStoryId === post.id}
                         showLikeBurst={likeBurstStoryId === post.id}
                         showLikePulse={likePulseStoryId === post.id}
                         showCommentCountPulse={
@@ -912,20 +1261,86 @@ export default function Home() {
 
               {!activeCommentState.loading &&
                 !activeCommentState.error &&
-                activeCommentState.items.map((comment) => (
-                  <div
-                    key={comment._id}
-                    className="rounded-xl bg-gray-50 px-3 py-2"
-                  >
-                    <p className="text-xs font-semibold text-slate-700 mb-1">
-                      {comment.authorDisplayName || "Anonymous"}
-                    </p>
-                    <p className="text-sm text-slate-700">{comment.content}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      {getRelativeTime(comment.createdAt)}
-                    </p>
-                  </div>
-                ))}
+                activeCommentState.items.map((comment) => {
+                  const commentId = String(comment._id);
+                  const commentOwnerId = normalizeId(comment.userId);
+                  const canManageComment =
+                    Boolean(currentUserId) && commentOwnerId === currentUserId;
+
+                  return (
+                    <div
+                      key={comment._id}
+                      className="rounded-xl bg-gray-50 px-3 py-2"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="text-xs font-semibold text-slate-700">
+                          {comment.authorDisplayName || "Anonymous"}
+                        </p>
+
+                        <div className="relative">
+                          <button
+                            onClick={() => handleToggleCommentMenu(commentId)}
+                            className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+                            aria-label="Comment actions"
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+
+                          {menuCommentId === commentId && (
+                            <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                              {canManageComment ? (
+                                <>
+                                  <button
+                                    onClick={() =>
+                                      handleEditComment(
+                                        activeCommentStory.id,
+                                        comment,
+                                      )
+                                    }
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleDeleteComment(
+                                        activeCommentStory.id,
+                                        commentId,
+                                      )
+                                    }
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  onClick={() => handleReportComment(commentId)}
+                                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                                >
+                                  Report
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <p className="text-sm text-slate-700">
+                        {comment.content}
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        {getRelativeTime(comment.createdAt)}
+                      </p>
+
+                      {commentActionFeedback[commentId] && (
+                        <p className="text-[11px] text-emerald-600 mt-1">
+                          {commentActionFeedback[commentId]}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
             </div>
 
             <form
@@ -935,7 +1350,13 @@ export default function Home() {
               }}
               className="px-5 py-4 border-t border-slate-100 flex items-center gap-2"
             >
+              {activeCommentState.editingCommentId && (
+                <p className="text-xs text-sky-600 whitespace-nowrap">
+                  Editing comment
+                </p>
+              )}
               <input
+                ref={commentInputRef}
                 type="text"
                 value={activeCommentState.input || ""}
                 onChange={(event) =>
@@ -944,17 +1365,113 @@ export default function Home() {
                     event.target.value,
                   )
                 }
-                placeholder="Write a comment..."
+                placeholder={
+                  activeCommentState.editingCommentId
+                    ? "Edit your comment..."
+                    : "Write a comment..."
+                }
                 className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
               />
+              {activeCommentState.editingCommentId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCommentsByStory((prev) => ({
+                      ...prev,
+                      [activeCommentStory.id]: {
+                        ...prev[activeCommentStory.id],
+                        input: "",
+                        editingCommentId: null,
+                      },
+                    }));
+                  }}
+                  className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 type="submit"
                 disabled={activeCommentState.submitting}
                 className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
               >
-                {activeCommentState.submitting ? "Posting..." : "Post"}
+                {activeCommentState.submitting
+                  ? activeCommentState.editingCommentId
+                    ? "Updating..."
+                    : "Posting..."
+                  : activeCommentState.editingCommentId
+                    ? "Update"
+                    : "Post"}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTargetStoryId && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => setDeleteTargetStoryId(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-900 mb-2">
+              Delete this story?
+            </h3>
+            <p className="text-sm text-slate-500 mb-5">
+              This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteTargetStoryId(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteStory}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTargetComment && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => setDeleteTargetComment(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-slate-900 mb-2">
+              Delete this comment?
+            </h3>
+            <p className="text-sm text-slate-500 mb-5">
+              This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteTargetComment(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDeleteComment}
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

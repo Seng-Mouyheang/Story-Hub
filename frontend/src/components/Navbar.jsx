@@ -1,9 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Search, Sun, Moon } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export default function Navbar({ title }) {
   const [darkMode, setDarkMode] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
+
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("currentUser") || "null");
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fallbackAvatar = useMemo(() => {
+    const stableSeed = String(
+      currentUser?.id || currentUser?.username || "user",
+    );
+    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(stableSeed)}`;
+  }, [currentUser]);
 
   // Toggle Theme Function
   const toggleTheme = () => {
@@ -18,6 +34,46 @@ export default function Navbar({ title }) {
       document.documentElement.classList.remove("dark");
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!currentUser?.id) {
+      setAvatarUrl(fallbackAvatar);
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    const loadProfileAvatar = async () => {
+      try {
+        const response = await fetch(`/api/profiles/${currentUser.id}`, {
+          headers,
+        });
+
+        if (!response.ok) {
+          if (isMounted) setAvatarUrl(fallbackAvatar);
+          return;
+        }
+
+        const profile = await response.json();
+        if (isMounted) {
+          setAvatarUrl(profile?.profilePicture || fallbackAvatar);
+        }
+      } catch {
+        if (isMounted) {
+          setAvatarUrl(fallbackAvatar);
+        }
+      }
+    };
+
+    loadProfileAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id, fallbackAvatar]);
 
   return (
     <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-40 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
@@ -56,10 +112,7 @@ export default function Navbar({ title }) {
           to="/profile"
           className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden cursor-pointer"
         >
-          <img
-            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix"
-            alt="User"
-          />
+          <img src={avatarUrl || fallbackAvatar} alt="User" />
         </Link>
       </div>
     </header>

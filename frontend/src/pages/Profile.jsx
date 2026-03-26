@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -7,29 +7,73 @@ import { Share } from "lucide-react";
 
 export default function Profile() {
   const [activeTab, setActiveTab] = useState("Stories");
+  const [profileData, setProfileData] = useState(null);
 
-  const userData = useMemo(() => {
-    let currentUser = null;
-
+  const currentUser = useMemo(() => {
     try {
-      currentUser = JSON.parse(localStorage.getItem("currentUser") || "null");
+      return JSON.parse(localStorage.getItem("currentUser") || "null");
     } catch {
-      currentUser = null;
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      return;
     }
 
+    const token = localStorage.getItem("token");
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+    let isMounted = true;
+
+    const loadProfile = async () => {
+      try {
+        const response = await fetch(`/api/profiles/${currentUser.id}`, {
+          headers,
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = await response.json();
+        if (isMounted) {
+          setProfileData(payload);
+        }
+      } catch {
+        // Keep fallback profile values from local user data.
+      }
+    };
+
+    loadProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id]);
+
+  const userData = useMemo(() => {
     const username = currentUser?.username || "StoryHub User";
     const email = currentUser?.email || "";
+    const stableSeed = String(currentUser?.id || username);
+    const fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(stableSeed)}`;
 
     return {
-      name: username,
+      name: profileData?.displayName || username,
       handle: email ? `@${email.split("@")[0]}` : "@storyhub_user",
-      followers: "0",
-      following: "0",
-      bio: "Welcome to your StoryHub profile. Start writing and sharing your stories.",
-      genres: ["General"],
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(username)}`,
+      followers: String(profileData?.followers ?? 0),
+      following: String(profileData?.following ?? 0),
+      bio:
+        profileData?.bio ||
+        "Welcome to your StoryHub profile. Start writing and sharing your stories.",
+      genres:
+        Array.isArray(profileData?.interest) && profileData.interest.length > 0
+          ? profileData.interest
+          : ["General"],
+      avatar: profileData?.profilePicture || fallbackAvatar,
     };
-  }, []);
+  }, [currentUser, profileData]);
 
   const tabs = ["Stories", "Saved", "Activity"];
 
