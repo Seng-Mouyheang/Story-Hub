@@ -23,16 +23,33 @@ export default function Navbar({ title }) {
 
   // Toggle Theme Function
   const toggleTheme = () => {
-    setDarkMode(!darkMode);
+    setDarkMode((prev) => !prev);
   };
+
+  // Initialize theme from saved preference or system preference
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("theme");
+
+    if (savedTheme === "dark") {
+      setDarkMode(true);
+      return;
+    }
+
+    if (savedTheme === "light") {
+      setDarkMode(false);
+      return;
+    }
+
+    const prefersDark =
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches;
+    setDarkMode(prefersDark);
+  }, []);
 
   // Apply dark mode class to HTML
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    document.documentElement.classList.toggle("dark", darkMode);
+    localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
   useEffect(() => {
@@ -99,6 +116,10 @@ export default function Navbar({ title }) {
         <button
           onClick={toggleTheme}
           className="p-2 text-slate-400 hover:text-slate-600 transition"
+          aria-label={
+            darkMode ? "Switch to bright theme" : "Switch to dark theme"
+          }
+          title={darkMode ? "Switch to bright theme" : "Switch to dark theme"}
         >
           {darkMode ? (
             <Sun className="w-5 h-5" />
