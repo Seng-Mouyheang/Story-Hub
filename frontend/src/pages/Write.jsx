@@ -1,11 +1,12 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Edit2, Globe, Plus, X, ChevronDown } from "lucide-react";
+import { Edit2, Plus, X } from "lucide-react";
 
 export default function Write() {
+  const [searchParams] = useSearchParams();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [genres, setGenres] = useState(["MYSTERY", "FANTASY", "ROMANCE"]);
@@ -13,9 +14,74 @@ export default function Write() {
   const [tags, setTags] = useState("");
   const [visibility, setVisibility] = useState("public");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingStory, setIsLoadingStory] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const navigate = useNavigate();
+  const editingStoryId = searchParams.get("storyId");
+  const returnTo = searchParams.get("returnTo");
+  const isEditMode = Boolean(editingStoryId);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErrorMessage("Unauthorized. Please log in first.");
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadStoryForEdit = async () => {
+      setIsLoadingStory(true);
+      setErrorMessage("");
+
+      try {
+        const response = await fetch(`/api/stories/${editingStoryId}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Failed to load story.");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setTitle(payload?.title || "");
+        setContent(payload?.content || "");
+        setGenres(
+          Array.isArray(payload?.genres) && payload.genres.length > 0
+            ? payload.genres
+            : [],
+        );
+        setTags(Array.isArray(payload?.tags) ? payload.tags.join(", ") : "");
+        setVisibility(payload?.visibility || "public");
+      } catch (error) {
+        if (isMounted) {
+          setErrorMessage(error.message || "Failed to load story.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingStory(false);
+        }
+      }
+    };
+
+    loadStoryForEdit();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [editingStoryId, isEditMode]);
 
   // Derived statistics
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
@@ -66,8 +132,12 @@ export default function Write() {
         return;
       }
 
-      const response = await fetch("/api/stories", {
-        method: "POST",
+      const endpoint = isEditMode
+        ? `/api/stories/${editingStoryId}`
+        : "/api/stories";
+
+      const response = await fetch(endpoint, {
+        method: isEditMode ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
@@ -89,10 +159,17 @@ export default function Write() {
       }
 
       setSuccessMessage(
-        `Story ${status === "published" ? "published" : "saved"} successfully!`,
+        isEditMode
+          ? `Story updated and ${status === "published" ? "published" : "saved"} successfully!`
+          : `Story ${status === "published" ? "published" : "saved"} successfully!`,
       );
 
       setTimeout(() => {
+        if (isEditMode && returnTo === "home") {
+          navigate("/");
+          return;
+        }
+
         navigate("/dashboard");
       }, 1500);
     } catch (error) {
@@ -114,13 +191,13 @@ export default function Write() {
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
-        <Navbar title="Write Story" />
+        <Navbar title={isEditMode ? "Edit Story" : "Write Story"} />
 
         {/* Top Header - Visibility Dropdown */}
         <div className="h-16 px-4 sm:px-6 lg:px-12 border-b border-slate-200 bg-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-sm font-medium text-slate-700">
-              Untitled 1
+              {isEditMode ? "Editing Story" : "Untitled 1"}
             </span>
             <Edit2
               size={14}
@@ -144,6 +221,11 @@ export default function Write() {
               {/* Editor Section */}
               <div className="flex-1 bg-white p-4 sm:p-8 lg:p-12 shadow-sm border border-slate-200 rounded-2xl">
                 <div className="max-w-3xl mx-auto">
+                  {isLoadingStory && (
+                    <p className="text-sm text-slate-500 mb-4">
+                      Loading story...
+                    </p>
+                  )}
                   <input
                     type="text"
                     placeholder="Untitled Story Title"
@@ -250,17 +332,25 @@ export default function Write() {
                 <div className="flex gap-3 sm:gap-4 mt-2 sm:mt-4">
                   <button
                     onClick={handleSave}
-                    disabled={isLoading}
+                    disabled={isLoading || isLoadingStory}
                     className="flex-1 py-3 border border-slate-300 text-slate-700 text-sm font-semibold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {isLoading ? "Saving..." : "Save"}
+                    {isLoading
+                      ? isEditMode
+                        ? "Updating..."
+                        : "Saving..."
+                      : "Save"}
                   </button>
                   <button
                     onClick={handlePublish}
-                    disabled={isLoading}
+                    disabled={isLoading || isLoadingStory}
                     className="flex-1 py-3 bg-rose-500 text-white text-sm font-semibold rounded-xl hover:bg-rose-600 shadow-sm shadow-rose-200 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    {isLoading ? "Publishing..." : "Publish"}
+                    {isLoading
+                      ? isEditMode
+                        ? "Updating..."
+                        : "Publishing..."
+                      : "Publish"}
                   </button>
                 </div>
               </aside>
