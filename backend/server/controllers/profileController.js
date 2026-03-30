@@ -1,21 +1,5 @@
 const profileModel = require("../models/profileModel");
 
-const createProfile = async (req, res) => {
-  try {
-    const profileId = await profileModel.createProfile(
-      req.user.userId,
-      req.body,
-    );
-    res.status(201).json({ profileId });
-  } catch (error) {
-    console.error(error);
-    if (error.message === "Profile already exists") {
-      return res.status(409).json({ message: "Profile already exists" });
-    }
-    res.status(500).json({ message: "Failed to create profile" });
-  }
-};
-
 const getProfile = async (req, res) => {
   try {
     const profile = await Promise.resolve(
@@ -47,7 +31,6 @@ const updateProfile = async (req, res) => {
 };
 
 module.exports = {
-  createProfile,
   getProfile,
   updateProfile,
 };

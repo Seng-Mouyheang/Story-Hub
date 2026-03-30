@@ -61,9 +61,20 @@ const findUserById = async (id) => {
   return collection.findOne({ _id: new ObjectId(id) });
 };
 
+/**
+ * Delete user by ID (used for signup rollback)
+ * @param {string|ObjectId} id
+ */
+const deleteUserById = async (id) => {
+  const collection = await getCollection();
+  const userId = typeof id === "string" ? new ObjectId(id) : id;
+  await collection.deleteOne({ _id: userId });
+};
+
 module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
+  deleteUserById,
   setNormalizedEmail,
 };

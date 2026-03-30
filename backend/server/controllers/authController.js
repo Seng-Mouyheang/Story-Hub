@@ -36,15 +36,24 @@ const register = async (req, res) => {
       password: hashedPassword,
     });
 
-    // Auto-generate profile with displayName set to username
+    // Auto-generate profile with displayName set to username.
+    // If this fails, rollback user creation so user/profile stay consistent.
     try {
       await profileModel.createProfile(userId.toString(), {
         displayName: username,
       });
     } catch (profileError) {
-      // Log profile creation error but don't fail registration
-      // User can retry profile creation via POST /api/profile/ if needed
+      try {
+        await userModel.deleteUserById(userId);
+      } catch (rollbackError) {
+        console.error("Failed to rollback user after profile creation error:", {
+          userId,
+          rollbackError,
+        });
+      }
+
       console.error("Profile creation failed for user:", userId, profileError);
+      return res.status(500).json({ message: "Registration failed" });
     }
 
     res.status(201).json({ userId });
