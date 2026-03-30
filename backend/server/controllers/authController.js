@@ -3,6 +3,7 @@ const profileModel = require("../models/profileModel");
 const revokedTokenModel = require("../models/revokedTokenModel");
 const authService = require("../services/authService");
 const { normalizeEmail } = require("../utils/email");
+const { getClient } = require("../configuration/dbConfig");
 
 /**
  * Register a new user and auto-generate their profile.
@@ -19,6 +20,9 @@ const { normalizeEmail } = require("../utils/email");
  * @param {Object} res - Express response object
  */
 const register = async (req, res) => {
+  const client = getClient();
+  const session = client.startSession();
+
   try {
     const { username, email, password } = req.body;
     const normalizedEmail = normalizeEmail(email);
@@ -30,31 +34,28 @@ const register = async (req, res) => {
 
     const hashedPassword = await authService.hashPassword(password);
 
-    const userId = await userModel.createUser({
-      username,
-      email: normalizedEmail,
-      password: hashedPassword,
+    // Use atomic transaction to ensure user and profile are created together or not at all.
+    const userId = await session.withTransaction(async () => {
+      const createdUserId = await userModel.createUser(
+        {
+          username,
+          email: normalizedEmail,
+          password: hashedPassword,
+        },
+        { session },
+      );
+
+      // Auto-generate profile with displayName set to username.
+      await profileModel.createProfile(
+        createdUserId.toString(),
+        {
+          displayName: username,
+        },
+        { session },
+      );
+
+      return createdUserId;
     });
-
-    // Auto-generate profile with displayName set to username.
-    // If this fails, rollback user creation so user/profile stay consistent.
-    try {
-      await profileModel.createProfile(userId.toString(), {
-        displayName: username,
-      });
-    } catch (profileError) {
-      try {
-        await userModel.deleteUserById(userId);
-      } catch (rollbackError) {
-        console.error("Failed to rollback user after profile creation error:", {
-          userId,
-          rollbackError,
-        });
-      }
-
-      console.error("Profile creation failed for user:", userId, profileError);
-      return res.status(500).json({ message: "Registration failed" });
-    }
 
     res.status(201).json({ userId });
   } catch (error) {
@@ -62,7 +63,10 @@ const register = async (req, res) => {
       return res.status(409).json({ message: "Email already exists" });
     }
 
+    console.error("Registration error:", error);
     res.status(500).json({ message: "Registration failed" });
+  } finally {
+    await session.endSession();
   }
 };
 

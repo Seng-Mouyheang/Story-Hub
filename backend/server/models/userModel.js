@@ -19,10 +19,12 @@ const getCollection = async () => {
 /**
  * Create a new user
  * @param {Object} userData
+ * @param {Object} options - Optional configuration object
+ * @param {Object} options.session - MongoDB session for transactions
  * @returns {Promise<ObjectId>}
  */
 
-const createUser = async (userData) => {
+const createUser = async (userData, options = {}) => {
   const collection = await getCollection();
   const normalizedUserData = setNormalizedEmail(userData);
 
@@ -36,7 +38,7 @@ const createUser = async (userData) => {
     deletedAt: null,
   };
 
-  const result = await collection.insertOne(user);
+  const result = await collection.insertOne(user, { session: options.session });
   return result.insertedId;
 };
 
