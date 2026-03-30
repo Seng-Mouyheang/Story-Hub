@@ -19,10 +19,12 @@ const getCollection = async () => {
 /**
  * Create a new user
  * @param {Object} userData
+ * @param {Object} options - Optional configuration object
+ * @param {Object} options.session - MongoDB session for transactions
  * @returns {Promise<ObjectId>}
  */
 
-const createUser = async (userData) => {
+const createUser = async (userData, options = {}) => {
   const collection = await getCollection();
   const normalizedUserData = setNormalizedEmail(userData);
 
@@ -36,7 +38,7 @@ const createUser = async (userData) => {
     deletedAt: null,
   };
 
-  const result = await collection.insertOne(user);
+  const result = await collection.insertOne(user, { session: options.session });
   return result.insertedId;
 };
 
@@ -61,9 +63,27 @@ const findUserById = async (id) => {
   return collection.findOne({ _id: new ObjectId(id) });
 };
 
+/**
+ * Delete user by ID (used for signup rollback)
+ * @param {string|ObjectId} id
+ */
+const deleteUserById = async (id) => {
+  const collection = await getCollection();
+  if (typeof id === "string" && !ObjectId.isValid(id)) {
+    throw new Error("Invalid user id");
+  }
+  const userId = typeof id === "string" ? new ObjectId(id) : id;
+  const result = await collection.deleteOne({ _id: userId });
+  if (result.deletedCount !== 1) {
+    throw new Error("Rollback delete did not remove a user");
+  }
+  return result;
+};
+
 module.exports = {
   createUser,
   findUserByEmail,
   findUserById,
+  deleteUserById,
   setNormalizedEmail,
 };

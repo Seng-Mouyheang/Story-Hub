@@ -16,16 +16,6 @@ const baseFields = {
 };
 
 /* ============================= */
-/* CREATE VALIDATION */
-/* ============================= */
-
-const createProfileSchema = Joi.object({
-  displayName: baseFields.displayName.required(),
-  bio: baseFields.bio.allow(""),
-  interest: baseFields.interest,
-});
-
-/* ============================= */
 /* UPDATE VALIDATION */
 /* ============================= */
 
@@ -40,7 +30,6 @@ const userIdParamSchema = Joi.object({
 });
 
 module.exports = {
-  createProfileSchema,
   updateProfileSchema,
   userIdParamSchema,
 };

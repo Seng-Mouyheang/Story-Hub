@@ -22,16 +22,21 @@ const getCollection = async () => {
  * Create user profile
  * @param {string} userId
  * @param {Object} profileData
+ * @param {Object} options - Optional configuration object
+ * @param {Object} options.session - MongoDB session for transactions
  */
 
-const createProfile = async (userId, profileData) => {
+const createProfile = async (userId, profileData, options = {}) => {
   const collection = await getCollection();
   const userObjectId = new ObjectId(userId);
 
-  const existingProfile = await collection.findOne({
-    userId: userObjectId,
-    deletedAt: null,
-  });
+  const existingProfile = await collection.findOne(
+    {
+      userId: userObjectId,
+      deletedAt: null,
+    },
+    { session: options.session },
+  );
   if (existingProfile) {
     throw new Error("Profile already exists");
   }
@@ -51,7 +56,9 @@ const createProfile = async (userId, profileData) => {
   };
 
   try {
-    const result = await collection.insertOne(newProfile);
+    const result = await collection.insertOne(newProfile, {
+      session: options.session,
+    });
     return result.insertedId;
   } catch (error) {
     // Handle race conditions where two requests pass pre-check simultaneously.
