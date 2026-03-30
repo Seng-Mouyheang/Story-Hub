@@ -67,8 +67,15 @@ const findUserById = async (id) => {
  */
 const deleteUserById = async (id) => {
   const collection = await getCollection();
+  if (typeof id === "string" && !ObjectId.isValid(id)) {
+    throw new Error("Invalid user id");
+  }
   const userId = typeof id === "string" ? new ObjectId(id) : id;
-  await collection.deleteOne({ _id: userId });
+  const result = await collection.deleteOne({ _id: userId });
+  if (result.deletedCount !== 1) {
+    throw new Error("Rollback delete did not remove a user");
+  }
+  return result;
 };
 
 module.exports = {
