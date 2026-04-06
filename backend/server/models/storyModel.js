@@ -1,4 +1,4 @@
-const { connectToDatabase, getClient } = require("../configuration/dbConfig");
+const { connectToDatabase } = require("../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
 
 const COLLECTION_NAME = "stories";
@@ -277,11 +277,6 @@ const incrementViews = async (id) => {
   );
 };
 
-const isTransactionUnsupportedError = (error) =>
-  /Transaction numbers are only allowed on a replica set member or mongos|Transaction not supported|does not support transactions|replica set/i.test(
-    error?.message || "",
-  );
-
 /**
  * Delete stories by ID
  * @param {string} id
@@ -291,13 +286,9 @@ const isTransactionUnsupportedError = (error) =>
 const deleteStory = async (id, userId) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
-  const client = getClient();
-  const session = client.startSession();
-  const storyObjectId = new ObjectId(id);
-  const deletedAt = new Date();
 
   const story = await collection.findOne({
-    _id: storyObjectId,
+    _id: new ObjectId(id),
     deletedAt: null,
   });
 
@@ -307,56 +298,23 @@ const deleteStory = async (id, userId) => {
     throw new Error("Unauthorized");
   }
 
-  try {
-    await session.withTransaction(async () => {
-      // Soft delete story and remove bookmarks together so they stay in sync.
-      await collection.updateOne(
-        { _id: storyObjectId },
-        { $set: { deletedAt } },
-        { session },
-      );
+  // Soft delete story
+  await collection.updateOne(
+    { _id: new ObjectId(id) },
+    { $set: { deletedAt: new Date() } },
+  );
 
-      await db
-        .collection("storyBookmarks")
-        .deleteMany({ storyId: storyObjectId }, { session });
+  // Cascade delete likes
+  await db.collection("storyLikes").deleteMany({
+    storyId: new ObjectId(id),
+  });
 
-      // Likes cleanup stays part of the same transaction when supported.
-      await db
-        .collection("storyLikes")
-        .deleteMany({ storyId: storyObjectId }, { session });
-    });
+  // Cascade delete bookmarks
+  await db.collection("storyBookmarks").deleteMany({
+    storyId: new ObjectId(id),
+  });
 
-    return { success: true };
-  } catch (error) {
-    if (!isTransactionUnsupportedError(error)) {
-      throw error;
-    }
-
-    try {
-      await collection.updateOne(
-        { _id: storyObjectId },
-        { $set: { deletedAt } },
-      );
-
-      await db.collection("storyBookmarks").deleteMany({
-        storyId: storyObjectId,
-      });
-
-      await db.collection("storyLikes").deleteMany({
-        storyId: storyObjectId,
-      });
-
-      return { success: true };
-    } catch (fallbackError) {
-      await collection
-        .updateOne({ _id: storyObjectId }, { $set: { deletedAt: null } })
-        .catch(() => {});
-
-      throw fallbackError;
-    }
-  } finally {
-    await session.endSession();
-  }
+  return { success: true };
 };
 
 const getUserStories = async (userId, cursor, limit) => {
