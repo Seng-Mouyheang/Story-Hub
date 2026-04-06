@@ -3,6 +3,11 @@ const { ObjectId } = require("mongodb");
 
 const BOOKMARKS_COLLECTION = "storyBookmarks";
 
+const isTransactionUnsupportedError = (error) =>
+  /Transaction numbers are only allowed on a replica set member or mongos|Transaction not supported|does not support transactions|replica set/i.test(
+    error?.message || "",
+  );
+
 const toggleStoryBookmark = async (userId, storyId) => {
   const db = await connectToDatabase();
   const client = getClient();
@@ -46,8 +51,44 @@ const toggleStoryBookmark = async (userId, storyId) => {
       storyId,
     };
   } catch (error) {
-    console.error("Bookmark transaction failed:", error);
-    throw error;
+    if (!isTransactionUnsupportedError(error)) {
+      throw error;
+    }
+
+    // Retry without transaction for standalone MongoDB
+    try {
+      const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
+
+      const existingBookmark = await bookmarksCollection.findOne({
+        userId: userObjectId,
+        storyId: storyObjectId,
+      });
+
+      let savedByCurrentUser = false;
+
+      if (existingBookmark) {
+        await bookmarksCollection.deleteOne({
+          userId: userObjectId,
+          storyId: storyObjectId,
+        });
+        savedByCurrentUser = false;
+      } else {
+        await bookmarksCollection.insertOne({
+          userId: userObjectId,
+          storyId: storyObjectId,
+          createdAt: new Date(),
+        });
+        savedByCurrentUser = true;
+      }
+
+      return {
+        savedByCurrentUser,
+        storyId,
+      };
+    } catch (fallbackError) {
+      console.error("Bookmark operation failed:", fallbackError);
+      throw fallbackError;
+    }
   } finally {
     await session.endSession();
   }

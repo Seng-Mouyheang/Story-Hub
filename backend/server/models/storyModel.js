@@ -291,8 +291,6 @@ const isTransactionUnsupportedError = (error) =>
 const deleteStory = async (id, userId) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
-  const client = getClient();
-  const session = client.startSession();
   const storyObjectId = new ObjectId(id);
   const deletedAt = new Date();
 
@@ -306,6 +304,9 @@ const deleteStory = async (id, userId) => {
   if (story.authorId.toString() !== userId.toString()) {
     throw new Error("Unauthorized");
   }
+
+  const client = getClient();
+  const session = client.startSession();
 
   try {
     await session.withTransaction(async () => {
