@@ -113,7 +113,6 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
     .aggregate([
       { $match: matchStage },
       { $sort: { createdAt: -1, _id: -1 } },
-      { $limit: limit + 1 },
       {
         $lookup: {
           from: "stories",
@@ -181,6 +180,7 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
           bookmarkCreatedAt: "$createdAt",
         },
       },
+      { $limit: limit + 1 },
     ])
     .toArray();
 
