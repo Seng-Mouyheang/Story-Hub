@@ -4,7 +4,6 @@ const authenticate = require("../middleware/authMiddleware");
 const optionalAuthenticate = require("../middleware/optionalAuthMiddleware");
 const storyController = require("../controllers/storyController");
 const storyLikeController = require("../controllers/storyLikeController");
-const storyBookmarkController = require("../controllers/storyBookmarkController");
 const storyCommentController = require("../controllers/storyCommentController");
 const commentLikeController = require("../controllers/commentLikeController");
 const validate = require("../middleware/validate");
@@ -47,14 +46,6 @@ router.get(
   authenticate,
   validate(cursorPaginationSchema, "query"),
   storyController.getMyStories,
-);
-
-// Get current user's bookmarked stories
-router.get(
-  "/bookmarks/me",
-  authenticate,
-  validate(cursorPaginationSchema, "query"),
-  storyBookmarkController.getMyBookmarkedStories,
 );
 
 // Public single story (auth optional)
@@ -127,30 +118,6 @@ router.post(
   authenticate, // must be logged in
   validate(idParamSchema, "params"),
   storyLikeController.toggleLikeStory,
-);
-
-// Toggle bookmark on a story
-router.post(
-  "/:id/toggle-bookmark",
-  authenticate,
-  validate(idParamSchema, "params"),
-  storyBookmarkController.toggleStoryBookmark,
-);
-
-// Remove bookmark from a story
-router.delete(
-  "/:id/bookmark",
-  authenticate,
-  validate(idParamSchema, "params"),
-  storyBookmarkController.removeStoryBookmark,
-);
-
-// Check current user's bookmark status for a story
-router.get(
-  "/:id/bookmark-status",
-  authenticate,
-  validate(idParamSchema, "params"),
-  storyBookmarkController.getBookmarkStatus,
 );
 
 /* ============================= */

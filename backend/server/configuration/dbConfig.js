@@ -84,27 +84,6 @@ const connectToDatabase = async () => {
       .collection("storyLikes")
       .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
 
-    // Unique index to prevent duplicate bookmarks by the same user
-    await db
-      .collection("storyBookmarks")
-      .createIndex(
-        { userId: 1, storyId: 1 },
-        { unique: true, name: "unique_user_story_bookmark" },
-      );
-
-    // Cursor index for current user's bookmark feed
-    await db
-      .collection("storyBookmarks")
-      .createIndex(
-        { userId: 1, createdAt: -1, _id: -1 },
-        { name: "user_bookmark_cursor_index" },
-      );
-
-    // Fast lookup by story for optional future analytics/features
-    await db
-      .collection("storyBookmarks")
-      .createIndex({ storyId: 1 }, { name: "bookmark_storyId_lookup_index" });
-
     // For fetching comments per story quickly
     await db.collection("storyComments").createIndex({
       storyId: 1,
