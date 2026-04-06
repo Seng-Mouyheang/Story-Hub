@@ -117,6 +117,7 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   const data = hasMore ? stories.slice(0, limit) : stories;
 
   let likedStoryIds = new Set();
+  let bookmarkedStoryIds = new Set();
 
   if (currentUserId && data.length > 0) {
     const storyIds = data.map((story) => story._id);
@@ -131,11 +132,25 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
       .toArray();
 
     likedStoryIds = new Set(likes.map((like) => like.storyId.toString()));
+
+    const bookmarks = await db
+      .collection("storyBookmarks")
+      .find({
+        userId: new ObjectId(currentUserId),
+        storyId: { $in: storyIds },
+      })
+      .project({ storyId: 1 })
+      .toArray();
+
+    bookmarkedStoryIds = new Set(
+      bookmarks.map((bookmark) => bookmark.storyId.toString()),
+    );
   }
 
   const finalData = data.map((story) => ({
     ...story,
     likedByCurrentUser: likedStoryIds.has(story._id.toString()),
+    savedByCurrentUser: bookmarkedStoryIds.has(story._id.toString()),
     authorDisplayName: story.author?.displayName || null,
   }));
 
@@ -291,6 +306,11 @@ const deleteStory = async (id, userId) => {
 
   // Cascade delete likes
   await db.collection("storyLikes").deleteMany({
+    storyId: new ObjectId(id),
+  });
+
+  // Cascade delete bookmarks
+  await db.collection("storyBookmarks").deleteMany({
     storyId: new ObjectId(id),
   });
 
