@@ -1,34 +1,34 @@
 const { connectToDatabase, getClient } = require("../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
 
-const toggleLikeStory = async (userId, storyId) => {
+const toggleLikeConfession = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const client = getClient();
   const session = client.startSession();
 
-  const storyObjectId = new ObjectId(storyId);
+  const confessionObjectId = new ObjectId(confessionId);
   const userObjectId = new ObjectId(userId);
 
   try {
     let result;
 
     await session.withTransaction(async () => {
-      const likesCollection = db.collection("storyLikes");
-      const storiesCollection = db.collection("stories");
+      const likesCollection = db.collection("confessionLikes");
+      const confessionsCollection = db.collection("confessions");
 
       const existingLike = await likesCollection.findOne(
-        { userId: userObjectId, storyId: storyObjectId },
+        { userId: userObjectId, confessionId: confessionObjectId },
         { session },
       );
 
       if (existingLike) {
         await likesCollection.deleteOne(
-          { userId: userObjectId, storyId: storyObjectId },
+          { userId: userObjectId, confessionId: confessionObjectId },
           { session },
         );
 
-        await storiesCollection.updateOne(
-          { _id: storyObjectId, likesCount: { $gt: 0 } },
+        await confessionsCollection.updateOne(
+          { _id: confessionObjectId, likesCount: { $gt: 0 } },
           { $inc: { likesCount: -1 } },
           { session },
         );
@@ -38,21 +38,21 @@ const toggleLikeStory = async (userId, storyId) => {
         await likesCollection.insertOne(
           {
             userId: userObjectId,
-            storyId: storyObjectId,
+            confessionId: confessionObjectId,
             createdAt: new Date(),
           },
           { session },
         );
 
-        const updateResult = await storiesCollection.updateOne(
-          { _id: storyObjectId, deletedAt: null },
+        const updateResult = await confessionsCollection.updateOne(
+          { _id: confessionObjectId, deletedAt: null },
           { $inc: { likesCount: 1 } },
           { session },
         );
 
         if (updateResult.matchedCount === 0) {
-          const notFoundError = new Error("Story not found");
-          notFoundError.code = "STORY_NOT_FOUND";
+          const notFoundError = new Error("Confession not found");
+          notFoundError.code = "CONFESSION_NOT_FOUND";
           throw notFoundError;
         }
 
@@ -60,13 +60,13 @@ const toggleLikeStory = async (userId, storyId) => {
       }
     });
 
-    const story = await db
-      .collection("stories")
-      .findOne({ _id: storyObjectId }, { projection: { likesCount: 1 } });
+    const confession = await db
+      .collection("confessions")
+      .findOne({ _id: confessionObjectId }, { projection: { likesCount: 1 } });
 
     return {
       likedByCurrentUser: result.likedByCurrentUser,
-      likesCount: story.likesCount,
+      likesCount: confession.likesCount,
     };
   } catch (error) {
     console.error("Transaction failed:", error);
@@ -77,5 +77,5 @@ const toggleLikeStory = async (userId, storyId) => {
 };
 
 module.exports = {
-  toggleLikeStory,
+  toggleLikeConfession,
 };

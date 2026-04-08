@@ -1,7 +1,7 @@
 const { connectToDatabase, getClient } = require("../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
 
-const BOOKMARKS_COLLECTION = "storyBookmarks";
+const BOOKMARKS_COLLECTION = "confessionBookmarks";
 const isDuplicateBookmarkError = (error) => error?.code === 11000;
 
 const isTransactionUnsupportedError = (error) =>
@@ -9,28 +9,47 @@ const isTransactionUnsupportedError = (error) =>
     error?.message || "",
   );
 
-const toggleStoryBookmark = async (userId, storyId) => {
+const resolveAuthorDisplayName = (confession, currentUserId = null) => {
+  const profileName = confession.authorDisplayName || null;
+
+  if (!confession.isAnonymous) {
+    return profileName;
+  }
+
+  if (
+    currentUserId &&
+    confession.authorId &&
+    confession.authorId.toString() === currentUserId.toString()
+  ) {
+    return profileName || "Anonymous";
+  }
+
+  return "Anonymous";
+};
+
+const toggleConfessionBookmark = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const client = getClient();
   const session = client.startSession();
 
   const userObjectId = new ObjectId(userId);
-  const storyObjectId = new ObjectId(storyId);
+  const confessionObjectId = new ObjectId(confessionId);
 
   try {
     let savedByCurrentUser = false;
+    let shouldRecheckSavedState = false;
 
     await session.withTransaction(async () => {
       const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
 
       const existingBookmark = await bookmarksCollection.findOne(
-        { userId: userObjectId, storyId: storyObjectId },
+        { userId: userObjectId, confessionId: confessionObjectId },
         { session },
       );
 
       if (existingBookmark) {
         await bookmarksCollection.deleteOne(
-          { userId: userObjectId, storyId: storyObjectId },
+          { userId: userObjectId, confessionId: confessionObjectId },
           { session },
         );
         savedByCurrentUser = false;
@@ -39,23 +58,33 @@ const toggleStoryBookmark = async (userId, storyId) => {
           await bookmarksCollection.insertOne(
             {
               userId: userObjectId,
-              storyId: storyObjectId,
+              confessionId: confessionObjectId,
               createdAt: new Date(),
             },
             { session },
           );
+          savedByCurrentUser = true;
         } catch (insertError) {
           if (!isDuplicateBookmarkError(insertError)) {
             throw insertError;
           }
+          shouldRecheckSavedState = true;
         }
-        savedByCurrentUser = true;
       }
     });
 
+    if (shouldRecheckSavedState) {
+      const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
+      const existingBookmark = await bookmarksCollection.findOne(
+        { userId: userObjectId, confessionId: confessionObjectId },
+        { projection: { _id: 1 } },
+      );
+      savedByCurrentUser = Boolean(existingBookmark);
+    }
+
     return {
       savedByCurrentUser,
-      storyId,
+      confessionId,
     };
   } catch (error) {
     if (!isTransactionUnsupportedError(error)) {
@@ -67,7 +96,7 @@ const toggleStoryBookmark = async (userId, storyId) => {
 
       const existingBookmark = await bookmarksCollection.findOne({
         userId: userObjectId,
-        storyId: storyObjectId,
+        confessionId: confessionObjectId,
       });
 
       let savedByCurrentUser = false;
@@ -75,13 +104,15 @@ const toggleStoryBookmark = async (userId, storyId) => {
       if (existingBookmark) {
         await bookmarksCollection.deleteOne({
           userId: userObjectId,
-          storyId: storyObjectId,
+          confessionId: confessionObjectId,
         });
       } else {
+        let shouldRecheckSavedState = false;
+
         try {
           await bookmarksCollection.insertOne({
             userId: userObjectId,
-            storyId: storyObjectId,
+            confessionId: confessionObjectId,
             createdAt: new Date(),
           });
           savedByCurrentUser = true;
@@ -89,12 +120,20 @@ const toggleStoryBookmark = async (userId, storyId) => {
           if (!isDuplicateBookmarkError(insertError)) {
             throw insertError;
           }
+          shouldRecheckSavedState = true;
+        }
+
+        if (shouldRecheckSavedState) {
+          const bookmarkAfterConflict = await bookmarksCollection.findOne(
+            { userId: userObjectId, confessionId: confessionObjectId },
+            { projection: { _id: 1 } },
+          );
+          savedByCurrentUser = Boolean(bookmarkAfterConflict);
         }
       }
-
       return {
         savedByCurrentUser,
-        storyId,
+        confessionId,
       };
     } catch (fallbackError) {
       console.error("Bookmark operation failed:", fallbackError);
@@ -105,29 +144,29 @@ const toggleStoryBookmark = async (userId, storyId) => {
   }
 };
 
-const removeStoryBookmark = async (userId, storyId) => {
+const removeConfessionBookmark = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
 
   await bookmarksCollection.deleteOne({
     userId: new ObjectId(userId),
-    storyId: new ObjectId(storyId),
+    confessionId: new ObjectId(confessionId),
   });
 
   return {
     savedByCurrentUser: false,
-    storyId,
+    confessionId,
   };
 };
 
-const hasUserBookmarkedStory = async (userId, storyId) => {
+const hasUserBookmarkedConfession = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
 
   const bookmark = await bookmarksCollection.findOne(
     {
       userId: new ObjectId(userId),
-      storyId: new ObjectId(storyId),
+      confessionId: new ObjectId(confessionId),
     },
     { projection: { _id: 1 } },
   );
@@ -135,7 +174,7 @@ const hasUserBookmarkedStory = async (userId, storyId) => {
   return Boolean(bookmark);
 };
 
-const getUserBookmarkedStories = async (userId, cursor, limit) => {
+const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
   const db = await connectToDatabase();
   const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
 
@@ -161,37 +200,36 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
     }
   }
 
-  const stories = await bookmarksCollection
+  const confessions = await bookmarksCollection
     .aggregate([
       { $match: matchStage },
       { $sort: { createdAt: -1, _id: -1 } },
       {
         $lookup: {
-          from: "stories",
-          let: { storyId: "$storyId" },
+          from: "confessions",
+          let: { confessionId: "$confessionId" },
           pipeline: [
             {
               $match: {
-                $expr: { $eq: ["$_id", "$$storyId"] },
-                status: "published",
+                $expr: { $eq: ["$_id", "$$confessionId"] },
                 visibility: "public",
                 deletedAt: null,
               },
             },
           ],
-          as: "story",
+          as: "confession",
         },
       },
       {
         $unwind: {
-          path: "$story",
+          path: "$confession",
           preserveNullAndEmptyArrays: false,
         },
       },
       {
         $lookup: {
           from: "profiles",
-          let: { authorId: "$story.authorId" },
+          let: { authorId: "$confession.authorId" },
           pipeline: [
             {
               $match: {
@@ -214,18 +252,15 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
       },
       {
         $project: {
-          _id: "$story._id",
-          authorId: "$story.authorId",
-          title: "$story.title",
-          summary: "$story.summary",
-          content: "$story.content",
-          genres: "$story.genres",
-          tags: "$story.tags",
-          likesCount: "$story.likesCount",
-          commentCount: "$story.commentCount",
-          createdAt: "$story.createdAt",
-          updatedAt: "$story.updatedAt",
-          publishedAt: "$story.publishedAt",
+          _id: "$confession._id",
+          authorId: "$confession.authorId",
+          content: "$confession.content",
+          tags: "$confession.tags",
+          isAnonymous: "$confession.isAnonymous",
+          likesCount: "$confession.likesCount",
+          commentCount: "$confession.commentCount",
+          createdAt: "$confession.createdAt",
+          updatedAt: "$confession.updatedAt",
           authorDisplayName: "$author.displayName",
           savedByCurrentUser: { $literal: true },
           bookmarkId: "$_id",
@@ -236,29 +271,31 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
     ])
     .toArray();
 
-  const hasMore = stories.length > limit;
-  const data = hasMore ? stories.slice(0, limit) : stories;
+  const hasMore = confessions.length > limit;
+  const data = hasMore ? confessions.slice(0, limit) : confessions;
 
-  let likedStoryIds = new Set();
+  let likedConfessionIds = new Set();
   if (data.length > 0) {
-    const storyIds = data.map((story) => story._id);
+    const confessionIds = data.map((confession) => confession._id);
 
     const likes = await db
-      .collection("storyLikes")
+      .collection("confessionLikes")
       .find({
         userId: new ObjectId(userId),
-        storyId: { $in: storyIds },
+        confessionId: { $in: confessionIds },
       })
-      .project({ storyId: 1 })
+      .project({ confessionId: 1 })
       .toArray();
 
-    likedStoryIds = new Set(likes.map((like) => like.storyId.toString()));
+    likedConfessionIds = new Set(
+      likes.map((like) => like.confessionId.toString()),
+    );
   }
 
   let followedAuthorIds = new Set();
   if (data.length > 0) {
     const authorIds = [
-      ...new Set(data.map((story) => story.authorId.toString())),
+      ...new Set(data.map((confession) => confession.authorId.toString())),
     ]
       .filter((id) => id !== userId)
       .map((id) => new ObjectId(id));
@@ -279,10 +316,13 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
     }
   }
 
-  const finalData = data.map((story) => ({
-    ...story,
-    likedByCurrentUser: likedStoryIds.has(story._id.toString()),
-    followedByCurrentUser: followedAuthorIds.has(story.authorId.toString()),
+  const finalData = data.map((confession) => ({
+    ...confession,
+    likedByCurrentUser: likedConfessionIds.has(confession._id.toString()),
+    followedByCurrentUser: followedAuthorIds.has(
+      confession.authorId.toString(),
+    ),
+    authorDisplayName: resolveAuthorDisplayName(confession, userId),
   }));
 
   let nextCursor = null;
@@ -299,8 +339,8 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
 };
 
 module.exports = {
-  toggleStoryBookmark,
-  removeStoryBookmark,
-  hasUserBookmarkedStory,
-  getUserBookmarkedStories,
+  toggleConfessionBookmark,
+  removeConfessionBookmark,
+  hasUserBookmarkedConfession,
+  getUserBookmarkedConfessions,
 };

@@ -4,6 +4,7 @@ const port = process.env.PORT || 3000;
 const { connectToDatabase } = require("./configuration/dbConfig");
 const authRoutes = require("./routes/authRoutes");
 const storyRoutes = require("./routes/storyRoutes");
+const confessionRoutes = require("./routes/confessionRoutes");
 const profileRoutes = require("./routes/profileRoute");
 
 // Middleware to parse JSON bodies
@@ -29,6 +30,7 @@ if (trustProxy !== undefined) {
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/stories", storyRoutes);
+app.use("/api/confessions", confessionRoutes);
 app.use("/api/profile", profileRoutes);
 
 // Connect to the database before starting the server
@@ -51,48 +53,48 @@ connectToDatabase()
 ║   - POST /api/auth/logout                      ║
 ╚════════════════════════════════════════════════╝
 
-╔════════════════════════════════════════════════╗
-║   Story Routes                                 ║
-╠════════════════════════════════════════════════╣
-║   - GET /api/stories/                          ║
-║   - GET /api/stories/me                        ║
-║   - GET /api/stories/:id                       ║
-║   - POST /api/stories/                         ║
-║   - PUT /api/stories/:id                       ║
-║   - DELETE /api/stories/:id                    ║
-╚════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗        
+║   Story Routes                                 ║            ║   Confession Routes                            ║
+╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣  
+║   - GET /api/stories/                          ║            ║   - GET /api/confessions/                      ║
+║   - GET /api/stories/me                        ║            ║   - GET /api/confessions/me                    ║
+║   - GET /api/stories/:id                       ╠════════════╣   - GET /api/confessions/:id                   ║
+║   - POST /api/stories/                         ║            ║   - POST /api/confessions/                     ║ 
+║   - PUT /api/stories/:id                       ║            ║   - PUT /api/confessions/:id                   ║  
+║   - DELETE /api/stories/:id                    ║            ║   - DELETE /api/confessions/:id                ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
-╔════════════════════════════════════════════════╗
-║   Story Likes Routes                           ║
-╠════════════════════════════════════════════════╣
-║   - GET /api/stories/:id/likes                 ║
-║   - POST /api/stories/:id/toggle-like          ║
-╚════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗       
+║   Story Likes Routes                           ║            ║   Confession Likes Routes                      ║
+╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣
+║   - GET /api/stories/:id/likes                 ╠════════════╣   - GET /api/confessions/:id/likes             ║
+║   - POST /api/stories/:id/toggle-like          ║            ║   - POST /api/confessions/:id/toggle-like      ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
-╔════════════════════════════════════════════════╗
-║   Story Comments Routes                        ║
-╠════════════════════════════════════════════════╣
-║   - GET /api/stories/:id/comments              ║
-║   - POST /api/stories/:id/comments             ║
-║   - PUT /api/stories/comments/:id              ║
-║   - DELETE /api/stories/comments/:id           ║
-╚════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗  
+║   Story Comments Routes                        ║            ║   Confession Comments Routes                   ║
+╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣  
+║   - GET /api/stories/:id/comments              ║            ║   - GET /api/confessions/:id/comments          ║
+║   - POST /api/stories/:id/comments             ╠════════════╣   - POST /api/confessions/:id/comments         ║
+║   - PUT /api/stories/comments/:id              ║            ║   - PUT /api/confessions/comments/:id          ║
+║   - DELETE /api/stories/comments/:id           ║            ║   - DELETE /api/confessions/comments/:id       ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
-╔════════════════════════════════════════════════╗
-║   Story Comment's Likes / Replies Routes       ║
-╠════════════════════════════════════════════════╣
-║   - GET /api/stories/comments/:id/replies      ║
-║   - POST /api/stories/comments/:id/toggle-like ║
-╚════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════════╗
+║   Story Comment's Likes / Replies Routes       ║            ║   Confession Comment's Likes / Replies Routes      ║
+╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════════╣
+║   - GET /api/stories/comments/:id/replies      ╠════════════╣   - GET /api/confessions/comments/:id/replies      ║
+║   - POST /api/stories/comments/:id/toggle-like ║            ║   - POST /api/confessions/comments/:id/toggle-like ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════════╝
 
-╔════════════════════════════════════════════════╗
-║   Story Bookmark Routes                        ║
-╠════════════════════════════════════════════════╣
-║   - GET /api/stories/bookmarks/me              ║
-║   - GET /api/stories/:id/bookmark-status       ║
-║   - POST /api/stories/:id/toggle-bookmark      ║
-║   - DELETE /api/stories/:id/bookmark           ║
-╚════════════════════════════════════════════════╝
+╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗
+║   Story Bookmark Routes                        ║            ║   (Optional) Confession Bookmark Routes        ║
+╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣
+║   - GET /api/stories/bookmarks/me              ║            ║   - GET /api/confessions/bookmarks/me          ║
+║   - GET /api/stories/:id/bookmark-status       ╠════════════╣   - GET /api/confessions/:id/bookmark-status   ║
+║   - POST /api/stories/:id/toggle-bookmark      ║            ║   - POST /api/confessions/:id/toggle-bookmark  ║
+║   - DELETE /api/stories/:id/bookmark           ║            ║   - DELETE /api/confessions/:id/bookmark       ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
 ╔════════════════════════════════════════════════╗
 ║   Profile Routes                               ║

@@ -9,8 +9,8 @@ const toggleLikeComment = async (userId, commentId) => {
   const commentObjectId = new ObjectId(commentId);
   const userObjectId = new ObjectId(userId);
 
-  const likesCollection = db.collection("commentLikes");
-  const commentsCollection = db.collection("storyComments");
+  const likesCollection = db.collection("confessionCommentLikes");
+  const commentsCollection = db.collection("confessionComments");
 
   try {
     let toggleResult;
@@ -29,19 +29,7 @@ const toggleLikeComment = async (userId, commentId) => {
 
         const updateResult = await commentsCollection.updateOne(
           { _id: commentObjectId, deletedAt: null },
-          [
-            {
-              $set: {
-                likesCount: {
-                  $cond: [
-                    { $gt: ["$likesCount", 0] },
-                    { $subtract: ["$likesCount", 1] },
-                    0,
-                  ],
-                },
-              },
-            },
-          ],
+          { $inc: { likesCount: -1 } },
           { session },
         );
 

@@ -1,22 +1,22 @@
-const commentModel = require("../models/storyCommentModel");
-const storyModel = require("../models/storyModel");
+const commentModel = require("../models/confessionCommentModel");
+const confessionModel = require("../models/confessionModel");
 
-// POST /stories/:id/comments
+// POST /confessions/:id/comments
 const addComment = async (req, res) => {
   try {
-    const storyId = req.params.id;
+    const confessionId = req.params.id;
     const userId = req.user.userId;
     const { content, parentId } = req.body;
 
-    const story = await storyModel.getStoryById(storyId);
+    const confession = await confessionModel.getConfessionById(confessionId);
 
-    if (!story) {
-      return res.status(404).json({ message: "Story not found" });
+    if (!confession) {
+      return res.status(404).json({ message: "Confession not found" });
     }
 
     const commentId = await commentModel.createComment({
       userId,
-      storyId,
+      confessionId,
       content,
       parentId,
     });
@@ -36,22 +36,22 @@ const addComment = async (req, res) => {
   }
 };
 
-// GET /stories/:id/comments
+// GET /confessions/:id/comments
 const getComments = async (req, res) => {
   try {
-    const storyId = req.params.id;
-    const { cursor } = req.query || null;
+    const confessionId = req.params.id;
+    const { cursor } = req.query;
     const limit = Number.parseInt(req.query.limit, 10) || 10;
     const userId = req.user?.userId || null;
 
-    const story = await storyModel.getStoryById(storyId);
+    const confession = await confessionModel.getConfessionById(confessionId);
 
-    if (!story) {
-      return res.status(404).json({ message: "Story not found" });
+    if (!confession) {
+      return res.status(404).json({ message: "Confession not found" });
     }
 
-    const result = await commentModel.getCommentsByStory(
-      storyId,
+    const result = await commentModel.getCommentsByConfession(
+      confessionId,
       userId,
       limit,
       cursor,
@@ -68,7 +68,7 @@ const getComments = async (req, res) => {
 const getReplies = async (req, res) => {
   try {
     const commentId = req.params.id;
-    const { cursor } = req.query || null;
+    const { cursor } = req.query;
     const limit = Number.parseInt(req.query.limit, 10) || 10;
     const userId = req.user?.userId || null;
 
