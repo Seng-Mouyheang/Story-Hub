@@ -90,11 +90,20 @@ const toggleStoryBookmark = async (userId, storyId) => {
             throw insertError;
           }
         }
-        await bookmarksCollection.deleteOne({
-          userId: userObjectId,
-          storyId: storyObjectId,
-        });
-        savedByCurrentUser = false;
+       } else {
+         try {
+           await bookmarksCollection.insertOne({
+             userId: userObjectId,
+             storyId: storyObjectId,
+             createdAt: new Date(),
+           });
+         } catch (insertError) {
+           if (!isDuplicateBookmarkError(insertError)) {
+             throw insertError;
+           }
+         }
+         savedByCurrentUser = true;
+       }
       }
 
       return {
