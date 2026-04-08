@@ -37,6 +37,7 @@ const toggleConfessionBookmark = async (userId, confessionId) => {
 
   try {
     let savedByCurrentUser = false;
+    let shouldRecheckSavedState = false;
 
     await session.withTransaction(async () => {
       const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
@@ -62,14 +63,24 @@ const toggleConfessionBookmark = async (userId, confessionId) => {
             },
             { session },
           );
+          savedByCurrentUser = true;
         } catch (insertError) {
           if (!isDuplicateBookmarkError(insertError)) {
             throw insertError;
           }
+          shouldRecheckSavedState = true;
         }
-        savedByCurrentUser = true;
       }
     });
+
+    if (shouldRecheckSavedState) {
+      const bookmarksCollection = db.collection(BOOKMARKS_COLLECTION);
+      const existingBookmark = await bookmarksCollection.findOne(
+        { userId: userObjectId, confessionId: confessionObjectId },
+        { projection: { _id: 1 } },
+      );
+      savedByCurrentUser = Boolean(existingBookmark);
+    }
 
     return {
       savedByCurrentUser,
@@ -96,6 +107,8 @@ const toggleConfessionBookmark = async (userId, confessionId) => {
           confessionId: confessionObjectId,
         });
       } else {
+        let shouldRecheckSavedState = false;
+
         try {
           await bookmarksCollection.insertOne({
             userId: userObjectId,
@@ -107,12 +120,16 @@ const toggleConfessionBookmark = async (userId, confessionId) => {
           if (!isDuplicateBookmarkError(insertError)) {
             throw insertError;
           }
+          shouldRecheckSavedState = true;
         }
-        await bookmarksCollection.deleteOne({
-          userId: userObjectId,
-          confessionId: confessionObjectId,
-        });
-        savedByCurrentUser = false;
+
+        if (shouldRecheckSavedState) {
+          const bookmarkAfterConflict = await bookmarksCollection.findOne(
+            { userId: userObjectId, confessionId: confessionObjectId },
+            { projection: { _id: 1 } },
+          );
+          savedByCurrentUser = Boolean(bookmarkAfterConflict);
+        }
       }
       return {
         savedByCurrentUser,
