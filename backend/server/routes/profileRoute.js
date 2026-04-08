@@ -8,11 +8,18 @@ const {
   updateProfileSchema,
   userIdParamSchema,
   followListQuerySchema,
+  accountSearchQuerySchema,
 } = require("../validators/profileValidator");
 
 /* ============================= */
 /*            PUBLIC             */
 /* ============================= */
+
+router.get(
+  "/search/accounts",
+  validate(accountSearchQuerySchema, "query"),
+  profileController.searchAccounts,
+);
 
 router.get(
   "/:userId",

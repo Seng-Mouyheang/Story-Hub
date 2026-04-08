@@ -18,6 +18,30 @@ const getCollection = async () => {
   return db.collection(COLLECTION_NAME);
 };
 
+const REGEX_SPECIAL_CHARACTERS = new Set([
+  "\\",
+  "^",
+  "$",
+  ".",
+  "|",
+  "?",
+  "*",
+  "+",
+  "(",
+  ")",
+  "[",
+  "]",
+  "{",
+  "}",
+]);
+
+const escapeRegex = (value) =>
+  [...value]
+    .map((character) =>
+      REGEX_SPECIAL_CHARACTERS.has(character) ? `\\${character}` : character,
+    )
+    .join("");
+
 const applyFollowCountDelta = async (userId, field, delta, options = {}) => {
   if (!ObjectId.isValid(userId)) {
     throw new Error("Invalid user id");
@@ -119,6 +143,144 @@ const getProfileByUserId = async (userId) => {
   });
 };
 
+const searchProfilesByUsernameOrDisplayName = async (query, limit = 20) => {
+  const collection = await getCollection();
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) {
+    return [];
+  }
+
+  const escapedQuery = escapeRegex(trimmedQuery);
+
+  const pipeline = [
+    {
+      $match: {
+        deletedAt: null,
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        let: { profileUserId: "$userId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$_id", "$$profileUserId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: {
+              username: 1,
+            },
+          },
+        ],
+        as: "user",
+      },
+    },
+    {
+      $unwind: {
+        path: "$user",
+        preserveNullAndEmptyArrays: false,
+      },
+    },
+    {
+      $match: {
+        $or: [
+          { "user.username": { $regex: escapedQuery, $options: "i" } },
+          { displayName: { $regex: escapedQuery, $options: "i" } },
+        ],
+      },
+    },
+    {
+      $addFields: {
+        relevanceScore: {
+          $add: [
+            {
+              $cond: [
+                {
+                  $regexMatch: {
+                    input: "$user.username",
+                    regex: `^${escapedQuery}$`,
+                    options: "i",
+                  },
+                },
+                100,
+                0,
+              ],
+            },
+            {
+              $cond: [
+                {
+                  $regexMatch: {
+                    input: "$user.username",
+                    regex: `^${escapedQuery}`,
+                    options: "i",
+                  },
+                },
+                70,
+                0,
+              ],
+            },
+            {
+              $cond: [
+                {
+                  $regexMatch: {
+                    input: "$displayName",
+                    regex: `^${escapedQuery}$`,
+                    options: "i",
+                  },
+                },
+                60,
+                0,
+              ],
+            },
+            {
+              $cond: [
+                {
+                  $regexMatch: {
+                    input: "$displayName",
+                    regex: `^${escapedQuery}`,
+                    options: "i",
+                  },
+                },
+                40,
+                0,
+              ],
+            },
+          ],
+        },
+      },
+    },
+    {
+      $sort: {
+        relevanceScore: -1,
+        followers: -1,
+        createdAt: 1,
+      },
+    },
+    {
+      $limit: limit,
+    },
+    {
+      $project: {
+        _id: 0,
+        userId: 1,
+        username: "$user.username",
+        displayName: 1,
+        bio: 1,
+        interest: 1,
+        profilePicture: 1,
+        followers: 1,
+        following: 1,
+      },
+    },
+  ];
+
+  return collection.aggregate(pipeline).toArray();
+};
+
 /**
  * Update user profile
  * @param {string} userId
@@ -188,6 +350,7 @@ const decrementFollowing = async (userId, options = {}) =>
 module.exports = {
   createProfile,
   getProfileByUserId,
+  searchProfilesByUsernameOrDisplayName,
   updateProfile,
   incrementFollowers,
   decrementFollowers,

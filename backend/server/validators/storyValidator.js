@@ -58,12 +58,28 @@ const idParamSchema = Joi.object({
   id: Joi.string().pattern(objectIdPattern).required(),
 });
 
-// const paginationSchema = Joi.object({
-//   page: Joi.number().integer().min(1).default(1),
-//   limit: Joi.number().integer().min(1).max(50).default(10),
-// });
+const tagParamSchema = Joi.object({
+  tag: Joi.string().trim().min(1).max(30).required(),
+});
 
 const cursorPaginationSchema = Joi.object({
+  cursor: Joi.string().optional(),
+  limit: Joi.number().integer().min(1).max(50).default(10),
+});
+
+const categorySearchQuerySchema = Joi.object({
+  categories: Joi.alternatives()
+    .try(
+      Joi.array().items(Joi.string().trim().min(1).max(50)).min(1).max(20),
+      Joi.string().trim().min(1).max(500),
+    )
+    .required(),
+  cursor: Joi.string().optional(),
+  limit: Joi.number().integer().min(1).max(50).default(10),
+});
+
+const titleSearchQuerySchema = Joi.object({
+  q: Joi.string().trim().min(2).max(150).required(),
   cursor: Joi.string().optional(),
   limit: Joi.number().integer().min(1).max(50).default(10),
 });
@@ -72,6 +88,8 @@ module.exports = {
   createStorySchema,
   updateStorySchema,
   idParamSchema,
-  // paginationSchema,
+  tagParamSchema,
+  categorySearchQuerySchema,
+  titleSearchQuerySchema,
   cursorPaginationSchema,
 };

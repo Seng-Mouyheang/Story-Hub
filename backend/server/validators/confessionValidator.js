@@ -46,6 +46,10 @@ const idParamSchema = Joi.object({
   id: Joi.string().pattern(objectIdPattern).required(),
 });
 
+const tagParamSchema = Joi.object({
+  tag: Joi.string().trim().min(1).max(30).required(),
+});
+
 const cursorPaginationSchema = Joi.object({
   cursor: Joi.string().optional(),
   limit: Joi.number().integer().min(1).max(50).default(10),
@@ -55,5 +59,6 @@ module.exports = {
   createConfessionSchema,
   updateConfessionSchema,
   idParamSchema,
+  tagParamSchema,
   cursorPaginationSchema,
 };

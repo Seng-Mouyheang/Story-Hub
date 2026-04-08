@@ -18,6 +18,30 @@ const getCollection = async () => {
   return db.collection(COLLECTION_NAME);
 };
 
+const REGEX_SPECIAL_CHARACTERS = new Set([
+  "\\",
+  "^",
+  "$",
+  ".",
+  "|",
+  "?",
+  "*",
+  "+",
+  "(",
+  ")",
+  "[",
+  "]",
+  "{",
+  "}",
+]);
+
+const escapeRegex = (value) =>
+  [...value]
+    .map((character) =>
+      REGEX_SPECIAL_CHARACTERS.has(character) ? `\\${character}` : character,
+    )
+    .join("");
+
 const resolveAuthorDisplayName = (confession, currentUserId = null) => {
   const profileName = confession.author?.displayName || null;
 
@@ -59,7 +83,7 @@ const createConfession = async (confessionData) => {
   return result.insertedId;
 };
 
-const getPublishedConfessions = async (cursor, limit, currentUserId) => {
+const getPublishedConfessions = async (cursor, limit, currentUserId, tag) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
 
@@ -67,6 +91,16 @@ const getPublishedConfessions = async (cursor, limit, currentUserId) => {
     visibility: "public",
     deletedAt: null,
   };
+
+  if (typeof tag === "string" && tag.trim()) {
+    const escapedTag = escapeRegex(tag.trim());
+    matchStage.tags = {
+      $elemMatch: {
+        $regex: `^${escapedTag}$`,
+        $options: "i",
+      },
+    };
+  }
 
   if (cursor && typeof cursor === "string" && cursor.includes("_")) {
     const [createdAtStr, id] = cursor.split("_");
@@ -195,6 +229,15 @@ const getPublishedConfessions = async (cursor, limit, currentUserId) => {
     nextCursor,
     hasMore,
   };
+};
+
+const getPublishedConfessionsByTag = async (
+  tag,
+  cursor,
+  limit,
+  currentUserId,
+) => {
+  return getPublishedConfessions(cursor, limit, currentUserId, tag);
 };
 
 const getConfessionById = async (id, currentUserId = null) => {
@@ -483,6 +526,7 @@ const getUserConfessions = async (userId, cursor, limit) => {
 module.exports = {
   createConfession,
   getPublishedConfessions,
+  getPublishedConfessionsByTag,
   getConfessionById,
   updateConfession,
   deleteConfession,

@@ -13,6 +13,7 @@ const {
   createConfessionSchema,
   updateConfessionSchema,
   idParamSchema,
+  tagParamSchema,
   // paginationSchema,
   cursorPaginationSchema,
 } = require("../validators/confessionValidator");
@@ -32,6 +33,14 @@ router.get(
   optionalAuthenticate,
   validate(cursorPaginationSchema, "query"),
   confessionController.getAllConfessions,
+);
+
+router.get(
+  "/tags/:tag",
+  optionalAuthenticate,
+  validate(tagParamSchema, "params"),
+  validate(cursorPaginationSchema, "query"),
+  confessionController.getConfessionsByTag,
 );
 
 // Get my confessions (auth required)

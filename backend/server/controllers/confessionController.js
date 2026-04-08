@@ -32,6 +32,25 @@ const getAllConfessions = async (req, res) => {
   }
 };
 
+const getConfessionsByTag = async (req, res) => {
+  try {
+    const { cursor } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const result = await confessionModel.getPublishedConfessionsByTag(
+      req.params.tag,
+      cursor,
+      limit,
+      req.user?.userId,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch confessions by tag" });
+  }
+};
+
 const getConfession = async (req, res) => {
   try {
     const confession = await confessionModel.getConfessionById(
@@ -118,6 +137,7 @@ const getMyConfessions = async (req, res) => {
 module.exports = {
   createConfession,
   getAllConfessions,
+  getConfessionsByTag,
   getConfession,
   updateConfession,
   deleteConfession,
