@@ -120,44 +120,45 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   let bookmarkedStoryIds = new Set();
   let followedAuthorIds = new Set();
 
-  if (currentUserId && data.length > 0) {
+  if (currentUserId && ObjectId.isValid(currentUserId) && data.length > 0) {
+    const currentUserObjectId = new ObjectId(currentUserId);
     const storyIds = data.map((story) => story._id);
     const authorIds = [
       ...new Set(data.map((story) => story.authorId.toString())),
     ].map((id) => new ObjectId(id));
 
-    const likes = await db
-      .collection("storyLikes")
-      .find({
-        userId: new ObjectId(currentUserId),
-        storyId: { $in: storyIds },
-      })
-      .project({ storyId: 1 })
-      .toArray();
+    const [likes, bookmarks, follows] = await Promise.all([
+      db
+        .collection("storyLikes")
+        .find({
+          userId: currentUserObjectId,
+          storyId: { $in: storyIds },
+        })
+        .project({ storyId: 1 })
+        .toArray(),
+      db
+        .collection("storyBookmarks")
+        .find({
+          userId: currentUserObjectId,
+          storyId: { $in: storyIds },
+        })
+        .project({ storyId: 1 })
+        .toArray(),
+      db
+        .collection("follows")
+        .find({
+          followerId: currentUserObjectId,
+          followingId: { $in: authorIds },
+        })
+        .project({ followingId: 1 })
+        .toArray(),
+    ]);
 
     likedStoryIds = new Set(likes.map((like) => like.storyId.toString()));
-
-    const bookmarks = await db
-      .collection("storyBookmarks")
-      .find({
-        userId: new ObjectId(currentUserId),
-        storyId: { $in: storyIds },
-      })
-      .project({ storyId: 1 })
-      .toArray();
 
     bookmarkedStoryIds = new Set(
       bookmarks.map((bookmark) => bookmark.storyId.toString()),
     );
-
-    const follows = await db
-      .collection("follows")
-      .find({
-        followerId: new ObjectId(currentUserId),
-        followingId: { $in: authorIds },
-      })
-      .project({ followingId: 1 })
-      .toArray();
 
     followedAuthorIds = new Set(
       follows.map((follow) => follow.followingId.toString()),

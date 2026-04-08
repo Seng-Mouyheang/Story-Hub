@@ -155,11 +155,17 @@ const followUser = async (followerId, followingId) => {
 };
 
 const unfollowUser = async (followerId, followingId) => {
+  assertValidObjectId(followerId, "follower id");
+  assertValidObjectId(followingId, "following id");
+
+  if (String(followerId) === String(followingId)) {
+    return false;
+  }
+
+  const followerObjectId = new ObjectId(followerId);
+  const followingObjectId = new ObjectId(followingId);
+
   const db = await connectToDatabase();
-  const { followerObjectId, followingObjectId } = normalizeFollowIds(
-    followerId,
-    followingId,
-  );
   const client = getClient();
   let session;
 
