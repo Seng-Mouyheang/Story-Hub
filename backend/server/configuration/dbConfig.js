@@ -38,6 +38,24 @@ const connectToDatabase = async () => {
       },
     );
 
+    await db.collection("confessions").createIndex(
+      { createdAt: -1, _id: -1 },
+      {
+        name: "confession_feed_created_cursor_index",
+        partialFilterExpression: {
+          visibility: "public",
+          deletedAt: null,
+        },
+      },
+    );
+
+    await db
+      .collection("confessions")
+      .createIndex(
+        { authorId: 1, updatedAt: -1, _id: -1 },
+        { name: "confession_author_dashboard_index" },
+      );
+
     // Index for author dashboard (sort by updatedAt desc, then _id desc)
     await db
       .collection("stories")
@@ -58,6 +76,15 @@ const connectToDatabase = async () => {
       },
     );
 
+    await db.collection("confessions").createIndex(
+      { deletedAt: 1 },
+      {
+        name: "confessions_deletedAt_ttl",
+        expireAfterSeconds: 60 * 60 * 24 * 30,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
     // For Hard delete Testing
     // await db.collection("storyComments").dropIndex("deletedAt_1").catch(() => {});
 
@@ -66,6 +93,15 @@ const connectToDatabase = async () => {
       { deletedAt: 1 },
       {
         name: "storyComments_deletedAt_ttl",
+        expireAfterSeconds: 60 * 60 * 24 * 7,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
+    await db.collection("confessionComments").createIndex(
+      { deletedAt: 1 },
+      {
+        name: "confessionComments_deletedAt_ttl",
         expireAfterSeconds: 60 * 60 * 24 * 7,
         partialFilterExpression: { deletedAt: { $type: "date" } },
       },
@@ -83,6 +119,20 @@ const connectToDatabase = async () => {
     await db
       .collection("storyLikes")
       .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
+
+    await db
+      .collection("confessionLikes")
+      .createIndex(
+        { userId: 1, confessionId: 1 },
+        { unique: true, name: "unique_user_confession_like" },
+      );
+
+    await db
+      .collection("confessionLikes")
+      .createIndex(
+        { confessionId: 1 },
+        { name: "confessionId_like_lookup_index" },
+      );
 
     // Unique index to prevent duplicate bookmarks by the same user
     await db
@@ -104,6 +154,27 @@ const connectToDatabase = async () => {
     await db
       .collection("storyBookmarks")
       .createIndex({ storyId: 1 }, { name: "bookmark_storyId_lookup_index" });
+
+    await db
+      .collection("confessionBookmarks")
+      .createIndex(
+        { userId: 1, confessionId: 1 },
+        { unique: true, name: "unique_user_confession_bookmark" },
+      );
+
+    await db
+      .collection("confessionBookmarks")
+      .createIndex(
+        { userId: 1, createdAt: -1, _id: -1 },
+        { name: "confession_user_bookmark_cursor_index" },
+      );
+
+    await db
+      .collection("confessionBookmarks")
+      .createIndex(
+        { confessionId: 1 },
+        { name: "bookmark_confessionId_lookup_index" },
+      );
 
     // Prevent duplicate follows for the same follower-following pair
     await db
@@ -138,17 +209,35 @@ const connectToDatabase = async () => {
       _id: -1,
     });
 
+    await db.collection("confessionComments").createIndex({
+      confessionId: 1,
+      parentId: 1,
+      deletedAt: 1,
+      createdAt: -1,
+      _id: -1,
+    });
+
     // For replies comments
     await db
       .collection("storyComments")
       .createIndex({ parentId: 1, deletedAt: 1, createdAt: 1, _id: 1 });
 
+    await db
+      .collection("confessionComments")
+      .createIndex({ parentId: 1, deletedAt: 1, createdAt: 1, _id: 1 });
+
     // For fetching user comments quickly
     await db.collection("storyComments").createIndex({ userId: 1 });
+
+    await db.collection("confessionComments").createIndex({ userId: 1 });
 
     // Optional: prevent duplicate likes per user (if comment likes implemented)
     await db
       .collection("commentLikes")
+      .createIndex({ userId: 1, commentId: 1 }, { unique: true });
+
+    await db
+      .collection("confessionCommentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
     // Unique index to prevent duplicate active profiles for the same user

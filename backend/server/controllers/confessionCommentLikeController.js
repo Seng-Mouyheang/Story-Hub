@@ -1,5 +1,5 @@
-const commentLikeModel = require("../models/commentLikeModel");
-const commentModel = require("../models/storyCommentModel");
+const commentLikeModel = require("../models/confessionCommentLikeModel");
+const commentModel = require("../models/confessionCommentModel");
 
 const toggleLikeComment = async (req, res) => {
   try {
@@ -27,6 +27,5 @@ const toggleLikeComment = async (req, res) => {
 };
 
 module.exports = {
-  // getCommentLikes,
   toggleLikeComment,
 };
