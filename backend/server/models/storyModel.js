@@ -118,9 +118,13 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
 
   let likedStoryIds = new Set();
   let bookmarkedStoryIds = new Set();
+  let followedAuthorIds = new Set();
 
   if (currentUserId && data.length > 0) {
     const storyIds = data.map((story) => story._id);
+    const authorIds = [
+      ...new Set(data.map((story) => story.authorId.toString())),
+    ].map((id) => new ObjectId(id));
 
     const likes = await db
       .collection("storyLikes")
@@ -145,12 +149,26 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
     bookmarkedStoryIds = new Set(
       bookmarks.map((bookmark) => bookmark.storyId.toString()),
     );
+
+    const follows = await db
+      .collection("follows")
+      .find({
+        followerId: new ObjectId(currentUserId),
+        followingId: { $in: authorIds },
+      })
+      .project({ followingId: 1 })
+      .toArray();
+
+    followedAuthorIds = new Set(
+      follows.map((follow) => follow.followingId.toString()),
+    );
   }
 
   const finalData = data.map((story) => ({
     ...story,
     likedByCurrentUser: likedStoryIds.has(story._id.toString()),
     savedByCurrentUser: bookmarkedStoryIds.has(story._id.toString()),
+    followedByCurrentUser: followedAuthorIds.has(story.authorId.toString()),
     authorDisplayName: story.author?.displayName || null,
   }));
 
@@ -173,7 +191,8 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
  * @param {string} id
  */
 
-const getStoryById = async (id) => {
+const getStoryById = async (id, currentUserId = null) => {
+  const db = await connectToDatabase();
   const collection = await getCollection();
 
   const pipeline = [
@@ -212,8 +231,35 @@ const getStoryById = async (id) => {
   const story = await collection.aggregate(pipeline).next();
 
   if (story) {
+    let followedByCurrentUser = false;
+    let savedByCurrentUser = false;
+
+    if (currentUserId && ObjectId.isValid(currentUserId)) {
+      const follow = await db.collection("follows").findOne(
+        {
+          followerId: new ObjectId(currentUserId),
+          followingId: story.authorId,
+        },
+        { projection: { _id: 1 } },
+      );
+
+      followedByCurrentUser = Boolean(follow);
+
+      const bookmark = await db.collection("storyBookmarks").findOne(
+        {
+          userId: new ObjectId(currentUserId),
+          storyId: story._id,
+        },
+        { projection: { _id: 1 } },
+      );
+
+      savedByCurrentUser = Boolean(bookmark);
+    }
+
     return {
       ...story,
+      followedByCurrentUser,
+      savedByCurrentUser,
       authorDisplayName: story.author?.displayName || null,
     };
   }
@@ -418,6 +464,7 @@ const getUserStories = async (userId, cursor, limit) => {
 
   const finalData = data.map((story) => ({
     ...story,
+    followedByCurrentUser: false,
     authorDisplayName: story.author?.displayName || null,
   }));
 

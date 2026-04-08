@@ -227,6 +227,52 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
   const hasMore = stories.length > limit;
   const data = hasMore ? stories.slice(0, limit) : stories;
 
+  let likedStoryIds = new Set();
+  if (data.length > 0) {
+    const storyIds = data.map((story) => story._id);
+
+    const likes = await db
+      .collection("storyLikes")
+      .find({
+        userId: new ObjectId(userId),
+        storyId: { $in: storyIds },
+      })
+      .project({ storyId: 1 })
+      .toArray();
+
+    likedStoryIds = new Set(likes.map((like) => like.storyId.toString()));
+  }
+
+  let followedAuthorIds = new Set();
+  if (data.length > 0) {
+    const authorIds = [
+      ...new Set(data.map((story) => story.authorId.toString())),
+    ]
+      .filter((id) => id !== userId)
+      .map((id) => new ObjectId(id));
+
+    if (authorIds.length > 0) {
+      const follows = await db
+        .collection("follows")
+        .find({
+          followerId: new ObjectId(userId),
+          followingId: { $in: authorIds },
+        })
+        .project({ followingId: 1 })
+        .toArray();
+
+      followedAuthorIds = new Set(
+        follows.map((follow) => follow.followingId.toString()),
+      );
+    }
+  }
+
+  const finalData = data.map((story) => ({
+    ...story,
+    likedByCurrentUser: likedStoryIds.has(story._id.toString()),
+    followedByCurrentUser: followedAuthorIds.has(story.authorId.toString()),
+  }));
+
   let nextCursor = null;
   if (hasMore && data.length > 0) {
     const lastBookmark = data[data.length - 1];
@@ -234,7 +280,7 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
   }
 
   return {
-    data,
+    data: finalData,
     nextCursor,
     hasMore,
   };

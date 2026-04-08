@@ -58,7 +58,12 @@ router.get(
 );
 
 // Public single story (auth optional)
-router.get("/:id", validate(idParamSchema, "params"), storyController.getStory);
+router.get(
+  "/:id",
+  optionalAuthenticate,
+  validate(idParamSchema, "params"),
+  storyController.getStory,
+);
 
 /* ============================= */
 /*            PROTECTED          */

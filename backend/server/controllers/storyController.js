@@ -8,7 +8,7 @@ const createStory = async (req, res) => {
     });
 
     res.status(201).json({ storyId });
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Failed to create story" });
   }
 };
@@ -48,7 +48,10 @@ const getAllStories = async (req, res) => {
 
 const getStory = async (req, res) => {
   try {
-    const story = await storyModel.getStoryById(req.params.id);
+    const story = await storyModel.getStoryById(
+      req.params.id,
+      req.user?.userId,
+    );
 
     if (!story) {
       return res.status(404).json({ message: "Story not found" });
@@ -72,7 +75,7 @@ const getStory = async (req, res) => {
     }
 
     res.json(story);
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Failed to fetch story" });
   }
 };
@@ -121,7 +124,7 @@ const getMyStories = async (req, res) => {
     );
 
     res.json(result);
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Failed to fetch user stories" });
   }
 };
