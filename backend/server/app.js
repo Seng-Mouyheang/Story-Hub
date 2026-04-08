@@ -86,10 +86,29 @@ connectToDatabase()
 ╚════════════════════════════════════════════════╝
 
 ╔════════════════════════════════════════════════╗
+║   Story Bookmark Routes                        ║
+╠════════════════════════════════════════════════╣
+║   - GET /api/stories/bookmarks/me              ║
+║   - GET /api/stories/:id/bookmark-status       ║
+║   - POST /api/stories/:id/toggle-bookmark      ║
+║   - DELETE /api/stories/:id/bookmark           ║
+╚════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════╗
 ║   Profile Routes                               ║
 ╠════════════════════════════════════════════════╣
 ║   - GET /api/profile/:userId                   ║
 ║   - PUT /api/profile/                          ║
+╚════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════╗
+║   Follow Routes                                ║
+╠════════════════════════════════════════════════╣
+║   - POST /api/profile/:userId/follow           ║
+║   - DELETE /api/profile/:userId/follow         ║
+║   - GET /api/profile/:userId/follow/status     ║
+║   - GET /api/profile/:userId/followers         ║
+║   - GET /api/profile/:userId/following         ║
 ╚════════════════════════════════════════════════╝
   `),
     );

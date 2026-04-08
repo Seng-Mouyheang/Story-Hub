@@ -118,32 +118,50 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
 
   let likedStoryIds = new Set();
   let bookmarkedStoryIds = new Set();
+  let followedAuthorIds = new Set();
 
-  if (currentUserId && data.length > 0) {
+  if (currentUserId && ObjectId.isValid(currentUserId) && data.length > 0) {
+    const currentUserObjectId = new ObjectId(currentUserId);
     const storyIds = data.map((story) => story._id);
+    const authorIds = [
+      ...new Set(data.map((story) => story.authorId.toString())),
+    ].map((id) => new ObjectId(id));
 
-    const likes = await db
-      .collection("storyLikes")
-      .find({
-        userId: new ObjectId(currentUserId),
-        storyId: { $in: storyIds },
-      })
-      .project({ storyId: 1 })
-      .toArray();
+    const [likes, bookmarks, follows] = await Promise.all([
+      db
+        .collection("storyLikes")
+        .find({
+          userId: currentUserObjectId,
+          storyId: { $in: storyIds },
+        })
+        .project({ storyId: 1 })
+        .toArray(),
+      db
+        .collection("storyBookmarks")
+        .find({
+          userId: currentUserObjectId,
+          storyId: { $in: storyIds },
+        })
+        .project({ storyId: 1 })
+        .toArray(),
+      db
+        .collection("follows")
+        .find({
+          followerId: currentUserObjectId,
+          followingId: { $in: authorIds },
+        })
+        .project({ followingId: 1 })
+        .toArray(),
+    ]);
 
     likedStoryIds = new Set(likes.map((like) => like.storyId.toString()));
 
-    const bookmarks = await db
-      .collection("storyBookmarks")
-      .find({
-        userId: new ObjectId(currentUserId),
-        storyId: { $in: storyIds },
-      })
-      .project({ storyId: 1 })
-      .toArray();
-
     bookmarkedStoryIds = new Set(
       bookmarks.map((bookmark) => bookmark.storyId.toString()),
+    );
+
+    followedAuthorIds = new Set(
+      follows.map((follow) => follow.followingId.toString()),
     );
   }
 
@@ -151,6 +169,7 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
     ...story,
     likedByCurrentUser: likedStoryIds.has(story._id.toString()),
     savedByCurrentUser: bookmarkedStoryIds.has(story._id.toString()),
+    followedByCurrentUser: followedAuthorIds.has(story.authorId.toString()),
     authorDisplayName: story.author?.displayName || null,
   }));
 
@@ -173,7 +192,8 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
  * @param {string} id
  */
 
-const getStoryById = async (id) => {
+const getStoryById = async (id, currentUserId = null) => {
+  const db = await connectToDatabase();
   const collection = await getCollection();
 
   const pipeline = [
@@ -212,8 +232,47 @@ const getStoryById = async (id) => {
   const story = await collection.aggregate(pipeline).next();
 
   if (story) {
+    let followedByCurrentUser = false;
+    let savedByCurrentUser = false;
+    let likedByCurrentUser = false;
+
+    if (currentUserId && ObjectId.isValid(currentUserId)) {
+      const follow = await db.collection("follows").findOne(
+        {
+          followerId: new ObjectId(currentUserId),
+          followingId: story.authorId,
+        },
+        { projection: { _id: 1 } },
+      );
+
+      followedByCurrentUser = Boolean(follow);
+
+      const bookmark = await db.collection("storyBookmarks").findOne(
+        {
+          userId: new ObjectId(currentUserId),
+          storyId: story._id,
+        },
+        { projection: { _id: 1 } },
+      );
+
+      savedByCurrentUser = Boolean(bookmark);
+
+      const like = await db.collection("storyLikes").findOne(
+        {
+          userId: new ObjectId(currentUserId),
+          storyId: story._id,
+        },
+        { projection: { _id: 1 } },
+      );
+
+      likedByCurrentUser = Boolean(like);
+    }
+
     return {
       ...story,
+      likedByCurrentUser,
+      followedByCurrentUser,
+      savedByCurrentUser,
       authorDisplayName: story.author?.displayName || null,
     };
   }
@@ -291,8 +350,6 @@ const isTransactionUnsupportedError = (error) =>
 const deleteStory = async (id, userId) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
-  const client = getClient();
-  const session = client.startSession();
   const storyObjectId = new ObjectId(id);
   const deletedAt = new Date();
 
@@ -306,6 +363,9 @@ const deleteStory = async (id, userId) => {
   if (story.authorId.toString() !== userId.toString()) {
     throw new Error("Unauthorized");
   }
+
+  const client = getClient();
+  const session = client.startSession();
 
   try {
     await session.withTransaction(async () => {
@@ -417,6 +477,7 @@ const getUserStories = async (userId, cursor, limit) => {
 
   const finalData = data.map((story) => ({
     ...story,
+    followedByCurrentUser: false,
     authorDisplayName: story.author?.displayName || null,
   }));
 

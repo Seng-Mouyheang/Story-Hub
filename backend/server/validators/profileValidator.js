@@ -29,7 +29,13 @@ const userIdParamSchema = Joi.object({
   userId: Joi.string().pattern(objectIdPattern).required(),
 });
 
+const followListQuerySchema = Joi.object({
+  cursor: Joi.string().pattern(objectIdPattern).optional(),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+});
+
 module.exports = {
   updateProfileSchema,
   userIdParamSchema,
+  followListQuerySchema,
 };

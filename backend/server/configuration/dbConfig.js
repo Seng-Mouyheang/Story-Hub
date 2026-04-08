@@ -105,6 +105,30 @@ const connectToDatabase = async () => {
       .collection("storyBookmarks")
       .createIndex({ storyId: 1 }, { name: "bookmark_storyId_lookup_index" });
 
+    // Prevent duplicate follows for the same follower-following pair
+    await db
+      .collection("follows")
+      .createIndex(
+        { followerId: 1, followingId: 1 },
+        { unique: true, name: "unique_follower_following_pair" },
+      );
+
+    // Support quick lookup of users who follow a target user
+    await db
+      .collection("follows")
+      .createIndex(
+        { followingId: 1, _id: -1 },
+        { name: "followers_lookup_index" },
+      );
+
+    // Support quick lookup of users followed by a specific user
+    await db
+      .collection("follows")
+      .createIndex(
+        { followerId: 1, _id: -1 },
+        { name: "following_lookup_index" },
+      );
+
     // For fetching comments per story quickly
     await db.collection("storyComments").createIndex({
       storyId: 1,

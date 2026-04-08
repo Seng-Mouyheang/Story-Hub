@@ -18,6 +18,41 @@ const getCollection = async () => {
   return db.collection(COLLECTION_NAME);
 };
 
+const applyFollowCountDelta = async (userId, field, delta, options = {}) => {
+  if (!ObjectId.isValid(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  if (!["followers", "following"].includes(field)) {
+    throw new Error("Invalid profile follow field");
+  }
+
+  const collection = await getCollection();
+  const updatePipeline = [
+    {
+      $set: {
+        [field]: {
+          $max: [0, { $add: [{ $ifNull: [`$${field}`, 0] }, delta] }],
+        },
+        updatedAt: new Date(),
+      },
+    },
+  ];
+
+  const result = await collection.updateOne(
+    {
+      userId: new ObjectId(userId),
+      deletedAt: null,
+    },
+    updatePipeline,
+    { session: options.session },
+  );
+
+  if (!result.matchedCount) {
+    throw new Error("Profile not found");
+  }
+};
+
 /**
  * Create user profile
  * @param {string} userId
@@ -138,8 +173,24 @@ const updateProfile = async (userId, profileData) => {
   );
 };
 
+const incrementFollowers = async (userId, options = {}) =>
+  applyFollowCountDelta(userId, "followers", 1, options);
+
+const decrementFollowers = async (userId, options = {}) =>
+  applyFollowCountDelta(userId, "followers", -1, options);
+
+const incrementFollowing = async (userId, options = {}) =>
+  applyFollowCountDelta(userId, "following", 1, options);
+
+const decrementFollowing = async (userId, options = {}) =>
+  applyFollowCountDelta(userId, "following", -1, options);
+
 module.exports = {
   createProfile,
   getProfileByUserId,
   updateProfile,
+  incrementFollowers,
+  decrementFollowers,
+  incrementFollowing,
+  decrementFollowing,
 };

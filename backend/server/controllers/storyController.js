@@ -8,24 +8,10 @@ const createStory = async (req, res) => {
     });
 
     res.status(201).json({ storyId });
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Failed to create story" });
   }
 };
-
-// Offset Pagination
-// const getAllStories = async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-
-//     const stories = await storyModel.getPublishedStories(page, limit);
-
-//     res.json(stories);
-//   } catch (error) {
-//     res.status(500).json({ message: "Failed to fetch stories" });
-//   }
-// };
 
 // Cursor Pagination
 const getAllStories = async (req, res) => {
@@ -48,7 +34,10 @@ const getAllStories = async (req, res) => {
 
 const getStory = async (req, res) => {
   try {
-    const story = await storyModel.getStoryById(req.params.id);
+    const story = await storyModel.getStoryById(
+      req.params.id,
+      req.user?.userId,
+    );
 
     if (!story) {
       return res.status(404).json({ message: "Story not found" });
@@ -72,7 +61,7 @@ const getStory = async (req, res) => {
     }
 
     res.json(story);
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Failed to fetch story" });
   }
 };
@@ -121,7 +110,7 @@ const getMyStories = async (req, res) => {
     );
 
     res.json(result);
-  } catch (error) {
+  } catch {
     res.status(500).json({ message: "Failed to fetch user stories" });
   }
 };
