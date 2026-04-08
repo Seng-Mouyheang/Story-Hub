@@ -17,6 +17,22 @@ const getProfile = async (req, res) => {
   }
 };
 
+const searchAccounts = async (req, res) => {
+  try {
+    const { q, limit = 20 } = req.query;
+
+    const accounts = await profileModel.searchProfilesByUsernameOrDisplayName(
+      q,
+      limit,
+    );
+
+    res.json({ data: accounts });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to search accounts" });
+  }
+};
+
 const updateProfile = async (req, res) => {
   try {
     await profileModel.updateProfile(req.user.userId, req.body);
@@ -32,5 +48,6 @@ const updateProfile = async (req, res) => {
 
 module.exports = {
   getProfile,
+  searchAccounts,
   updateProfile,
 };

@@ -13,7 +13,9 @@ const {
   createStorySchema,
   updateStorySchema,
   idParamSchema,
-  // paginationSchema,
+  tagParamSchema,
+  categorySearchQuerySchema,
+  titleSearchQuerySchema,
   cursorPaginationSchema,
 } = require("../validators/storyValidator");
 
@@ -26,19 +28,41 @@ const {
 /*            PUBLIC             */
 /* ============================= */
 
-// Offset Pagination
-// router.get(
-//   "/",
-//   validate(paginationSchema, "query"),
-//   storyController.getAllStories,
-// );
-
 // Cursor Pagination
 router.get(
   "/",
   optionalAuthenticate,
   validate(cursorPaginationSchema, "query"),
   storyController.getAllStories,
+);
+
+router.get(
+  "/tags/:tag",
+  optionalAuthenticate,
+  validate(tagParamSchema, "params"),
+  validate(cursorPaginationSchema, "query"),
+  storyController.getStoriesByTag,
+);
+
+router.get(
+  "/categories",
+  optionalAuthenticate,
+  validate(categorySearchQuerySchema, "query"),
+  storyController.getStoriesByCategories,
+);
+
+router.get(
+  "/interests/me",
+  authenticate,
+  validate(cursorPaginationSchema, "query"),
+  storyController.getStoriesByMyInterests,
+);
+
+router.get(
+  "/search/title",
+  optionalAuthenticate,
+  validate(titleSearchQuerySchema, "query"),
+  storyController.getStoriesByTitle,
 );
 
 // Get my stories (auth required)
@@ -97,22 +121,6 @@ router.delete(
 /* ============================= */
 /*       PUBLIC LIKE ROUTE       */
 /* ============================= */
-
-// Like a story
-// router.post(
-//   "/:id/like",
-//   authenticate,
-//   validate(idParamSchema, "params"),
-//   storyLikeController.likeStory,
-// );
-
-// Unlike a story
-// router.delete(
-//   "/:id/like",
-//   authenticate,
-//   validate(idParamSchema, "params"),
-//   storyLikeController.unlikeStory,
-// );
 
 // Get story likes (auth optional to show if current user liked it)
 router.get(
@@ -209,18 +217,6 @@ router.delete(
   validate(idParamSchema, "params"),
   storyCommentController.deleteComment,
 );
-
-/* ============================= */
-/*   PUBLIC COMMENT LIKE ROUTE   */
-/* ============================= */
-
-// Get comment likes (auth optional to show if current user liked it)
-// router.get(
-//   "/comments/:id/likes",
-//   optionalAuthenticate, // important
-//   validate(idParamSchema, "params"),
-//   commentLikeController.getCommentLikes,
-// );
 
 /* ============================= */
 /* PROTECTED COMMENT LIKE ROUTE  */

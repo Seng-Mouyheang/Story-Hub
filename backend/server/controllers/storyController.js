@@ -1,4 +1,21 @@
 const storyModel = require("../models/storyModel");
+const profileModel = require("../models/profileModel");
+
+const parseCategoryQuery = (categoriesInput) => {
+  if (Array.isArray(categoriesInput)) {
+    return [...new Set(categoriesInput.map((item) => item.trim()))].filter(
+      Boolean,
+    );
+  }
+
+  if (typeof categoriesInput !== "string") {
+    return [];
+  }
+
+  return [...new Set(categoriesInput.split(",").map((item) => item.trim()))]
+    .filter(Boolean)
+    .slice(0, 20);
+};
 
 const createStory = async (req, res) => {
   try {
@@ -29,6 +46,101 @@ const getAllStories = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: error.message });
+  }
+};
+
+const getStoriesByTag = async (req, res) => {
+  try {
+    const { cursor } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const result = await storyModel.getPublishedStoriesByTag(
+      req.params.tag,
+      cursor,
+      limit,
+      req.user?.userId,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch stories by tag" });
+  }
+};
+
+const getStoriesByCategories = async (req, res) => {
+  try {
+    const { cursor, categories } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+    const parsedCategories = parseCategoryQuery(categories);
+
+    const result = await storyModel.getPublishedStoriesByCategories(
+      parsedCategories,
+      cursor,
+      limit,
+      req.user?.userId,
+    );
+
+    res.json({
+      ...result,
+      categories: parsedCategories,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch stories by categories" });
+  }
+};
+
+const getStoriesByMyInterests = async (req, res) => {
+  try {
+    const { cursor } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const profile = await profileModel.getProfileByUserId(req.user.userId);
+    const interests = parseCategoryQuery(profile?.interest || []);
+
+    if (!interests.length) {
+      return res.json({
+        data: [],
+        nextCursor: null,
+        hasMore: false,
+        interests,
+      });
+    }
+
+    const result = await storyModel.getPublishedStoriesByCategories(
+      interests,
+      cursor,
+      limit,
+      req.user.userId,
+    );
+
+    res.json({
+      ...result,
+      interests,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch stories by interests" });
+  }
+};
+
+const getStoriesByTitle = async (req, res) => {
+  try {
+    const { cursor, q } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const result = await storyModel.getPublishedStoriesByTitle(
+      q,
+      cursor,
+      limit,
+      req.user?.userId,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch stories by title" });
   }
 };
 
@@ -118,9 +230,12 @@ const getMyStories = async (req, res) => {
 module.exports = {
   createStory,
   getAllStories,
+  getStoriesByTag,
+  getStoriesByCategories,
+  getStoriesByMyInterests,
+  getStoriesByTitle,
   getStory,
   updateStory,
   deleteStory,
-
   getMyStories,
 };

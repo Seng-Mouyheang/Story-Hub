@@ -6,6 +6,7 @@ const authRoutes = require("./routes/authRoutes");
 const storyRoutes = require("./routes/storyRoutes");
 const confessionRoutes = require("./routes/confessionRoutes");
 const profileRoutes = require("./routes/profileRoute");
+const searchRoutes = require("./routes/searchRoutes");
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -32,6 +33,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/stories", storyRoutes);
 app.use("/api/confessions", confessionRoutes);
 app.use("/api/profile", profileRoutes);
+app.use("/api/search", searchRoutes);
 
 // Connect to the database before starting the server
 connectToDatabase()
@@ -96,17 +98,17 @@ connectToDatabase()
 ║   - DELETE /api/stories/:id/bookmark           ║            ║   - DELETE /api/confessions/:id/bookmark       ║
 ╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
-╔════════════════════════════════════════════════╗
-║   Profile Routes                               ║
-╠════════════════════════════════════════════════╣
-║   - GET /api/profile/:userId                   ║
-║   - PUT /api/profile/                          ║
-╚════════════════════════════════════════════════╝
-
-╔════════════════════════════════════════════════╗
-║   Follow Routes                                ║
-╠════════════════════════════════════════════════╣
-║   - POST /api/profile/:userId/follow           ║
+╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗   
+║   Profile Routes                               ║            ║   Search Routes                                ║
+╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣
+║   - GET /api/profile/:userId                   ║            ║   - GET /api/search/                           ║
+║   - PUT /api/profile/                          ║            ║   - GET /api/profile/search/accounts           ║
+╚════════════════════════════════════════════════╝            ║   - GET /api/stories/search/titles             ║
+                                                              ║   - GET /api/stories/tags/:tag                 ║
+╔════════════════════════════════════════════════╗            ║   - GET /api/confessions/tags/:tag             ║
+║   Follow Routes                                ║            ║   - GET /api/stories/categories                ║
+╠════════════════════════════════════════════════╣            ║   - GET /api/stories/interests/me              ║           
+║   - POST /api/profile/:userId/follow           ║            ╚════════════════════════════════════════════════╝
 ║   - DELETE /api/profile/:userId/follow         ║
 ║   - GET /api/profile/:userId/follow/status     ║
 ║   - GET /api/profile/:userId/followers         ║

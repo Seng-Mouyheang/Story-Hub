@@ -34,8 +34,14 @@ const followListQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(20),
 });
 
+const accountSearchQuerySchema = Joi.object({
+  q: Joi.string().trim().min(2).max(50).required(),
+  limit: Joi.number().integer().min(1).max(50).default(20),
+});
+
 module.exports = {
   updateProfileSchema,
   userIdParamSchema,
   followListQuerySchema,
+  accountSearchQuerySchema,
 };

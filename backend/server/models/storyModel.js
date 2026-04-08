@@ -19,67 +19,41 @@ const getCollection = async () => {
   return db.collection(COLLECTION_NAME);
 };
 
-/**
- * Create a new story
- * @param {Object} storyData
- * @returns {ObjectId}
- */
+const REGEX_SPECIAL_CHARACTERS = new Set([
+  "\\",
+  "^",
+  "$",
+  ".",
+  "|",
+  "?",
+  "*",
+  "+",
+  "(",
+  ")",
+  "[",
+  "]",
+  "{",
+  "}",
+]);
 
-const createStory = async (storyData) => {
-  const collection = await getCollection();
-  const wordCount = storyData.content.trim().split(/\s+/).length;
-  const readingTime = Math.ceil(wordCount / 200); // 200 wpm average
+const escapeRegex = (value) =>
+  [...value]
+    .map((character) =>
+      REGEX_SPECIAL_CHARACTERS.has(character) ? `\\${character}` : character,
+    )
+    .join("");
 
-  const story = {
-    authorId: new ObjectId(storyData.authorId),
-    title: storyData.title,
-    summary: storyData.summary,
-    content: storyData.content,
-    genres: storyData.genres || [],
-    tags: storyData.tags || [],
-    visibility: storyData.visibility || "private",
-    status: storyData.status || "draft",
-    views: 0,
-    likesCount: 0,
-    commentCount: 0,
-    wordCount,
-    readingTime,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    publishedAt: storyData.status === "published" ? new Date() : null,
-    deletedAt: null,
-  };
-
-  const result = await collection.insertOne(story);
-  return result.insertedId;
-};
-
-// Cursor Pagination
-const getPublishedStories = async (cursor, limit, currentUserId) => {
-  const db = await connectToDatabase();
-  const collection = await getCollection();
-
-  const matchStage = {
-    status: "published",
-    visibility: "public",
-    deletedAt: null,
-  };
-
-  // If cursor exists, extract values
-  if (cursor) {
-    const [publishedAtStr, id] = cursor.split("_");
-
-    matchStage.$or = [
-      {
-        publishedAt: { $lt: new Date(publishedAtStr) },
-      },
-      {
-        publishedAt: new Date(publishedAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+const normalizeCategoryList = (categories) => {
+  if (!Array.isArray(categories)) {
+    return [];
   }
 
+  return [...new Set(categories.map((category) => category.trim()))].filter(
+    Boolean,
+  );
+};
+
+const buildPublishedStoriesPipeline = (matchStage, limit) => {
   const pipeline = [
     { $match: matchStage },
     { $sort: { publishedAt: -1, _id: -1 } },
@@ -110,9 +84,10 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
     },
   ];
 
-  const stories = await collection.aggregate(pipeline).toArray();
+  return pipeline;
+};
 
-  // Handle limit + 1 logic
+const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
   const hasMore = stories.length > limit;
   const data = hasMore ? stories.slice(0, limit) : stories;
 
@@ -185,6 +160,188 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
     nextCursor,
     hasMore,
   };
+};
+
+/**
+ * Create a new story
+ * @param {Object} storyData
+ * @returns {ObjectId}
+ */
+
+const createStory = async (storyData) => {
+  const collection = await getCollection();
+  const wordCount = storyData.content.trim().split(/\s+/).length;
+  const readingTime = Math.ceil(wordCount / 200); // 200 wpm average
+
+  const story = {
+    authorId: new ObjectId(storyData.authorId),
+    title: storyData.title,
+    summary: storyData.summary,
+    content: storyData.content,
+    genres: storyData.genres || [],
+    tags: storyData.tags || [],
+    visibility: storyData.visibility || "private",
+    status: storyData.status || "draft",
+    views: 0,
+    likesCount: 0,
+    commentCount: 0,
+    wordCount,
+    readingTime,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    publishedAt: storyData.status === "published" ? new Date() : null,
+    deletedAt: null,
+  };
+
+  const result = await collection.insertOne(story);
+  return result.insertedId;
+};
+
+// Cursor Pagination - Main feed (no filters)
+const getPublishedStories = async (cursor, limit, currentUserId) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+
+  const matchStage = {
+    status: "published",
+    visibility: "public",
+    deletedAt: null,
+  };
+
+  // If cursor exists, extract values
+  if (cursor) {
+    const [publishedAtStr, id] = cursor.split("_");
+
+    matchStage.$or = [
+      {
+        publishedAt: { $lt: new Date(publishedAtStr) },
+      },
+      {
+        publishedAt: new Date(publishedAtStr),
+        _id: { $lt: new ObjectId(id) },
+      },
+    ];
+  }
+
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+};
+
+const getPublishedStoriesByTag = async (tag, cursor, limit, currentUserId) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+
+  const escapedTag = escapeRegex(tag.trim());
+  const matchStage = {
+    status: "published",
+    visibility: "public",
+    deletedAt: null,
+    tags: {
+      $elemMatch: {
+        $regex: `^${escapedTag}$`,
+        $options: "i",
+      },
+    },
+  };
+
+  if (cursor) {
+    const [publishedAtStr, id] = cursor.split("_");
+    matchStage.$or = [
+      {
+        publishedAt: { $lt: new Date(publishedAtStr) },
+      },
+      {
+        publishedAt: new Date(publishedAtStr),
+        _id: { $lt: new ObjectId(id) },
+      },
+    ];
+  }
+
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+};
+
+const getPublishedStoriesByCategories = async (
+  categories,
+  cursor,
+  limit,
+  currentUserId,
+) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+
+  const normalizedCategories = normalizeCategoryList(categories);
+  const matchStage = {
+    status: "published",
+    visibility: "public",
+    deletedAt: null,
+  };
+
+  if (normalizedCategories.length > 0) {
+    matchStage.genres = {
+      $in: normalizedCategories.map(
+        (category) => new RegExp(`^${escapeRegex(category)}$`, "i"),
+      ),
+    };
+  }
+
+  if (cursor) {
+    const [publishedAtStr, id] = cursor.split("_");
+    matchStage.$or = [
+      {
+        publishedAt: { $lt: new Date(publishedAtStr) },
+      },
+      {
+        publishedAt: new Date(publishedAtStr),
+        _id: { $lt: new ObjectId(id) },
+      },
+    ];
+  }
+
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+};
+
+const getPublishedStoriesByTitle = async (
+  title,
+  cursor,
+  limit,
+  currentUserId,
+) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+
+  const escapedTitle = escapeRegex(title.trim());
+  const matchStage = {
+    status: "published",
+    visibility: "public",
+    deletedAt: null,
+    title: { $regex: escapedTitle, $options: "i" },
+  };
+
+  if (cursor) {
+    const [publishedAtStr, id] = cursor.split("_");
+    matchStage.$or = [
+      {
+        publishedAt: { $lt: new Date(publishedAtStr) },
+      },
+      {
+        publishedAt: new Date(publishedAtStr),
+        _id: { $lt: new ObjectId(id) },
+      },
+    ];
+  }
+
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
 };
 
 /**
@@ -498,10 +655,12 @@ const getUserStories = async (userId, cursor, limit) => {
 module.exports = {
   createStory,
   getPublishedStories,
+  getPublishedStoriesByTag,
+  getPublishedStoriesByCategories,
+  getPublishedStoriesByTitle,
   getStoryById,
   updateStory,
   deleteStory,
   incrementViews,
-
   getUserStories,
 };
