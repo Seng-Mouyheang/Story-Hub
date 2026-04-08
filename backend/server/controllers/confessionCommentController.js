@@ -40,7 +40,7 @@ const addComment = async (req, res) => {
 const getComments = async (req, res) => {
   try {
     const confessionId = req.params.id;
-    const { cursor } = req.query || null;
+    const { cursor } = req.query;
     const limit = Number.parseInt(req.query.limit, 10) || 10;
     const userId = req.user?.userId || null;
 
@@ -68,7 +68,7 @@ const getComments = async (req, res) => {
 const getReplies = async (req, res) => {
   try {
     const commentId = req.params.id;
-    const { cursor } = req.query || null;
+    const { cursor } = req.query;
     const limit = Number.parseInt(req.query.limit, 10) || 10;
     const userId = req.user?.userId || null;
 

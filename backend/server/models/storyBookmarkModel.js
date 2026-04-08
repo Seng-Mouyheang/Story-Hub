@@ -90,7 +90,11 @@ const toggleStoryBookmark = async (userId, storyId) => {
             throw insertError;
           }
         }
-        savedByCurrentUser = true;
+        await bookmarksCollection.deleteOne({
+          userId: userObjectId,
+          storyId: storyObjectId,
+        });
+        savedByCurrentUser = false;
       }
 
       return {

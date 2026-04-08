@@ -28,7 +28,7 @@ const toggleLikeComment = async (userId, commentId) => {
         );
 
         const updateResult = await commentsCollection.updateOne(
-          { _id: commentObjectId, likesCount: { $gt: 0 } },
+          { _id: commentObjectId, deletedAt: null },
           { $inc: { likesCount: -1 } },
           { session },
         );

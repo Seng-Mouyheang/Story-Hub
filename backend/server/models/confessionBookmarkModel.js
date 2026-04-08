@@ -108,9 +108,12 @@ const toggleConfessionBookmark = async (userId, confessionId) => {
             throw insertError;
           }
         }
-        savedByCurrentUser = true;
+        await bookmarksCollection.deleteOne({
+          userId: userObjectId,
+          confessionId: confessionObjectId,
+        });
+        savedByCurrentUser = false;
       }
-
       return {
         savedByCurrentUser,
         confessionId,

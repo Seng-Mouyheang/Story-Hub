@@ -25,11 +25,11 @@ const toggleLikeConfession = async (req, res) => {
   try {
     const confession = await confessionModel.getConfessionById(req.params.id);
 
-    if (
-      !confession ||
-      confession?.visibility !== "public" ||
-      confession.deletedAt
-    ) {
+    if (!confession) {
+      return res.status(404).json({ message: "Confession not found" });
+    }
+
+    if (confession.visibility !== "public") {
       return res.status(403).json({ message: "Cannot like this confession" });
     }
 

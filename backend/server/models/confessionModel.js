@@ -388,10 +388,10 @@ const deleteConfession = async (id, userId) => {
 
       return { success: true };
     } catch (fallbackError) {
-      await collection
-        .updateOne({ _id: confessionObjectId }, { $set: { deletedAt: null } })
-        .catch(() => {});
-
+      console.error("Confession delete fallback failed", {
+        confessionObjectId: confessionObjectId.toString(),
+        error: fallbackError,
+      });
       throw fallbackError;
     }
   } finally {

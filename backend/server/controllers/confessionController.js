@@ -28,7 +28,7 @@ const getAllConfessions = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: "Failed to fetch confessions" });
   }
 };
 

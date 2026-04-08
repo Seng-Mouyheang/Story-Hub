@@ -44,11 +44,17 @@ const toggleLikeStory = async (userId, storyId) => {
           { session },
         );
 
-        await storiesCollection.updateOne(
-          { _id: storyObjectId },
+        const updateResult = await storiesCollection.updateOne(
+          { _id: storyObjectId, deletedAt: null },
           { $inc: { likesCount: 1 } },
           { session },
         );
+
+        if (updateResult.matchedCount === 0) {
+          const notFoundError = new Error("Story not found");
+          notFoundError.code = "STORY_NOT_FOUND";
+          throw notFoundError;
+        }
 
         result = { likedByCurrentUser: true };
       }

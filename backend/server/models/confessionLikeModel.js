@@ -44,11 +44,17 @@ const toggleLikeConfession = async (userId, confessionId) => {
           { session },
         );
 
-        await confessionsCollection.updateOne(
-          { _id: confessionObjectId },
+        const updateResult = await confessionsCollection.updateOne(
+          { _id: confessionObjectId, deletedAt: null },
           { $inc: { likesCount: 1 } },
           { session },
         );
+
+        if (updateResult.matchedCount === 0) {
+          const notFoundError = new Error("Confession not found");
+          notFoundError.code = "CONFESSION_NOT_FOUND";
+          throw notFoundError;
+        }
 
         result = { likedByCurrentUser: true };
       }
