@@ -2,13 +2,17 @@ const followModel = require("../models/followModel");
 const profileModel = require("../models/profileModel");
 
 const FOLLOW_LIST_DEFAULT_LIMIT = 20;
+const FOLLOW_LIST_MAX_LIMIT = 100;
 
 const parseListOptions = (query = {}) => {
-  const limit = Number.parseInt(query.limit, 10);
+  const parsedLimit = Number.parseInt(query.limit, 10);
+  const limit = Number.isNaN(parsedLimit)
+    ? FOLLOW_LIST_DEFAULT_LIMIT
+    : Math.max(1, Math.min(parsedLimit, FOLLOW_LIST_MAX_LIMIT));
 
   return {
     cursor: query.cursor || null,
-    limit: Number.isNaN(limit) ? FOLLOW_LIST_DEFAULT_LIMIT : limit,
+    limit,
   };
 };
 
@@ -117,6 +121,19 @@ const unfollowUser = async (req, res) => {
 
 const getFollowStatus = async (req, res) => {
   try {
+    const targetProfile = await profileModel.getProfileByUserId(
+      req.params.userId,
+    );
+    if (!targetProfile) {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    const userProfile = await profileModel.getProfileByUserId(req.user.userId);
+    if (!userProfile) {
+      return res
+        .status(404)
+        .json({ message: "Current user profile not found" });
+    }
     const following = await followModel.isFollowingUser(
       req.user.userId,
       req.params.userId,
@@ -132,6 +149,20 @@ const getFollowStatus = async (req, res) => {
 
     if (error.message === "You cannot follow yourself") {
       return res.status(400).json({ message: error.message });
+    }
+
+    if (error.message === "Profile not found") {
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    if (error.message === "Follower profile not found") {
+      return res
+        .status(404)
+        .json({ message: "Current user profile not found" });
+    }
+
+    if (error.message === "Following profile not found") {
+      return res.status(404).json({ message: "Profile not found" });
     }
 
     if (error.message.startsWith("Invalid ")) {

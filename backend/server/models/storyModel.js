@@ -233,6 +233,7 @@ const getStoryById = async (id, currentUserId = null) => {
   if (story) {
     let followedByCurrentUser = false;
     let savedByCurrentUser = false;
+    let likedByCurrentUser = false;
 
     if (currentUserId && ObjectId.isValid(currentUserId)) {
       const follow = await db.collection("follows").findOne(
@@ -254,10 +255,21 @@ const getStoryById = async (id, currentUserId = null) => {
       );
 
       savedByCurrentUser = Boolean(bookmark);
+
+      const like = await db.collection("storyLikes").findOne(
+        {
+          userId: new ObjectId(currentUserId),
+          storyId: story._id,
+        },
+        { projection: { _id: 1 } },
+      );
+
+      likedByCurrentUser = Boolean(like);
     }
 
     return {
       ...story,
+      likedByCurrentUser,
       followedByCurrentUser,
       savedByCurrentUser,
       authorDisplayName: story.author?.displayName || null,

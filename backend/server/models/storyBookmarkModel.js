@@ -2,6 +2,7 @@ const { connectToDatabase, getClient } = require("../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
 
 const BOOKMARKS_COLLECTION = "storyBookmarks";
+const isDuplicateBookmarkError = (error) => error?.code === 11000;
 
 const isTransactionUnsupportedError = (error) =>
   /Transaction numbers are only allowed on a replica set member or mongos|Transaction not supported|does not support transactions|replica set/i.test(
@@ -34,14 +35,20 @@ const toggleStoryBookmark = async (userId, storyId) => {
         );
         savedByCurrentUser = false;
       } else {
-        await bookmarksCollection.insertOne(
-          {
-            userId: userObjectId,
-            storyId: storyObjectId,
-            createdAt: new Date(),
-          },
-          { session },
-        );
+        try {
+          await bookmarksCollection.insertOne(
+            {
+              userId: userObjectId,
+              storyId: storyObjectId,
+              createdAt: new Date(),
+            },
+            { session },
+          );
+        } catch (insertError) {
+          if (!isDuplicateBookmarkError(insertError)) {
+            throw insertError;
+          }
+        }
         savedByCurrentUser = true;
       }
     });
@@ -70,13 +77,19 @@ const toggleStoryBookmark = async (userId, storyId) => {
           userId: userObjectId,
           storyId: storyObjectId,
         });
-        savedByCurrentUser = false;
       } else {
-        await bookmarksCollection.insertOne({
-          userId: userObjectId,
-          storyId: storyObjectId,
-          createdAt: new Date(),
-        });
+        try {
+          await bookmarksCollection.insertOne({
+            userId: userObjectId,
+            storyId: storyObjectId,
+            createdAt: new Date(),
+          });
+          savedByCurrentUser = true;
+        } catch (insertError) {
+          if (!isDuplicateBookmarkError(insertError)) {
+            throw insertError;
+          }
+        }
         savedByCurrentUser = true;
       }
 

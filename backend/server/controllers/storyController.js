@@ -13,20 +13,6 @@ const createStory = async (req, res) => {
   }
 };
 
-// Offset Pagination
-// const getAllStories = async (req, res) => {
-//   try {
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-
-//     const stories = await storyModel.getPublishedStories(page, limit);
-
-//     res.json(stories);
-//   } catch (error) {
-//     res.status(500).json({ message: "Failed to fetch stories" });
-//   }
-// };
-
 // Cursor Pagination
 const getAllStories = async (req, res) => {
   try {

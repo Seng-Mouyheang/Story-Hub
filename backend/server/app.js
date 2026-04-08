@@ -88,6 +88,7 @@ connectToDatabase()
 ╔════════════════════════════════════════════════╗
 ║   Story Bookmark Routes                        ║
 ╠════════════════════════════════════════════════╣
+║   - GET /api/stories/bookmarks/me              ║
 ║   - GET /api/stories/:id/bookmark-status       ║
 ║   - POST /api/stories/:id/toggle-bookmark      ║
 ║   - DELETE /api/stories/:id/bookmark           ║

@@ -32,6 +32,11 @@ const normalizeFollowIds = (followerId, followingId) => {
 
 const isDuplicateFollowError = (error) => error?.code === 11000;
 
+const isTransactionUnsupportedError = (error) =>
+  /Transaction numbers are only allowed on a replica set member or mongos|Transaction not supported|does not support transactions|replica set/i.test(
+    error?.message || "",
+  );
+
 const assertProfilesExist = async (
   db,
   followerObjectId,
@@ -40,16 +45,15 @@ const assertProfilesExist = async (
 ) => {
   const profilesCollection = db.collection(PROFILES_COLLECTION);
 
-  const [followerProfile, followingProfile] = await Promise.all([
-    profilesCollection.findOne(
-      { userId: followerObjectId, deletedAt: null },
-      { projection: { _id: 1 }, session },
-    ),
-    profilesCollection.findOne(
-      { userId: followingObjectId, deletedAt: null },
-      { projection: { _id: 1 }, session },
-    ),
-  ]);
+  const followerProfile = await profilesCollection.findOne(
+    { userId: followerObjectId, deletedAt: null },
+    { projection: { _id: 1 }, session },
+  );
+
+  const followingProfile = await profilesCollection.findOne(
+    { userId: followingObjectId, deletedAt: null },
+    { projection: { _id: 1 }, session },
+  );
 
   if (!followerProfile) {
     throw new Error("Follower profile not found");
@@ -62,15 +66,16 @@ const assertProfilesExist = async (
 
 const followUser = async (followerId, followingId) => {
   const db = await connectToDatabase();
-  const client = getClient();
-  const session = client.startSession();
-
   const { followerObjectId, followingObjectId } = normalizeFollowIds(
     followerId,
     followingId,
   );
+  const client = getClient();
+  let session;
 
   try {
+    session = client.startSession();
+
     await session.withTransaction(async () => {
       const followsCollection = db.collection(COLLECTION_NAME);
 
@@ -107,23 +112,60 @@ const followUser = async (followerId, followingId) => {
         followingId,
       };
     }
-    throw error;
+
+    if (!isTransactionUnsupportedError(error)) {
+      throw error;
+    }
+
+    const followsCollection = db.collection(COLLECTION_NAME);
+
+    await assertProfilesExist(db, followerObjectId, followingObjectId);
+
+    try {
+      await followsCollection.insertOne({
+        followerId: followerObjectId,
+        followingId: followingObjectId,
+        createdAt: new Date(),
+      });
+    } catch (fallbackError) {
+      if (isDuplicateFollowError(fallbackError)) {
+        return {
+          following: true,
+          followerId,
+          followingId,
+        };
+      }
+
+      throw fallbackError;
+    }
+
+    await incrementFollowing(followerId);
+    await incrementFollowers(followingId);
+
+    return {
+      following: true,
+      followerId,
+      followingId,
+    };
   } finally {
-    await session.endSession();
+    if (session) {
+      await session.endSession();
+    }
   }
 };
 
 const unfollowUser = async (followerId, followingId) => {
   const db = await connectToDatabase();
-  const client = getClient();
-  const session = client.startSession();
-
   const { followerObjectId, followingObjectId } = normalizeFollowIds(
     followerId,
     followingId,
   );
+  const client = getClient();
+  let session;
 
   try {
+    session = client.startSession();
+
     let shouldDecrement = false;
 
     await session.withTransaction(async () => {
@@ -159,17 +201,48 @@ const unfollowUser = async (followerId, followingId) => {
       followerId,
       followingId,
     };
+  } catch (error) {
+    if (!isTransactionUnsupportedError(error)) {
+      throw error;
+    }
+
+    const followsCollection = db.collection(COLLECTION_NAME);
+
+    await assertProfilesExist(db, followerObjectId, followingObjectId);
+
+    const deleteResult = await followsCollection.deleteOne({
+      followerId: followerObjectId,
+      followingId: followingObjectId,
+    });
+
+    if (deleteResult.deletedCount > 0) {
+      await decrementFollowing(followerId);
+      await decrementFollowers(followingId);
+    }
+
+    return {
+      following: false,
+      followerId,
+      followingId,
+    };
   } finally {
-    await session.endSession();
+    if (session) {
+      await session.endSession();
+    }
   }
 };
 
 const isFollowingUser = async (followerId, followingId) => {
-  const db = await connectToDatabase();
   const { followerObjectId, followingObjectId } = normalizeFollowIds(
     followerId,
     followingId,
   );
+
+  if (followerObjectId.equals(followingObjectId)) {
+    return false;
+  }
+
+  const db = await connectToDatabase();
 
   const follow = await db.collection(COLLECTION_NAME).findOne(
     {
