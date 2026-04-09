@@ -46,14 +46,14 @@ connectToDatabase()
 ║   Express started on http://localhost:${port}     ║
 ║   press Ctrl-C to terminate.                   ║
 ╚════════════════════════════════════════════════╝
-
-╔════════════════════════════════════════════════╗
-║   Login / Signup / Logout Routes               ║
-╠════════════════════════════════════════════════╣
-║   - POST /api/auth/login                       ║
-║   - POST /api/auth/signup                      ║
-║   - POST /api/auth/logout                      ║
-╚════════════════════════════════════════════════╝
+                                                              ╔════════════════════════════════════════════════╗ 
+╔════════════════════════════════════════════════╗            ║    Account Routes                              ║
+║   Login / Signup / Logout Routes               ║            ╠════════════════════════════════════════════════╣
+╠════════════════════════════════════════════════╣            ║   - POST /api/auth/recover                     ║
+║   - POST /api/auth/login                       ║            ║   - PATCH /api/auth/email                      ║
+║   - POST /api/auth/signup                      ║            ║   - PATCH /api/auth/password                   ║
+║   - POST /api/auth/logout                      ║            ║   - DELETE /api/auth/account                   ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
 ╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗        
 ║   Story Routes                                 ║            ║   Confession Routes                            ║

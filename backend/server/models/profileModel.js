@@ -368,6 +368,10 @@ const softDeleteProfileByUserId = async (userId, options = {}) => {
     { session: options.session },
   );
 
+  if (result.matchedCount === 0) {
+    throw new Error("Profile not found for userId");
+  }
+
   return result;
 };
 
@@ -390,6 +394,10 @@ const restoreProfileByUserId = async (userId, options = {}) => {
     },
     { session: options.session },
   );
+
+  if (result.matchedCount === 0) {
+    throw new Error("Profile not found for userId");
+  }
 
   return result;
 };

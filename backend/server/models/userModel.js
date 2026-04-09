@@ -194,6 +194,10 @@ const restoreUserById = async (id, options = {}) => {
     { session: options.session },
   );
 
+  if (!result.matchedCount) {
+    throw new Error("User not found");
+  }
+
   return result;
 };
 
