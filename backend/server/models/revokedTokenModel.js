@@ -36,7 +36,7 @@ const getCollection = async () => {
   return collection;
 };
 
-const revokeToken = async ({ tokenHash, userId, expiresAt }) => {
+const revokeToken = async ({ tokenHash, userId, expiresAt }, options = {}) => {
   const collection = await getCollection();
 
   await collection.updateOne(
@@ -51,7 +51,7 @@ const revokeToken = async ({ tokenHash, userId, expiresAt }) => {
         revokedAt: new Date(),
       },
     },
-    { upsert: true },
+    { upsert: true, session: options.session },
   );
 };
 

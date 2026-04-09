@@ -252,6 +252,9 @@ const updateEmail = async (req, res) => {
 };
 
 const updatePassword = async (req, res) => {
+  const client = getClient();
+  const session = client.startSession();
+
   try {
     const { currentPassword, newPassword } = req.body;
 
@@ -279,7 +282,6 @@ const updatePassword = async (req, res) => {
     }
 
     const hashedPassword = await authService.hashPassword(newPassword);
-    await userModel.updateUserPasswordById(req.user.userId, hashedPassword);
 
     const authHeader = req.headers.authorization;
     const token = req.authToken || authHeader?.split(" ")[1];
@@ -294,16 +296,27 @@ const updatePassword = async (req, res) => {
       ? new Date(decoded.exp * 1000)
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-    await revokedTokenModel.revokeToken({
-      tokenHash,
-      userId: req.user.userId,
-      expiresAt,
+    await session.withTransaction(async () => {
+      await userModel.updateUserPasswordById(req.user.userId, hashedPassword, {
+        session,
+      });
+
+      await revokedTokenModel.revokeToken(
+        {
+          tokenHash,
+          userId: req.user.userId,
+          expiresAt,
+        },
+        { session },
+      );
     });
 
     return res.status(200).json({ message: "Password updated successfully" });
   } catch (error) {
     console.error("Update password error:", error);
     return res.status(500).json({ message: "Failed to update password" });
+  } finally {
+    await session.endSession();
   }
 };
 

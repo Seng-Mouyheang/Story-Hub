@@ -55,13 +55,17 @@ const findUserByEmail = async (email) => {
 };
 
 /**
- * Find user by email regardless of deletion state
+ * Find a deleted user by email for account recovery.
+ *
+ * The recovery controller expects a deleted-account candidate here, not an
+ * active account.
  * @param {string} email
  */
 const findUserByEmailIncludingDeleted = async (email) => {
   const collection = await getCollection();
   return collection.findOne({
     email: normalizeEmail(email),
+    deletedAt: { $ne: null },
   });
 };
 
