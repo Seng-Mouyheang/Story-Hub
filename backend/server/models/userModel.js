@@ -55,12 +55,146 @@ const findUserByEmail = async (email) => {
 };
 
 /**
+ * Find user by email regardless of deletion state
+ * @param {string} email
+ */
+const findUserByEmailIncludingDeleted = async (email) => {
+  const collection = await getCollection();
+  return collection.findOne({
+    email: normalizeEmail(email),
+  });
+};
+
+/**
  * Find user by ID
  * @param {string} id
  */
 const findUserById = async (id) => {
   const collection = await getCollection();
   return collection.findOne({ _id: new ObjectId(id) });
+};
+
+/**
+ * Find active (non-deleted) user by ID
+ * @param {string} id
+ */
+const findActiveUserById = async (id) => {
+  const collection = await getCollection();
+  return collection.findOne({
+    _id: new ObjectId(id),
+    deletedAt: null,
+  });
+};
+
+/**
+ * Update user email
+ * @param {string} id
+ * @param {string} email
+ * @param {Object} options
+ */
+const updateUserEmailById = async (id, email, options = {}) => {
+  const collection = await getCollection();
+  const result = await collection.updateOne(
+    {
+      _id: new ObjectId(id),
+      deletedAt: null,
+    },
+    {
+      $set: {
+        email: normalizeEmail(email),
+        updatedAt: new Date(),
+      },
+    },
+    { session: options.session },
+  );
+
+  if (!result.matchedCount) {
+    throw new Error("User not found");
+  }
+
+  return result;
+};
+
+/**
+ * Update user password hash
+ * @param {string} id
+ * @param {string} passwordHash
+ * @param {Object} options
+ */
+const updateUserPasswordById = async (id, passwordHash, options = {}) => {
+  const collection = await getCollection();
+  const result = await collection.updateOne(
+    {
+      _id: new ObjectId(id),
+      deletedAt: null,
+    },
+    {
+      $set: {
+        password: passwordHash,
+        updatedAt: new Date(),
+      },
+    },
+    { session: options.session },
+  );
+
+  if (!result.matchedCount) {
+    throw new Error("User not found");
+  }
+
+  return result;
+};
+
+/**
+ * Soft-delete user account by ID
+ * @param {string} id
+ * @param {Object} options
+ */
+const softDeleteUserById = async (id, options = {}) => {
+  const collection = await getCollection();
+  const deletedAt = new Date();
+  const result = await collection.updateOne(
+    {
+      _id: new ObjectId(id),
+      deletedAt: null,
+    },
+    {
+      $set: {
+        deletedAt,
+        updatedAt: deletedAt,
+      },
+    },
+    { session: options.session },
+  );
+
+  if (!result.matchedCount) {
+    throw new Error("User not found");
+  }
+
+  return result;
+};
+
+/**
+ * Restore a soft-deleted user account by ID
+ * @param {string} id
+ * @param {Object} options
+ */
+const restoreUserById = async (id, options = {}) => {
+  const collection = await getCollection();
+  const result = await collection.updateOne(
+    {
+      _id: new ObjectId(id),
+      deletedAt: { $ne: null },
+    },
+    {
+      $set: {
+        deletedAt: null,
+        updatedAt: new Date(),
+      },
+    },
+    { session: options.session },
+  );
+
+  return result;
 };
 
 /**
@@ -83,7 +217,13 @@ const deleteUserById = async (id) => {
 module.exports = {
   createUser,
   findUserByEmail,
+  findUserByEmailIncludingDeleted,
   findUserById,
+  findActiveUserById,
+  updateUserEmailById,
+  updateUserPasswordById,
+  softDeleteUserById,
+  restoreUserById,
   deleteUserById,
   setNormalizedEmail,
 };

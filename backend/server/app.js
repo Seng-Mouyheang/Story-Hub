@@ -103,7 +103,7 @@ connectToDatabase()
 ╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣
 ║   - GET /api/profile/:userId                   ║            ║   - GET /api/search/                           ║
 ║   - PUT /api/profile/                          ║            ║   - GET /api/profile/search/accounts           ║
-╚════════════════════════════════════════════════╝            ║   - GET /api/stories/search/titles             ║
+╚════════════════════════════════════════════════╝            ║   - GET /api/stories/search/title              ║
                                                               ║   - GET /api/stories/tags/:tag                 ║
 ╔════════════════════════════════════════════════╗            ║   - GET /api/confessions/tags/:tag             ║
 ║   Follow Routes                                ║            ║   - GET /api/stories/categories                ║

@@ -1,5 +1,6 @@
 const authService = require("../services/authService");
 const revokedTokenModel = require("../models/revokedTokenModel");
+const userModel = require("../models/userModel");
 
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -17,6 +18,11 @@ const authenticate = async (req, res, next) => {
 
     if (revoked) {
       return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
+    const activeUser = await userModel.findActiveUserById(decoded.userId);
+    if (!activeUser) {
+      return res.status(401).json({ message: "Account is unavailable" });
     }
 
     req.user = decoded;

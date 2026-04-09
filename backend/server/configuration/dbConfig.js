@@ -250,6 +250,26 @@ const connectToDatabase = async () => {
       },
     );
 
+    // TTL index to permanently remove soft-deleted user accounts after 30 days.
+    await db.collection("users").createIndex(
+      { deletedAt: 1 },
+      {
+        name: "users_deletedAt_ttl",
+        expireAfterSeconds: 60 * 60 * 24 * 30,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
+    // TTL index to permanently remove soft-deleted profiles after 30 days.
+    await db.collection("profiles").createIndex(
+      { deletedAt: 1 },
+      {
+        name: "profiles_deletedAt_ttl",
+        expireAfterSeconds: 60 * 60 * 24 * 30,
+        partialFilterExpression: { deletedAt: { $type: "date" } },
+      },
+    );
+
     // One-off safety backfill for historical users before enforcing uniqueness.
     await ensureUserEmailBackfillAndDedup(db);
 

@@ -60,7 +60,56 @@ const validateUserRegistration = (req, res, next) => {
   next();
 };
 
+const validateUpdateEmail = (req, res, next) => {
+  const { newEmail, currentPassword } = req.body;
+
+  if (!newEmail) {
+    return res.status(400).json({ message: "New email is required" });
+  }
+
+  if (!validator.isEmail(newEmail)) {
+    return res.status(400).json({ message: "Invalid email format" });
+  }
+
+  const passwordError = validateLoginPassword(currentPassword);
+  if (passwordError) {
+    return res.status(400).json({ message: "Current password is required" });
+  }
+
+  next();
+};
+
+const validateUpdatePassword = (req, res, next) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const currentPasswordError = validateLoginPassword(currentPassword);
+  if (currentPasswordError) {
+    return res.status(400).json({ message: "Current password is required" });
+  }
+
+  const passwordError = validatePassword(newPassword);
+  if (passwordError) {
+    return res.status(400).json({ message: passwordError });
+  }
+
+  next();
+};
+
+const validateDeleteAccount = (req, res, next) => {
+  const { currentPassword } = req.body;
+
+  const passwordError = validateLoginPassword(currentPassword);
+  if (passwordError) {
+    return res.status(400).json({ message: "Current password is required" });
+  }
+
+  next();
+};
+
 module.exports = {
   validateUserLogin,
   validateUserRegistration,
+  validateUpdateEmail,
+  validateUpdatePassword,
+  validateDeleteAccount,
 };
