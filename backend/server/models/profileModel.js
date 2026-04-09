@@ -347,6 +347,61 @@ const incrementFollowing = async (userId, options = {}) =>
 const decrementFollowing = async (userId, options = {}) =>
   applyFollowCountDelta(userId, "following", -1, options);
 
+const softDeleteProfileByUserId = async (userId, options = {}) => {
+  if (!ObjectId.isValid(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  const collection = await getCollection();
+  const deletedAt = new Date();
+  const result = await collection.updateOne(
+    {
+      userId: new ObjectId(userId),
+      deletedAt: null,
+    },
+    {
+      $set: {
+        deletedAt,
+        updatedAt: deletedAt,
+      },
+    },
+    { session: options.session },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error("Profile not found for userId");
+  }
+
+  return result;
+};
+
+const restoreProfileByUserId = async (userId, options = {}) => {
+  if (!ObjectId.isValid(userId)) {
+    throw new Error("Invalid user id");
+  }
+
+  const collection = await getCollection();
+  const result = await collection.updateOne(
+    {
+      userId: new ObjectId(userId),
+      deletedAt: { $ne: null },
+    },
+    {
+      $set: {
+        deletedAt: null,
+        updatedAt: new Date(),
+      },
+    },
+    { session: options.session },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error("Profile not found for userId");
+  }
+
+  return result;
+};
+
 module.exports = {
   createProfile,
   getProfileByUserId,
@@ -356,4 +411,6 @@ module.exports = {
   decrementFollowers,
   incrementFollowing,
   decrementFollowing,
+  softDeleteProfileByUserId,
+  restoreProfileByUserId,
 };

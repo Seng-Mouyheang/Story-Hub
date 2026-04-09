@@ -46,14 +46,14 @@ connectToDatabase()
 ║   Express started on http://localhost:${port}     ║
 ║   press Ctrl-C to terminate.                   ║
 ╚════════════════════════════════════════════════╝
-
-╔════════════════════════════════════════════════╗
-║   Login / Signup / Logout Routes               ║
-╠════════════════════════════════════════════════╣
-║   - POST /api/auth/login                       ║
-║   - POST /api/auth/signup                      ║
-║   - POST /api/auth/logout                      ║
-╚════════════════════════════════════════════════╝
+                                                              ╔════════════════════════════════════════════════╗ 
+╔════════════════════════════════════════════════╗            ║    Account Routes                              ║
+║   Login / Signup / Logout Routes               ║            ╠════════════════════════════════════════════════╣
+╠════════════════════════════════════════════════╣            ║   - POST /api/auth/recover                     ║
+║   - POST /api/auth/login                       ║            ║   - PATCH /api/auth/email                      ║
+║   - POST /api/auth/signup                      ║            ║   - PATCH /api/auth/password                   ║
+║   - POST /api/auth/logout                      ║            ║   - DELETE /api/auth/account                   ║
+╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
 ╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗        
 ║   Story Routes                                 ║            ║   Confession Routes                            ║
@@ -103,7 +103,7 @@ connectToDatabase()
 ╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣
 ║   - GET /api/profile/:userId                   ║            ║   - GET /api/search/                           ║
 ║   - PUT /api/profile/                          ║            ║   - GET /api/profile/search/accounts           ║
-╚════════════════════════════════════════════════╝            ║   - GET /api/stories/search/titles             ║
+╚════════════════════════════════════════════════╝            ║   - GET /api/stories/search/title              ║
                                                               ║   - GET /api/stories/tags/:tag                 ║
 ╔════════════════════════════════════════════════╗            ║   - GET /api/confessions/tags/:tag             ║
 ║   Follow Routes                                ║            ║   - GET /api/stories/categories                ║

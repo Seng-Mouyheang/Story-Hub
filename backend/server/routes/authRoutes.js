@@ -9,6 +9,9 @@ const {
 const {
   validateUserRegistration,
   validateUserLogin,
+  validateUpdateEmail,
+  validateUpdatePassword,
+  validateDeleteAccount,
 } = require("../middleware/validationMiddleware");
 
 router.post(
@@ -17,12 +20,42 @@ router.post(
   validateUserRegistration,
   authController.register,
 );
+
 router.post(
   "/login",
   loginRateLimiter,
   validateUserLogin,
   authController.login,
 );
+
+router.post(
+  "/recover",
+  loginRateLimiter,
+  validateUserLogin,
+  authController.recoverAccount,
+);
+
 router.post("/logout", authenticate, authController.logout);
+
+router.patch(
+  "/email",
+  authenticate,
+  validateUpdateEmail,
+  authController.updateEmail,
+);
+
+router.patch(
+  "/password",
+  authenticate,
+  validateUpdatePassword,
+  authController.updatePassword,
+);
+
+router.delete(
+  "/account",
+  authenticate,
+  validateDeleteAccount,
+  authController.deleteAccount,
+);
 
 module.exports = router;
