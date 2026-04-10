@@ -29,7 +29,7 @@ export default function Profile() {
 
     const loadProfile = async () => {
       try {
-        const response = await fetch(`/api/profiles/${currentUser.id}`, {
+        const response = await fetch(`/api/profile/${currentUser.id}`, {
           headers,
         });
 
@@ -72,6 +72,7 @@ export default function Profile() {
           ? profileData.interest
           : ["General"],
       avatar: profileData?.profilePicture || fallbackAvatar,
+      coverImage: profileData?.coverImage || "",
     };
   }, [currentUser, profileData]);
 
@@ -107,7 +108,18 @@ export default function Profile() {
             <div className="max-w-6xl mx-auto">
               {/* Profile Header Card */}
               <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-200 relative shadow-sm">
-                <div className="h-36 sm:h-48 bg-gradient-to-r from-rose-100 to-amber-50"></div>
+                <div className="h-36 sm:h-48 bg-linear-to-r from-rose-100 to-amber-50 relative overflow-hidden">
+                  {userData.coverImage ? (
+                    <>
+                      <img
+                        src={userData.coverImage}
+                        alt="Cover"
+                        className="absolute inset-0 w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-slate-900/15" />
+                    </>
+                  ) : null}
+                </div>
                 <div className="px-4 sm:px-8 pb-6 sm:pb-8">
                   {/* Avatar */}
                   <div className="relative -mt-12 sm:-mt-16 mb-4">
