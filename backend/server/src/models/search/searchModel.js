@@ -485,6 +485,20 @@ const buildConfessionSearchPipeline = (escapedQuery, limit, isTagSearch) => {
   return pipeline;
 };
 
+const normalizeListFilter = (value) => {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map((item) => item.trim()))].filter(Boolean);
+  }
+
+  if (typeof value !== "string") {
+    return [];
+  }
+
+  return [...new Set(value.split(",").map((item) => item.trim()))].filter(
+    Boolean,
+  );
+};
+
 const searchGlobal = async (query, limit, currentUserId) => {
   const db = await connectToDatabase();
 
@@ -549,6 +563,72 @@ const searchGlobal = async (query, limit, currentUserId) => {
   };
 };
 
+const searchMyStories = async (filters, userId) => {
+  const db = await connectToDatabase();
+  const {
+    title,
+    category,
+    tag,
+    includeDeleted = false,
+    limit = 20,
+  } = filters || {};
+
+  const parsedLimit = Number.parseInt(limit, 10) || 20;
+  const categories = normalizeListFilter(category);
+  const tags = normalizeListFilter(tag);
+
+  const matchStage = {
+    authorId: new ObjectId(userId),
+  };
+
+  if (!includeDeleted || includeDeleted === "false") {
+    matchStage.deletedAt = null;
+  }
+
+  if (typeof title === "string" && title.trim()) {
+    matchStage.title = {
+      $regex: escapeRegex(title.trim()),
+      $options: "i",
+    };
+  }
+
+  if (categories.length) {
+    matchStage.genres = {
+      $elemMatch: {
+        $in: categories.map(
+          (item) => new RegExp(`^${escapeRegex(item)}$`, "i"),
+        ),
+      },
+    };
+  }
+
+  if (tags.length) {
+    matchStage.tags = {
+      $elemMatch: {
+        $in: tags.map((item) => new RegExp(`^${escapeRegex(item)}$`, "i")),
+      },
+    };
+  }
+
+  const stories = await db
+    .collection("stories")
+    .find(matchStage)
+    .sort({ updatedAt: -1, _id: -1 })
+    .limit(parsedLimit)
+    .toArray();
+
+  return {
+    filters: {
+      title: title || null,
+      categories,
+      tags,
+      includeDeleted: Boolean(includeDeleted && includeDeleted !== "false"),
+    },
+    data: stories,
+  };
+};
+
 module.exports = {
   searchGlobal,
+  searchMyStories,
 };

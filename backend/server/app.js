@@ -8,6 +8,7 @@ const confessionRoutes = require("./src/routes/confessionRoutes");
 const profileRoutes = require("./src/routes/profileRoute");
 const searchRoutes = require("./src/routes/searchRoutes");
 const uploadThingRoutes = require("./src/routes/uploadThingRoute");
+const dashboardRoutes = require("./src/routes/dashboardRoutes");
 
 app.use("/api/uploadthing", uploadThingRoutes);
 
@@ -37,6 +38,7 @@ app.use("/api/stories", storyRoutes);
 app.use("/api/confessions", confessionRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/search", searchRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 // Connect to the database before starting the server
 connectToDatabase()
