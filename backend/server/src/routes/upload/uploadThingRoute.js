@@ -1,7 +1,10 @@
 const path = require("node:path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../../../.env") });
 
-const { createRouteHandler, createUploadthing } = require("uploadthing/express");
+const {
+  createRouteHandler,
+  createUploadthing,
+} = require("uploadthing/express");
 const { UploadThingError } = require("uploadthing/server");
 const authService = require("../../services/authService");
 const revokedTokenModel = require("../../models/auth/revokedTokenModel");
