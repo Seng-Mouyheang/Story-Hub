@@ -39,7 +39,6 @@ export default function Navbar({ title }) {
     let isMounted = true;
 
     if (!currentUser?.id) {
-      setAvatarUrl(fallbackAvatar);
       return;
     }
 
@@ -48,7 +47,7 @@ export default function Navbar({ title }) {
 
     const loadProfileAvatar = async () => {
       try {
-        const response = await fetch(`/api/profiles/${currentUser.id}`, {
+        const response = await fetch(`/api/profile/${currentUser.id}`, {
           headers,
         });
 
