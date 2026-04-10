@@ -1,6 +1,5 @@
-import { genUploader } from "uploadthing/client";
+import { genUploader } from "uploadthing/react";
 
-export const { uploadFiles } = genUploader({
+export const { uploadFiles, createUpload } = genUploader({
   url: "/api/uploadthing",
-  package: "@uploadthing/react",
 });

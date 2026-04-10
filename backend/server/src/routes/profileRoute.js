@@ -22,6 +22,12 @@ router.get(
 );
 
 router.get(
+  "/:userId/stats",
+  validate(userIdParamSchema, "params"),
+  profileController.getUserStats,
+);
+
+router.get(
   "/:userId",
   validate(userIdParamSchema, "params"),
   profileController.getProfile,

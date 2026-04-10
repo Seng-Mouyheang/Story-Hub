@@ -13,6 +13,35 @@ const globalSearch = async (req, res) => {
   }
 };
 
+const searchMyStories = async (req, res) => {
+  try {
+    const {
+      title,
+      category,
+      tag,
+      includeDeleted = false,
+      limit = 20,
+    } = req.query;
+
+    const result = await searchModel.searchMyStories(
+      {
+        title,
+        category,
+        tag,
+        includeDeleted,
+        limit,
+      },
+      req.user.userId,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to search user stories" });
+  }
+};
+
 module.exports = {
   globalSearch,
+  searchMyStories,
 };
