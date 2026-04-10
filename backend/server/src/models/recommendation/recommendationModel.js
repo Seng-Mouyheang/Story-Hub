@@ -112,9 +112,12 @@ const getRecommendedAuthors = async (
     1,
     Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT),
   );
+  const parsedMinLikes = Number(minLikes);
   const normalizedMinLikes = Math.max(
     0,
-    Number(minLikes) || DEFAULT_POPULAR_LIKES_THRESHOLD,
+    Number.isNaN(parsedMinLikes)
+      ? DEFAULT_POPULAR_LIKES_THRESHOLD
+      : parsedMinLikes,
   );
 
   const db = await connectToDatabase();
@@ -323,7 +326,6 @@ const getRecommendedAuthors = async (
           totalCategoryLikes: 1,
           bestStoryLikes: 1,
           latestPopularStoryAt: 1,
-          followedByCurrentUser: 1,
         },
       },
     ])
