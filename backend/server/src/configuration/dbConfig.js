@@ -40,15 +40,16 @@ const connectToDatabase = async () => {
 
     await db.collection("stories").createIndex(
       {
-        status: 1,
-        visibility: 1,
-        deletedAt: 1,
-        likesCount: 1,
         genres: 1,
-        authorId: 1,
+        likesCount: 1,
       },
       {
         name: "recommendation_story_filter_index",
+        partialFilterExpression: {
+          status: "published",
+          visibility: "public",
+          deletedAt: null,
+        },
       },
     );
 
