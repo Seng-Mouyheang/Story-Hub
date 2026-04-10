@@ -38,6 +38,21 @@ const connectToDatabase = async () => {
       },
     );
 
+    await db.collection("stories").createIndex(
+      {
+        genres: 1,
+        likesCount: 1,
+      },
+      {
+        name: "recommendation_story_filter_index",
+        partialFilterExpression: {
+          status: "published",
+          visibility: "public",
+          deletedAt: null,
+        },
+      },
+    );
+
     await db.collection("confessions").createIndex(
       { createdAt: -1, _id: -1 },
       {

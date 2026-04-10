@@ -1,5 +1,5 @@
-import { genUploader } from "uploadthing/react";
+import { generateReactHelpers } from "@uploadthing/react";
 
-export const { uploadFiles, createUpload } = genUploader({
+export const { uploadFiles, createUpload } = generateReactHelpers({
   url: "/api/uploadthing",
 });
