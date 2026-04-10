@@ -1,6 +1,7 @@
 const profileModel = require("../../models/profile/profileModel");
 const { connectToDatabase } = require("../../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
+const { calculateUserStats } = require("../../services/userStatsService");
 
 const getProfile = async (req, res) => {
   try {
@@ -73,129 +74,11 @@ const getUserStats = async (req, res) => {
       return res.status(404).json({ message: "Profile not found" });
     }
 
-    // Get total likes on stories and confessions by this user
-    const [storyLikesResult, confessionLikesResult] = await Promise.all([
-      db
-        .collection("storyLikes")
-        .aggregate([
-          {
-            $lookup: {
-              from: "stories",
-              localField: "storyId",
-              foreignField: "_id",
-              as: "story",
-            },
-          },
-          {
-            $unwind: "$story",
-          },
-          {
-            $match: {
-              "story.authorId": userObjectId,
-              "story.deletedAt": null,
-            },
-          },
-          {
-            $count: "totalLikes",
-          },
-        ])
-        .toArray(),
-
-      db
-        .collection("confessionLikes")
-        .aggregate([
-          {
-            $lookup: {
-              from: "confessions",
-              localField: "confessionId",
-              foreignField: "_id",
-              as: "confession",
-            },
-          },
-          {
-            $unwind: "$confession",
-          },
-          {
-            $match: {
-              "confession.authorId": userObjectId,
-              "confession.deletedAt": null,
-            },
-          },
-          {
-            $count: "totalLikes",
-          },
-        ])
-        .toArray(),
-    ]);
-
-    const storyLikesCount = storyLikesResult[0]?.totalLikes || 0;
-    const confessionLikesCount = confessionLikesResult[0]?.totalLikes || 0;
-    const totalLikes = storyLikesCount + confessionLikesCount;
-
-    // Get total words written across stories and confessions
-    const [storyWordsResult, confessionWordsResult] = await Promise.all([
-      db
-        .collection("stories")
-        .aggregate([
-          {
-            $match: {
-              authorId: userObjectId,
-              deletedAt: null,
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalWords: { $sum: "$wordCount" },
-              storyCount: { $sum: 1 },
-            },
-          },
-        ])
-        .toArray(),
-
-      db
-        .collection("confessions")
-        .aggregate([
-          {
-            $match: {
-              authorId: userObjectId,
-              deletedAt: null,
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalWords: { $sum: "$wordCount" },
-              confessionCount: { $sum: 1 },
-            },
-          },
-        ])
-        .toArray(),
-    ]);
-
-    const storyWords = storyWordsResult[0]?.totalWords || 0;
-    const storyCount = storyWordsResult[0]?.storyCount || 0;
-    const confessionWords = confessionWordsResult[0]?.totalWords || 0;
-    const confessionCount = confessionWordsResult[0]?.confessionCount || 0;
-
-    const totalWords = storyWords + confessionWords;
-    const totalPosts = storyCount + confessionCount;
+    const stats = await calculateUserStats(db, userObjectId);
 
     res.json({
       userId,
-      stats: {
-        totalLikes,
-        totalWords,
-        totalPosts,
-        breakdown: {
-          storyLikes: storyLikesCount,
-          confessionLikes: confessionLikesCount,
-          storyWords,
-          confessionWords,
-          storyCount,
-          confessionCount,
-        },
-      },
+      stats,
     });
   } catch (error) {
     console.error(error);

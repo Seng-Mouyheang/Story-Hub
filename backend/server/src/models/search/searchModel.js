@@ -581,7 +581,7 @@ const searchMyStories = async (filters, userId) => {
     authorId: new ObjectId(userId),
   };
 
-  if (!includeDeleted || includeDeleted === "false") {
+  if (!includeDeleted) {
     matchStage.deletedAt = null;
   }
 
@@ -622,7 +622,7 @@ const searchMyStories = async (filters, userId) => {
       title: title || null,
       categories,
       tags,
-      includeDeleted: Boolean(includeDeleted && includeDeleted !== "false"),
+      includeDeleted: Boolean(includeDeleted),
     },
     data: stories,
   };
