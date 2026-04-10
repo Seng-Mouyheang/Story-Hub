@@ -1,12 +1,15 @@
 const express = require("express");
 const app = express();
 const port = process.env.PORT || 3000;
-const { connectToDatabase } = require("./configuration/dbConfig");
-const authRoutes = require("./routes/authRoutes");
-const storyRoutes = require("./routes/storyRoutes");
-const confessionRoutes = require("./routes/confessionRoutes");
-const profileRoutes = require("./routes/profileRoute");
-const searchRoutes = require("./routes/searchRoutes");
+const { connectToDatabase } = require("./src/configuration/dbConfig");
+const authRoutes = require("./src/routes/authRoutes");
+const storyRoutes = require("./src/routes/storyRoutes");
+const confessionRoutes = require("./src/routes/confessionRoutes");
+const profileRoutes = require("./src/routes/profileRoute");
+const searchRoutes = require("./src/routes/searchRoutes");
+const uploadThingRoutes = require("./src/routes/uploadThingRoute");
+
+app.use("/api/uploadthing", uploadThingRoutes);
 
 // Middleware to parse JSON bodies
 app.use(express.json());
