@@ -9,6 +9,7 @@ const profileRoutes = require("./src/routes/profileRoute");
 const searchRoutes = require("./src/routes/searchRoutes");
 const uploadThingRoutes = require("./src/routes/uploadThingRoute");
 const dashboardRoutes = require("./src/routes/dashboardRoutes");
+const recommendationRoutes = require("./src/routes/recommendationRoutes");
 
 app.use("/api/uploadthing", uploadThingRoutes);
 
@@ -39,6 +40,7 @@ app.use("/api/confessions", confessionRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/recommendations", recommendationRoutes);
 
 // Connect to the database before starting the server
 connectToDatabase()
@@ -118,6 +120,20 @@ connectToDatabase()
 ║   - GET /api/profile/:userId/follow/status     ║
 ║   - GET /api/profile/:userId/followers         ║
 ║   - GET /api/profile/:userId/following         ║
+╚════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════╗
+║   Dashboard Routes                             ║
+╠════════════════════════════════════════════════╣
+║   - GET /api/dashboard/stats                   ║
+║   - GET /api/dashboard/stories                 ║
+║   - GET /api/dashboard/confessions             ║
+╚════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════╗
+║   Recommendation Routes                        ║
+╠════════════════════════════════════════════════╣
+║   - GET /api/recommendations/authors           ║
 ╚════════════════════════════════════════════════╝
   `),
     );
