@@ -8,182 +8,19 @@ import React, {
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
+import { Filter, History } from "lucide-react";
+import ActivityFiltersPanel from "../features/dashboard/ActivityFiltersPanel";
+import RecentActivityTable from "../features/dashboard/RecentActivityTable";
+import StatsCard from "../features/dashboard/StatsCard";
 import {
-  BookOpenText,
-  ChevronDown,
-  Filter,
-  MessageSquareLock,
-  PenTool,
-  History,
-} from "lucide-react";
-
-const DASHBOARD_FILTERS_STORAGE_KEY = "dashboardActivityFilters";
-
-const DEFAULT_ACTIVITY_FILTERS = {
-  contentType: "all",
-  sortBy: "date",
-  order: "desc",
-  storyStatus: "all",
-  storyVisibility: "all",
-};
-
-const getSavedDashboardFilters = () => {
-  try {
-    const raw = localStorage.getItem(DASHBOARD_FILTERS_STORAGE_KEY);
-
-    if (!raw) {
-      return DEFAULT_ACTIVITY_FILTERS;
-    }
-
-    const parsed = JSON.parse(raw);
-
-    return {
-      ...DEFAULT_ACTIVITY_FILTERS,
-      ...(typeof parsed === "object" && parsed !== null ? parsed : {}),
-    };
-  } catch {
-    return DEFAULT_ACTIVITY_FILTERS;
-  }
-};
-
-const formatCount = (value) => {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-  }
-
-  return String(value);
-};
-
-const formatUpdatedLabel = (value) => {
-  const sourceDate = new Date(value);
-
-  if (Number.isNaN(sourceDate.getTime())) {
-    return "N/A";
-  }
-
-  const now = new Date();
-  const sourceDateStart = new Date(sourceDate);
-  sourceDateStart.setHours(0, 0, 0, 0);
-  const nowStart = new Date(now);
-  nowStart.setHours(0, 0, 0, 0);
-
-  const diffDays = Math.floor(
-    (nowStart.getTime() - sourceDateStart.getTime()) / (1000 * 60 * 60 * 24),
-  );
-
-  if (diffDays <= 0) {
-    return "Today";
-  }
-
-  if (diffDays === 1) {
-    return "Yesterday";
-  }
-
-  if (diffDays >= 2 && diffDays <= 9) {
-    return `${diffDays} days ago`;
-  }
-
-  if (diffDays <= 20) {
-    return "A week ago";
-  }
-
-  if (diffDays <= 31) {
-    return "A month ago";
-  }
-
-  return sourceDate.toLocaleDateString();
-};
-
-const buildFetchParams = (config) => {
-  const { limit = "8", page, sortBy, order, ...extra } = config;
-  const params = new URLSearchParams({ limit, page: String(page) });
-
-  if (sortBy) params.set("sortBy", sortBy);
-  if (order) params.set("order", order);
-
-  Object.entries(extra).forEach(([key, val]) => {
-    if (val !== null && val !== undefined) params.set(key, val);
-  });
-
-  return params.toString();
-};
-
-const normalizeActivityItem = (item, type) => ({
-  id: String(item?._id || `${type}-${Math.random()}`),
-  type,
-  title:
-    item?.title ||
-    (type === "story" ? "Untitled Story" : "Untitled Confession"),
-  likesCount: Number(item?.likesCount || 0),
-  commentCount: Number(item?.commentCount || 0),
-  createdAt: item?.createdAt || null,
-  updatedAt: item?.updatedAt || item?.createdAt || null,
-  status: item?.status || null,
-  visibility: item?.visibility || null,
-});
-
-const normalizePayloadItems = (payload, type) =>
-  Array.isArray(payload?.data)
-    ? payload.data.map((item) => normalizeActivityItem(item, type))
-    : [];
-
-const formatDateOnly = (value) => {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "N/A";
-  }
-
-  return date.toLocaleDateString();
-};
-
-const getStatusBadgeClasses = (status) => {
-  const value = String(status || "").toLowerCase();
-
-  if (value === "published") {
-    return "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-  }
-
-  if (value === "draft") {
-    return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  }
-
-  return "bg-slate-100 text-slate-600";
-};
-
-const getVisibilityBadgeClasses = (visibility) => {
-  const value = String(visibility || "").toLowerCase();
-
-  if (value === "public") {
-    return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
-  }
-
-  if (value === "private") {
-    return "bg-violet-50 text-violet-700 ring-1 ring-violet-200";
-  }
-
-  return "bg-slate-100 text-slate-600";
-};
-
-const renderStatCard = (title, value, subtitle) => (
-  <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between min-h-40 shadow-sm">
-    <div>
-      <h2 className="text-[10px] font-semibold tracking-[0.15em] text-slate-500 uppercase">
-        {title}
-      </h2>
-      <div className="mt-4 text-5xl sm:text-[64px] leading-tight font-light text-rose-500">
-        {value}
-      </div>
-    </div>
-    <div className="text-xs text-slate-400 font-medium tracking-tight">
-      {subtitle}
-    </div>
-  </div>
-);
+  DASHBOARD_FILTERS_STORAGE_KEY,
+  DEFAULT_ACTIVITY_FILTERS,
+  buildFetchParams,
+  formatCount,
+  getSavedDashboardFilters,
+  normalizeActivityItem,
+  normalizePayloadItems,
+} from "../features/dashboard/dashboardUtils";
 
 export default function Dashboard() {
   const [showFilters, setShowFilters] = useState(false);
@@ -494,154 +331,10 @@ export default function Dashboard() {
     setActivityFilters(DEFAULT_ACTIVITY_FILTERS);
   }, []);
 
-  const hasActivity = useMemo(() => activities.length > 0, [activities]);
   const canLoadMore = useMemo(
     () => hasMoreStories || hasMoreConfessions,
     [hasMoreConfessions, hasMoreStories],
   );
-
-  const recentActivityContent = useMemo(() => {
-    if (isLoading) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-          <p className="text-slate-500 text-sm md:text-base font-medium">
-            Loading your recent activity...
-          </p>
-        </div>
-      );
-    }
-
-    if (!hasActivity) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-          <div className="bg-slate-100 p-6 rounded-full mb-6">
-            <PenTool className="w-12 h-12 text-slate-300" strokeWidth={1.5} />
-          </div>
-          <p className="text-slate-500 text-sm md:text-base font-medium">
-            You have no activity yet. Publish your first post to get started.
-          </p>
-        </div>
-      );
-    }
-
-    return (
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-245 border-collapse">
-          <thead className="sticky top-0 z-10">
-            <tr className="border-b border-slate-100 bg-slate-50/80 text-left">
-              <th className="px-4 sm:px-8 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 bg-slate-50/95 backdrop-blur">
-                Type
-              </th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 bg-slate-50/95 backdrop-blur">
-                Title
-              </th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 bg-slate-50/95 backdrop-blur">
-                Status
-              </th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 bg-slate-50/95 backdrop-blur">
-                Visibility
-              </th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 bg-slate-50/95 backdrop-blur">
-                Created
-              </th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 bg-slate-50/95 backdrop-blur">
-                Updated
-              </th>
-              <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 text-right bg-slate-50/95 backdrop-blur">
-                Likes
-              </th>
-              <th className="px-4 sm:px-8 py-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 text-right bg-slate-50/95 backdrop-blur">
-                Comments
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {activities.map((activity) => (
-              <tr
-                key={activity.id}
-                className="border-b border-slate-100 last:border-b-0 cursor-pointer transition-all duration-200 hover:border-0 hover:-translate-y-0.5 hover:bg-rose-50/50"
-              >
-                <td className="px-4 sm:px-8 py-6">
-                  <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                    {activity.type === "story" ? (
-                      <BookOpenText size={13} />
-                    ) : (
-                      <MessageSquareLock size={13} />
-                    )}
-                    <span>
-                      {activity.type === "story" ? "Story" : "Confession"}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-6">
-                  <p className="max-w-70 truncate text-sm font-medium text-slate-800">
-                    {activity.title}
-                  </p>
-                </td>
-                <td className="px-4 py-6 align-top">
-                  <span
-                    className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${getStatusBadgeClasses(
-                      activity.status,
-                    )}`}
-                  >
-                    {activity.status || "N/A"}
-                  </span>
-                </td>
-                <td className="px-4 py-6 align-top">
-                  <span
-                    className={`inline-flex rounded-md px-2 py-1 text-xs font-medium ${getVisibilityBadgeClasses(
-                      activity.visibility,
-                    )}`}
-                  >
-                    {activity.visibility || "N/A"}
-                  </span>
-                </td>
-                <td className="px-4 py-6 text-xs text-slate-600 whitespace-nowrap">
-                  {formatDateOnly(activity.createdAt)}
-                </td>
-                <td className="px-4 py-6">
-                  <p className="text-xs text-slate-600 whitespace-nowrap">
-                    {formatUpdatedLabel(activity.updatedAt)}
-                  </p>
-                </td>
-                <td className="px-4 py-6 text-right text-xs font-medium text-slate-600">
-                  {formatCount(activity.likesCount)}
-                </td>
-                <td className="px-4 sm:px-8 py-6 text-right text-xs font-medium text-slate-600">
-                  {formatCount(activity.commentCount)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {canLoadMore && (
-          <div className="flex items-center justify-center border-t border-slate-100 px-4 sm:px-8 py-6">
-            <button
-              onClick={loadMoreActivities}
-              disabled={isLoadingMore}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-rose-500 cursor-pointer transition hover:underline disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isLoadingMore ? (
-                "Loading..."
-              ) : (
-                <>
-                  Load More Stories
-                  <ChevronDown strokeWidth={2.5} size={16} />
-                </>
-              )}
-            </button>
-          </div>
-        )}
-      </div>
-    );
-  }, [
-    activities,
-    canLoadMore,
-    hasActivity,
-    isLoading,
-    isLoadingMore,
-    loadMoreActivities,
-  ]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
@@ -675,21 +368,21 @@ export default function Dashboard() {
 
               {/* Stats Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-                {renderStatCard(
-                  "Published Stories",
-                  isLoading ? "..." : formatCount(stats.totalPosts),
-                  "Total posts",
-                )}
-                {renderStatCard(
-                  "Total Word Count",
-                  isLoading ? "..." : formatCount(stats.totalWords),
-                  "Across your stories and confessions",
-                )}
-                {renderStatCard(
-                  "Total Reader Loves",
-                  isLoading ? "..." : formatCount(stats.totalLikes),
-                  "Total likes",
-                )}
+                <StatsCard
+                  title="Published Stories"
+                  value={isLoading ? "..." : formatCount(stats.totalPosts)}
+                  subtitle="Total posts"
+                />
+                <StatsCard
+                  title="Total Word Count"
+                  value={isLoading ? "..." : formatCount(stats.totalWords)}
+                  subtitle="Across your stories and confessions"
+                />
+                <StatsCard
+                  title="Total Reader Loves"
+                  value={isLoading ? "..." : formatCount(stats.totalLikes)}
+                  subtitle="Total likes"
+                />
               </div>
 
               {errorMessage && (
@@ -722,138 +415,23 @@ export default function Dashboard() {
                   </button>
 
                   {showFilters && (
-                    <div
-                      ref={filterPanelRef}
-                      className="fixed inset-x-3 top-24 z-30 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-4 sm:absolute sm:right-4 sm:top-full sm:inset-x-auto sm:mt-2 sm:w-80 sm:max-h-[calc(100vh-12rem)]"
-                    >
-                      <h4 className="text-sm font-semibold text-slate-700 mb-3">
-                        Activity Filters
-                      </h4>
-
-                      <div className="space-y-3">
-                        <label
-                          htmlFor="dashboard-content-type"
-                          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-                        >
-                          Content Type
-                        </label>
-                        <select
-                          id="dashboard-content-type"
-                          value={activityFilters.contentType}
-                          onChange={(event) =>
-                            updateFilter("contentType", event.target.value)
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-                        >
-                          <option value="all">
-                            {" "}
-                            All [Stories & Confession]
-                          </option>
-                          <option value="story">Stories only</option>
-                          <option value="confession">Confessions only</option>
-                        </select>
-
-                        <label
-                          htmlFor="dashboard-sort-by"
-                          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-                        >
-                          Sort By
-                        </label>
-                        <select
-                          id="dashboard-sort-by"
-                          value={activityFilters.sortBy}
-                          onChange={(event) =>
-                            updateFilter("sortBy", event.target.value)
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-                        >
-                          <option value="default">All</option>
-                          <option value="likes">Most Likes</option>
-                          <option value="comments">Most Comments</option>
-                        </select>
-
-                        <label
-                          htmlFor="dashboard-sort-order"
-                          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-                        >
-                          Sort Order
-                        </label>
-                        <select
-                          id="dashboard-sort-order"
-                          value={activityFilters.order}
-                          onChange={(event) =>
-                            updateFilter("order", event.target.value)
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-                        >
-                          <option value="desc">Latest </option>
-                          <option value="asc">Oldest </option>
-                        </select>
-
-                        <label
-                          htmlFor="dashboard-story-status"
-                          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-                        >
-                          Story Status
-                        </label>
-                        <select
-                          id="dashboard-story-status"
-                          value={activityFilters.storyStatus}
-                          onChange={(event) =>
-                            updateFilter("storyStatus", event.target.value)
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-                          disabled={
-                            activityFilters.contentType === "confession"
-                          }
-                        >
-                          <option value="all">All</option>
-                          <option value="published">Published</option>
-                          <option value="draft">Draft</option>
-                        </select>
-
-                        <label
-                          htmlFor="dashboard-story-visibility"
-                          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-                        >
-                          Story Visibility
-                        </label>
-                        <select
-                          id="dashboard-story-visibility"
-                          value={activityFilters.storyVisibility}
-                          onChange={(event) =>
-                            updateFilter("storyVisibility", event.target.value)
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-                          disabled={
-                            activityFilters.contentType === "confession"
-                          }
-                        >
-                          <option value="all">All</option>
-                          <option value="public">Public</option>
-                          <option value="private">Private</option>
-                        </select>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between">
-                        <button
-                          onClick={resetFilters}
-                          className="text-xs font-semibold text-slate-500 hover:text-slate-700"
-                        >
-                          Reset
-                        </button>
-                        <button
-                          onClick={() => setShowFilters(false)}
-                          className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
-                        >
-                          Done
-                        </button>
-                      </div>
-                    </div>
+                    <ActivityFiltersPanel
+                      activityFilters={activityFilters}
+                      updateFilter={updateFilter}
+                      resetFilters={resetFilters}
+                      setShowFilters={setShowFilters}
+                      filterPanelRef={filterPanelRef}
+                    />
                   )}
                 </div>
 
-                {recentActivityContent}
+                <RecentActivityTable
+                  activities={activities}
+                  isLoading={isLoading}
+                  canLoadMore={canLoadMore}
+                  isLoadingMore={isLoadingMore}
+                  loadMoreActivities={loadMoreActivities}
+                />
               </div>
             </div>
             <SiteFooter />
