@@ -17,17 +17,18 @@ const parseCategoryQuery = (categoriesInput) => {
     .slice(0, 20);
 };
 
-const createStory = async (req, res) => {
-  try {
-    const storyId = await storyModel.createStory({
+const createStory = (req, res) => {
+  storyModel
+    .createStory({
       ...req.body,
       authorId: req.user.userId,
+    })
+    .then((storyId) => {
+      res.status(201).json({ storyId });
+    })
+    .catch(() => {
+      res.status(500).json({ message: "Failed to create story" });
     });
-
-    res.status(201).json({ storyId });
-  } catch {
-    res.status(500).json({ message: "Failed to create story" });
-  }
 };
 
 // Cursor Pagination
@@ -210,6 +211,25 @@ const deleteStory = async (req, res) => {
   }
 };
 
+const restoreStory = async (req, res) => {
+  try {
+    await storyModel.restoreStory(req.params.id, req.user.userId);
+
+    res.json({ message: "Story restored" });
+  } catch (error) {
+    if (error.message === "not found") {
+      return res.status(404).json({ message: "Story not found" });
+    }
+    if (error.message === "Unauthorized") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    if (error.message === "Already active") {
+      return res.status(400).json({ message: "Story is already active" });
+    }
+    res.status(500).json({ message: "Failed to restore story" });
+  }
+};
+
 const getMyStories = async (req, res) => {
   try {
     const { cursor } = req.query;
@@ -217,13 +237,30 @@ const getMyStories = async (req, res) => {
 
     const result = await storyModel.getUserStories(
       req.user.userId,
-      limit,
       cursor,
+      limit,
     );
 
     res.json(result);
   } catch {
     res.status(500).json({ message: "Failed to fetch user stories" });
+  }
+};
+
+const getMyDeletedStories = async (req, res) => {
+  try {
+    const { cursor } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const result = await storyModel.getDeletedUserStories(
+      req.user.userId,
+      cursor,
+      limit,
+    );
+
+    res.json(result);
+  } catch {
+    res.status(500).json({ message: "Failed to fetch deleted stories" });
   }
 };
 
@@ -237,5 +274,7 @@ module.exports = {
   getStory,
   updateStory,
   deleteStory,
+  restoreStory,
   getMyStories,
+  getMyDeletedStories,
 };

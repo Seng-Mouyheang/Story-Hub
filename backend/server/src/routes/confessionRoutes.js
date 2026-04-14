@@ -51,6 +51,14 @@ router.get(
   confessionController.getMyConfessions,
 );
 
+// Get current user's deleted confessions
+router.get(
+  "/me/deleted",
+  authenticate,
+  validate(cursorPaginationSchema, "query"),
+  confessionController.getMyDeletedConfessions,
+);
+
 // Get current user's bookmarked confessions
 router.get(
   "/bookmarks/me",
@@ -94,6 +102,14 @@ router.delete(
   authenticate,
   validate(idParamSchema, "params"),
   confessionController.deleteConfession,
+);
+
+// Restore deleted confession
+router.post(
+  "/:id/restore",
+  authenticate,
+  validate(idParamSchema, "params"),
+  confessionController.restoreConfession,
 );
 
 /* ============================= */
