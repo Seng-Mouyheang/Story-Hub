@@ -127,7 +127,10 @@ export const getVisibilityBadgeClasses = (visibility) => {
 
 export const buildFetchParams = (config) => {
   const { limit = "8", page, sortBy, order, ...extra } = config;
-  const params = new URLSearchParams({ limit, page: String(page) });
+  const params = new URLSearchParams({ limit: String(limit) });
+  const pageValue = page ?? "1";
+
+  params.set("page", String(pageValue));
 
   if (sortBy) params.set("sortBy", sortBy);
   if (order) params.set("order", order);
