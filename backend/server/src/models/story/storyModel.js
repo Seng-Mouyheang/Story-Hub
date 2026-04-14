@@ -532,7 +532,7 @@ const deleteStory = async (id, userId) => {
       // Soft delete story and remove bookmarks together so they stay in sync.
       await collection.updateOne(
         { _id: storyObjectId },
-        { $set: { deletedAt } },
+        { $set: { deletedAt, likesCount: 0 } },
         { session },
       );
 
@@ -555,7 +555,7 @@ const deleteStory = async (id, userId) => {
     try {
       await collection.updateOne(
         { _id: storyObjectId },
-        { $set: { deletedAt } },
+        { $set: { deletedAt, likesCount: 0 } },
       );
 
       await db.collection("storyBookmarks").deleteMany({
@@ -580,6 +580,7 @@ const deleteStory = async (id, userId) => {
 };
 
 const restoreStory = async (id, userId) => {
+  const db = await connectToDatabase();
   const collection = await getCollection();
   const storyObjectId = new ObjectId(id);
 
@@ -595,11 +596,16 @@ const restoreStory = async (id, userId) => {
     throw new Error("Already active");
   }
 
+  const actualLikesCount = await db
+    .collection("storyLikes")
+    .countDocuments({ storyId: storyObjectId });
+
   const result = await collection.updateOne(
     { _id: storyObjectId, deletedAt: { $ne: null } },
     {
       $set: {
         deletedAt: null,
+        likesCount: actualLikesCount,
         updatedAt: new Date(),
       },
     },
@@ -698,12 +704,12 @@ const getDeletedUserStories = async (userId, cursor, limit) => {
   };
 
   if (typeof cursor === "string" && cursor.includes("_")) {
-    const [updatedAtStr, id] = cursor.split("_");
+    const [deletedAtStr, id] = cursor.split("_");
 
     matchStage.$or = [
-      { updatedAt: { $lt: new Date(updatedAtStr) } },
+      { deletedAt: { $lt: new Date(deletedAtStr) } },
       {
-        updatedAt: new Date(updatedAtStr),
+        deletedAt: new Date(deletedAtStr),
         _id: { $lt: new ObjectId(id) },
       },
     ];
@@ -711,7 +717,7 @@ const getDeletedUserStories = async (userId, cursor, limit) => {
 
   const pipeline = [
     { $match: matchStage },
-    { $sort: { updatedAt: -1, _id: -1 } },
+    { $sort: { deletedAt: -1, _id: -1 } },
     { $limit: limit + 1 },
     {
       $lookup: {
@@ -754,7 +760,7 @@ const getDeletedUserStories = async (userId, cursor, limit) => {
 
   if (hasMore) {
     const lastStory = data[data.length - 1];
-    nextCursor = `${lastStory.updatedAt.toISOString()}_${lastStory._id}`;
+    nextCursor = `${lastStory.deletedAt.toISOString()}_${lastStory._id}`;
   }
 
   return {

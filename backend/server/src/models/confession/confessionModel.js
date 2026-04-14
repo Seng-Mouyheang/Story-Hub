@@ -446,6 +446,7 @@ const deleteConfession = async (id, userId) => {
 };
 
 const restoreConfession = async (id, userId) => {
+  const db = await connectToDatabase();
   const collection = await getCollection();
   const confessionObjectId = new ObjectId(id);
 
@@ -461,11 +462,16 @@ const restoreConfession = async (id, userId) => {
     throw new Error("Already active");
   }
 
+  const actualLikesCount = await db
+    .collection("confessionLikes")
+    .countDocuments({ confessionId: confessionObjectId });
+
   const result = await collection.updateOne(
     { _id: confessionObjectId, deletedAt: { $ne: null } },
     {
       $set: {
         deletedAt: null,
+        likesCount: actualLikesCount,
         updatedAt: new Date(),
       },
     },
@@ -569,15 +575,15 @@ const getDeletedUserConfessions = async (userId, cursor, limit) => {
   };
 
   if (typeof cursor === "string" && cursor.includes("_")) {
-    const [updatedAtStr, id] = cursor.split("_");
+    const [deletedAtStr, id] = cursor.split("_");
 
-    if (updatedAtStr && id && ObjectId.isValid(id)) {
-      const updatedAtDate = new Date(updatedAtStr);
-      if (!Number.isNaN(updatedAtDate.getTime())) {
+    if (deletedAtStr && id && ObjectId.isValid(id)) {
+      const deletedAtDate = new Date(deletedAtStr);
+      if (!Number.isNaN(deletedAtDate.getTime())) {
         matchStage.$or = [
-          { updatedAt: { $lt: updatedAtDate } },
+          { deletedAt: { $lt: deletedAtDate } },
           {
-            updatedAt: updatedAtDate,
+            deletedAt: deletedAtDate,
             _id: { $lt: new ObjectId(id) },
           },
         ];
@@ -587,7 +593,7 @@ const getDeletedUserConfessions = async (userId, cursor, limit) => {
 
   const pipeline = [
     { $match: matchStage },
-    { $sort: { updatedAt: -1, _id: -1 } },
+    { $sort: { deletedAt: -1, _id: -1 } },
     { $limit: parsedLimit + 1 },
     {
       $lookup: {
@@ -630,7 +636,7 @@ const getDeletedUserConfessions = async (userId, cursor, limit) => {
 
   if (hasMore) {
     const lastConfession = data[data.length - 1];
-    nextCursor = `${lastConfession.updatedAt.toISOString()}_${lastConfession._id}`;
+    nextCursor = `${lastConfession.deletedAt.toISOString()}_${lastConfession._id}`;
   }
 
   return {
