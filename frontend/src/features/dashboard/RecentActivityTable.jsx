@@ -13,7 +13,7 @@ import {
 } from "./dashboardUtils";
 
 export default function RecentActivityTable({
-  activities,
+  activities = [],
   isLoading,
   canLoadMore,
   isLoadingMore,
@@ -29,7 +29,7 @@ export default function RecentActivityTable({
     );
   }
 
-  if (!activities.length) {
+  if (!Array.isArray(activities) || activities.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
         <div className="bg-slate-100 p-6 rounded-full mb-6">
@@ -76,7 +76,7 @@ export default function RecentActivityTable({
         <tbody>
           {activities.map((activity) => (
             <tr
-              key={activity.id}
+              key={`${activity.type || activity.__typename || "activity"}-${activity.id}`}
               className="border-b border-slate-100 last:border-b-0 cursor-pointer transition-all duration-200 hover:border-0 hover:-translate-y-0.5 hover:bg-rose-50/50"
             >
               <td className="px-4 sm:px-8 py-6">
@@ -143,7 +143,7 @@ export default function RecentActivityTable({
               "Loading..."
             ) : (
               <>
-                Load More Stories
+                Load More Activities
                 <ChevronDown strokeWidth={2.5} size={16} />
               </>
             )}

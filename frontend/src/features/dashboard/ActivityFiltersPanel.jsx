@@ -27,7 +27,7 @@ export default function ActivityFiltersPanel({
           onChange={(event) => updateFilter("contentType", event.target.value)}
           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
         >
-          <option value="all">All [Stories & Confession]</option>
+          <option value="all">All (Stories & Confessions)</option>
           <option value="story">Stories only</option>
           <option value="confession">Confessions only</option>
         </select>

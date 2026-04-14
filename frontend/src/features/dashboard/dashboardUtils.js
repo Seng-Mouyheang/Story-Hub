@@ -78,8 +78,16 @@ export const formatUpdatedLabel = (value) => {
     return `${diffDays} days ago`;
   }
 
-  if (diffDays <= 20) {
+  if (diffDays <= 13) {
     return "A week ago";
+  }
+
+  if (diffDays <= 20) {
+    return "2 week ago";
+  }
+
+  if (diffDays <= 27) {
+    return "3 week ago";
   }
 
   if (diffDays <= 31) {
@@ -131,8 +139,32 @@ export const buildFetchParams = (config) => {
   return params.toString();
 };
 
+const sanitizeActivityIdPart = (value) =>
+  String(value)
+    .trim()
+    .replaceAll(/[^a-zA-Z0-9_-]+/g, "-")
+    .replaceAll(/^-+|-+$/g, "");
+
+const buildActivityFallbackId = (item, type) => {
+  const stableParts = [
+    type,
+    item?.createdAt,
+    item?.title,
+    item?.authorId,
+    item?.slug,
+    item?.visibility,
+  ]
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .map(sanitizeActivityIdPart)
+    .filter(Boolean);
+
+  return stableParts.length > 0
+    ? stableParts.join("-")
+    : `${sanitizeActivityIdPart(type)}-activity`;
+};
+
 export const normalizeActivityItem = (item, type) => ({
-  id: String(item?._id || `${type}-${Math.random()}`),
+  id: String(item?._id || buildActivityFallbackId(item, type)),
   type,
   title:
     item?.title ||
