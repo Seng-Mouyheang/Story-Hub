@@ -168,7 +168,7 @@ const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
 /**
  * Create a new story
  * @param {Object} storyData
- * @returns {ObjectId}
+ * @returns {Promise<ObjectId>}
  */
 
 const createStory = async (storyData) => {
@@ -532,7 +532,7 @@ const deleteStory = async (id, userId) => {
       // Soft delete story and remove bookmarks together so they stay in sync.
       await collection.updateOne(
         { _id: storyObjectId },
-        { $set: { deletedAt } },
+        { $set: { deletedAt, likesCount: 0 } },
         { session },
       );
 
@@ -555,7 +555,7 @@ const deleteStory = async (id, userId) => {
     try {
       await collection.updateOne(
         { _id: storyObjectId },
-        { $set: { deletedAt } },
+        { $set: { deletedAt, likesCount: 0 } },
       );
 
       await db.collection("storyBookmarks").deleteMany({
@@ -577,6 +577,45 @@ const deleteStory = async (id, userId) => {
   } finally {
     await session.endSession();
   }
+};
+
+const restoreStory = async (id, userId) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+  const storyObjectId = new ObjectId(id);
+
+  const story = await collection.findOne({ _id: storyObjectId });
+
+  if (!story) throw new Error("not found");
+
+  if (story.authorId.toString() !== userId.toString()) {
+    throw new Error("Unauthorized");
+  }
+
+  if (story.deletedAt === null) {
+    throw new Error("Already active");
+  }
+
+  const actualLikesCount = await db
+    .collection("storyLikes")
+    .countDocuments({ storyId: storyObjectId });
+
+  const result = await collection.updateOne(
+    { _id: storyObjectId, deletedAt: { $ne: null } },
+    {
+      $set: {
+        deletedAt: null,
+        likesCount: actualLikesCount,
+        updatedAt: new Date(),
+      },
+    },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error("not found");
+  }
+
+  return { success: true };
 };
 
 const getUserStories = async (userId, cursor, limit) => {
@@ -655,6 +694,82 @@ const getUserStories = async (userId, cursor, limit) => {
   };
 };
 
+const getDeletedUserStories = async (userId, cursor, limit) => {
+  const collection = await getCollection();
+  limit = Number.parseInt(limit, 10) || 10;
+
+  const matchStage = {
+    authorId: new ObjectId(userId),
+    deletedAt: { $ne: null },
+  };
+
+  if (typeof cursor === "string" && cursor.includes("_")) {
+    const [deletedAtStr, id] = cursor.split("_");
+
+    matchStage.$or = [
+      { deletedAt: { $lt: new Date(deletedAtStr) } },
+      {
+        deletedAt: new Date(deletedAtStr),
+        _id: { $lt: new ObjectId(id) },
+      },
+    ];
+  }
+
+  const pipeline = [
+    { $match: matchStage },
+    { $sort: { deletedAt: -1, _id: -1 } },
+    { $limit: limit + 1 },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { authorId: "$authorId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$authorId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
+
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  const hasMore = stories.length > limit;
+  const data = hasMore ? stories.slice(0, limit) : stories;
+
+  const finalData = data.map((story) => ({
+    ...story,
+    followedByCurrentUser: false,
+    authorDisplayName: story.author?.displayName || null,
+  }));
+
+  let nextCursor = null;
+
+  if (hasMore) {
+    const lastStory = data[data.length - 1];
+    nextCursor = `${lastStory.deletedAt.toISOString()}_${lastStory._id}`;
+  }
+
+  return {
+    data: finalData,
+    nextCursor,
+    hasMore,
+  };
+};
+
 module.exports = {
   createStory,
   getPublishedStories,
@@ -664,6 +779,8 @@ module.exports = {
   getStoryById,
   updateStory,
   deleteStory,
+  restoreStory,
   incrementViews,
   getUserStories,
+  getDeletedUserStories,
 };

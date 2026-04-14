@@ -445,6 +445,45 @@ const deleteConfession = async (id, userId) => {
   }
 };
 
+const restoreConfession = async (id, userId) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+  const confessionObjectId = new ObjectId(id);
+
+  const confession = await collection.findOne({ _id: confessionObjectId });
+
+  if (!confession) throw new Error("not found");
+
+  if (confession.authorId.toString() !== userId.toString()) {
+    throw new Error("Unauthorized");
+  }
+
+  if (confession.deletedAt === null) {
+    throw new Error("Already active");
+  }
+
+  const actualLikesCount = await db
+    .collection("confessionLikes")
+    .countDocuments({ confessionId: confessionObjectId });
+
+  const result = await collection.updateOne(
+    { _id: confessionObjectId, deletedAt: { $ne: null } },
+    {
+      $set: {
+        deletedAt: null,
+        likesCount: actualLikesCount,
+        updatedAt: new Date(),
+      },
+    },
+  );
+
+  if (result.matchedCount === 0) {
+    throw new Error("not found");
+  }
+
+  return { success: true };
+};
+
 const getUserConfessions = async (userId, cursor, limit) => {
   const collection = await getCollection();
   const parsedLimit = Number.parseInt(limit, 10) || 10;
@@ -526,6 +565,87 @@ const getUserConfessions = async (userId, cursor, limit) => {
   };
 };
 
+const getDeletedUserConfessions = async (userId, cursor, limit) => {
+  const collection = await getCollection();
+  const parsedLimit = Number.parseInt(limit, 10) || 10;
+
+  const matchStage = {
+    authorId: new ObjectId(userId),
+    deletedAt: { $ne: null },
+  };
+
+  if (typeof cursor === "string" && cursor.includes("_")) {
+    const [deletedAtStr, id] = cursor.split("_");
+
+    if (deletedAtStr && id && ObjectId.isValid(id)) {
+      const deletedAtDate = new Date(deletedAtStr);
+      if (!Number.isNaN(deletedAtDate.getTime())) {
+        matchStage.$or = [
+          { deletedAt: { $lt: deletedAtDate } },
+          {
+            deletedAt: deletedAtDate,
+            _id: { $lt: new ObjectId(id) },
+          },
+        ];
+      }
+    }
+  }
+
+  const pipeline = [
+    { $match: matchStage },
+    { $sort: { deletedAt: -1, _id: -1 } },
+    { $limit: parsedLimit + 1 },
+    {
+      $lookup: {
+        from: "profiles",
+        let: { authorId: "$authorId" },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ["$userId", "$$authorId"] },
+              deletedAt: null,
+            },
+          },
+          {
+            $project: { displayName: 1 },
+          },
+        ],
+        as: "author",
+      },
+    },
+    {
+      $unwind: {
+        path: "$author",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+  ];
+
+  const confessions = await collection.aggregate(pipeline).toArray();
+
+  const hasMore = confessions.length > parsedLimit;
+  const data = hasMore ? confessions.slice(0, parsedLimit) : confessions;
+
+  const finalData = data.map((confession) => ({
+    ...confession,
+    followedByCurrentUser: false,
+    authorDisplayName: resolveAuthorDisplayName(confession, userId),
+  }));
+
+  let nextCursor = null;
+
+  if (hasMore) {
+    const lastConfession = data[data.length - 1];
+    nextCursor = `${lastConfession.deletedAt.toISOString()}_${lastConfession._id}`;
+  }
+
+  return {
+    data: finalData,
+    nextCursor,
+    hasMore,
+  };
+};
+
 module.exports = {
   createConfession,
   getPublishedConfessions,
@@ -533,6 +653,8 @@ module.exports = {
   getConfessionById,
   updateConfession,
   deleteConfession,
+  restoreConfession,
   incrementViews,
   getUserConfessions,
+  getDeletedUserConfessions,
 };
