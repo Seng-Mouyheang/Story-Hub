@@ -559,7 +559,7 @@ export default function Dashboard() {
             {activities.map((activity) => (
               <tr
                 key={activity.id}
-                className="border-b border-slate-100 last:border-b-0"
+                className="border-b border-slate-100 last:border-b-0 cursor-pointer transition-all duration-200 hover:border-0 hover:-translate-y-0.5 hover:bg-rose-50/50"
               >
                 <td className="px-4 sm:px-8 py-6">
                   <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -662,7 +662,7 @@ export default function Dashboard() {
         <Navbar title="Analytics Dashboard" />
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="max-w-6xl mx-auto">
+            <div className="max-w-6xl mx-auto mb-4">
               {/* Header */}
               <header className="mb-8 sm:mb-10">
                 <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
@@ -702,7 +702,7 @@ export default function Dashboard() {
               )}
 
               {/* Recent Activity Card */}
-              <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl overflow-hidden min-h-105 sm:min-h-125 flex flex-col shadow-sm">
+              <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl overflow-visible min-h-115 sm:min-h-136 flex flex-col shadow-sm">
                 <div className="relative px-4 sm:px-8 py-5 border-b border-slate-100 flex justify-between items-center">
                   <h3 className="flex items-center text-lg font-semibold text-slate-700 gap-2">
                     <History strokeWidth={2} size={26} /> Your Recent Activity
@@ -724,7 +724,7 @@ export default function Dashboard() {
                   {showFilters && (
                     <div
                       ref={filterPanelRef}
-                      className="absolute right-4 sm:right-8 top-full mt-2 z-20 w-75 rounded-2xl border border-slate-200 bg-white shadow-xl p-4"
+                      className="fixed inset-x-3 top-24 z-30 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl p-4 sm:absolute sm:right-4 sm:top-full sm:inset-x-auto sm:mt-2 sm:w-80 sm:max-h-[calc(100vh-12rem)]"
                     >
                       <h4 className="text-sm font-semibold text-slate-700 mb-3">
                         Activity Filters
@@ -745,7 +745,10 @@ export default function Dashboard() {
                           }
                           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
                         >
-                          <option value="all">Stories + Confessions</option>
+                          <option value="all">
+                            {" "}
+                            All [Stories & Confession]
+                          </option>
                           <option value="story">Stories only</option>
                           <option value="confession">Confessions only</option>
                         </select>
@@ -764,8 +767,9 @@ export default function Dashboard() {
                           }
                           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
                         >
-                          <option value="date">Date</option>
-                          <option value="likes">Likes</option>
+                          <option value="default">All</option>
+                          <option value="likes">Most Likes</option>
+                          <option value="comments">Most Comments</option>
                         </select>
 
                         <label
@@ -782,8 +786,8 @@ export default function Dashboard() {
                           }
                           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
                         >
-                          <option value="desc">Newest / Highest first</option>
-                          <option value="asc">Oldest / Lowest first</option>
+                          <option value="desc">Latest </option>
+                          <option value="asc">Oldest </option>
                         </select>
 
                         <label
