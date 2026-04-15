@@ -1,5 +1,5 @@
-import React from 'react';
-import { Heart, MessageCircle, Share2 } from 'lucide-react';
+import React from "react";
+import { Heart, MessageCircle, Share2 } from "lucide-react";
 
 export default function PostCard({ post }) {
   return (
@@ -13,7 +13,9 @@ export default function PostCard({ post }) {
           <p className="text-xs text-slate-400">{post.time}</p>
         </div>
       </div>
-      <p className="text-slate-600 text-sm leading-relaxed mb-6">{post.content}</p>
+      <p className="text-slate-600 text-sm leading-relaxed mb-6">
+        {post.content}
+      </p>
       <div className="flex items-center gap-6 text-slate-400">
         <button className="flex items-center gap-2 hover:text-red-400 transition-colors">
           <Heart className="w-4 h-4" />
