@@ -340,7 +340,7 @@ export default function Dashboard() {
     let count = 0;
 
     if (activityFilters.contentType !== "all") count += 1;
-    if (activityFilters.sortBy !== "date") count += 1;
+    if (activityFilters.sortBy !== "default") count += 1;
     if (activityFilters.order !== "desc") count += 1;
     if (activityFilters.storyStatus !== "all") count += 1;
     if (activityFilters.storyVisibility !== "all") count += 1;

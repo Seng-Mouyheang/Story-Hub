@@ -2,7 +2,7 @@ export const DASHBOARD_FILTERS_STORAGE_KEY = "dashboardActivityFilters";
 
 export const DEFAULT_ACTIVITY_FILTERS = {
   contentType: "all",
-  sortBy: "date",
+  sortBy: "default",
   order: "desc",
   storyStatus: "all",
   storyVisibility: "all",
@@ -40,6 +40,17 @@ export const formatCount = (value) => {
 };
 
 export const formatDateOnly = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    (typeof value !== "string" &&
+      typeof value !== "number" &&
+      !(value instanceof Date))
+  ) {
+    return "N/A";
+  }
+
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
@@ -50,6 +61,10 @@ export const formatDateOnly = (value) => {
 };
 
 export const formatUpdatedLabel = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return "N/A";
+  }
+
   const sourceDate = new Date(value);
 
   if (Number.isNaN(sourceDate.getTime())) {
@@ -175,7 +190,7 @@ export const normalizeActivityItem = (item, type) => ({
   likesCount: Number(item?.likesCount || 0),
   commentCount: Number(item?.commentCount || 0),
   createdAt: item?.createdAt || null,
-  updatedAt: item?.updatedAt || item?.createdAt || null,
+  updatedAt: item?.updatedAt ?? null,
   status: item?.status || null,
   visibility: item?.visibility || null,
 });
