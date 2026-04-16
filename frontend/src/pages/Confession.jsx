@@ -14,6 +14,7 @@ import {
   Share2,
   Loader2,
   SendHorizontal,
+  X,
 } from "lucide-react";
 
 const parseResponse = async (response) => response.json().catch(() => ({}));
@@ -131,6 +132,12 @@ export default function Confession() {
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
   const [gestureLikeBurstId, setGestureLikeBurstId] = useState(null);
+  const [activeCommentConfessionId, setActiveCommentConfessionId] =
+    useState("");
+  const [commentModalTitle, setCommentModalTitle] = useState("");
+  const [modalComments, setModalComments] = useState([]);
+  const [isLoadingModalComments, setIsLoadingModalComments] = useState(false);
+  const [modalCommentsError, setModalCommentsError] = useState("");
   const sentinelRef = useRef(null);
   const lastTapRef = useRef({ confessionId: "", time: 0 });
 
@@ -338,6 +345,43 @@ export default function Confession() {
     [handleToggleLike],
   );
 
+  const closeCommentModal = () => {
+    setActiveCommentConfessionId("");
+    setCommentModalTitle("");
+    setModalComments([]);
+    setModalCommentsError("");
+    setIsLoadingModalComments(false);
+  };
+
+  const openCommentModal = async (confessionId, authorName) => {
+    setActiveCommentConfessionId(confessionId);
+    setCommentModalTitle(authorName || "Confession");
+    setModalComments([]);
+    setModalCommentsError("");
+    setIsLoadingModalComments(true);
+
+    try {
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const response = await fetch(
+        `/api/confessions/${confessionId}/comments?limit=10`,
+        { headers },
+      );
+      const payload = await parseResponse(response);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to load comments.");
+      }
+
+      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
+      setModalComments(comments);
+    } catch (error) {
+      setModalCommentsError(error.message || "Failed to load comments.");
+    } finally {
+      setIsLoadingModalComments(false);
+    }
+  };
+
   React.useEffect(() => {
     const getCardMeta = (eventTarget) => {
       if (!(eventTarget instanceof Element) || eventTarget.closest("button")) {
@@ -440,6 +484,7 @@ export default function Confession() {
   }, [hasMoreFeed, nextCursor, isLoadingMoreFeed, isLoadingFeed]);
 
   let feedContent = null;
+  const isCommentModalOpen = Boolean(activeCommentConfessionId);
 
   if (isLoadingFeed) {
     feedContent = (
@@ -458,6 +503,12 @@ export default function Confession() {
       const originalAuthor = item?.authorDisplayName || "Unknown Author";
       const author = item?.isAnonymous ? "Anonymous" : originalAuthor;
       const authorSeed = String(author || "author");
+      const avatarSrc =
+        !item?.isAnonymous && item?.authorProfilePicture
+          ? item.authorProfilePicture
+          : `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+              authorSeed,
+            )}`;
       const tags =
         Array.isArray(item?.tags) && item.tags.length > 0 ? item.tags : [];
       const confessionId = String(item?._id || item?.id || authorSeed);
@@ -482,10 +533,7 @@ export default function Confession() {
           <div className="flex justify-between items-start mb-4">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-                <img
-                  src={`https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorSeed)}`}
-                  alt="avatar"
-                />
+                <img src={avatarSrc} alt="avatar" />
               </div>
 
               <div className="min-w-0">
@@ -540,7 +588,10 @@ export default function Confession() {
                 </button>
               </div>
 
-              <button className="flex items-center gap-2 text-slate-500 transition-all duration-200 hover:text-sky-500 cursor-pointer">
+              <button
+                onClick={() => openCommentModal(confessionId, author)}
+                className="flex items-center gap-2 text-slate-500 transition-all duration-200 hover:text-sky-500 cursor-pointer"
+              >
                 <MessageCircle size={20} />
                 <span className="text-xs sm:text-sm font-medium">
                   {formatCount(Number(item?.commentCount || 0))}
@@ -675,6 +726,88 @@ export default function Confession() {
             <SiteFooter />
           </div>
         </main>
+
+        {isCommentModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6">
+            <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
+                  Comments - {commentModalTitle}
+                </h4>
+                <button
+                  type="button"
+                  onClick={closeCommentModal}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                  aria-label="Close comments"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="max-h-[65vh] overflow-y-auto px-4 py-4 space-y-3">
+                {isLoadingModalComments && (
+                  <p className="text-sm text-slate-500">Loading comments...</p>
+                )}
+
+                {!isLoadingModalComments && modalCommentsError && (
+                  <p className="text-sm text-rose-600">{modalCommentsError}</p>
+                )}
+
+                {!isLoadingModalComments &&
+                  !modalCommentsError &&
+                  modalComments.length === 0 && (
+                    <p className="text-sm text-slate-500">No comments yet.</p>
+                  )}
+
+                {!isLoadingModalComments &&
+                  !modalCommentsError &&
+                  modalComments.map((comment) => {
+                    const commentId = String(
+                      comment?._id || comment?.id || "comment",
+                    );
+                    const commentAuthor =
+                      comment?.authorDisplayName || "Anonymous";
+                    const commentAvatarSrc =
+                      comment?.authorProfilePicture ||
+                      `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
+                        commentAuthor,
+                      )}`;
+
+                    return (
+                      <div
+                        key={commentId}
+                        className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"
+                      >
+                        <div className="mb-2 flex items-start gap-3">
+                          <div className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0">
+                            <img
+                              src={commentAvatarSrc}
+                              alt="commenter avatar"
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-xs font-semibold text-slate-700 truncate">
+                                {commentAuthor}
+                              </span>
+                              <span className="text-[11px] text-slate-400 shrink-0">
+                                {getRelativeTime(comment?.createdAt)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-700 whitespace-pre-wrap mt-1">
+                              {comment?.content || "No comment content"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
