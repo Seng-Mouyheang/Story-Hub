@@ -11,6 +11,22 @@ const getAuthenticatedUserObjectId = (req, res) => {
   return new ObjectId(req.user.userId);
 };
 
+const getSortField = (sortBy) => {
+  if (sortBy === "likes") {
+    return "likesCount";
+  }
+
+  if (sortBy === "comments") {
+    return "commentCount";
+  }
+
+  if (sortBy === "title") {
+    return "title";
+  }
+
+  return "updatedAt";
+};
+
 const getDashboardStats = async (req, res) => {
   try {
     const userObjectId = getAuthenticatedUserObjectId(req, res);
@@ -75,7 +91,7 @@ const getDashboardStories = async (req, res) => {
       matchStage.visibility = visibility;
     }
 
-    const sortField = sortBy === "likes" ? "likesCount" : "updatedAt";
+    const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
 
     const [stories, total] = await Promise.all([
@@ -132,7 +148,7 @@ const getDashboardConfessions = async (req, res) => {
       deletedAt: null,
     };
 
-    const sortField = sortBy === "likes" ? "likesCount" : "updatedAt";
+    const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
 
     const [confessions, total] = await Promise.all([
