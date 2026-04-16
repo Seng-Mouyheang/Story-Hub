@@ -48,6 +48,70 @@ const buildActivityProjection = (type) => ({
   },
 });
 
+const buildDashboardStoryMatchStage = ({
+  userObjectId,
+  status,
+  visibility,
+  deleted,
+}) => {
+  const matchStage = { authorId: userObjectId };
+
+  if (deleted === "active") {
+    matchStage.deletedAt = null;
+  } else if (deleted === "deleted") {
+    matchStage.deletedAt = { $ne: null };
+  }
+
+  if (status !== "all") {
+    matchStage.status = status;
+  }
+
+  if (visibility !== "all") {
+    matchStage.visibility = visibility;
+  }
+
+  return matchStage;
+};
+
+const buildDashboardConfessionMatchStage = ({
+  userObjectId,
+  status,
+  visibility,
+  deleted,
+}) => {
+  const notes = [];
+
+  if (status !== "all") {
+    notes.push(
+      "Confessions were excluded because dashboard status filtering applies only to stories.",
+    );
+
+    return {
+      matchStage: null,
+      includeConfessions: false,
+      notes,
+    };
+  }
+
+  const matchStage = { authorId: userObjectId };
+
+  if (deleted === "active") {
+    matchStage.deletedAt = null;
+  } else if (deleted === "deleted") {
+    matchStage.deletedAt = { $ne: null };
+  }
+
+  if (visibility !== "all") {
+    matchStage.visibility = visibility;
+  }
+
+  return {
+    matchStage,
+    includeConfessions: true,
+    notes,
+  };
+};
+
 const getDashboardStats = async (req, res) => {
   try {
     const userObjectId = getAuthenticatedUserObjectId(req, res);
@@ -94,23 +158,12 @@ const getDashboardStories = async (req, res) => {
     const db = await connectToDatabase();
     const storiesCollection = db.collection("stories");
 
-    const matchStage = {
-      authorId: userObjectId,
-    };
-
-    if (deleted === "active") {
-      matchStage.deletedAt = null;
-    } else if (deleted === "deleted") {
-      matchStage.deletedAt = { $ne: null };
-    }
-
-    if (status !== "all") {
-      matchStage.status = status;
-    }
-
-    if (visibility !== "all") {
-      matchStage.visibility = visibility;
-    }
+    const matchStage = buildDashboardStoryMatchStage({
+      userObjectId,
+      status,
+      visibility,
+      deleted,
+    });
 
     const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
@@ -231,28 +284,23 @@ const getDashboardFeed = async (req, res) => {
     const storiesCollection = db.collection("stories");
     const confessionsCollection = db.collection("confessions");
 
-    const storyMatchStage = {
-      authorId: userObjectId,
-    };
+    const storyMatchStage = buildDashboardStoryMatchStage({
+      userObjectId,
+      status,
+      visibility,
+      deleted,
+    });
 
-    if (deleted === "active") {
-      storyMatchStage.deletedAt = null;
-    } else if (deleted === "deleted") {
-      storyMatchStage.deletedAt = { $ne: null };
-    }
-
-    if (status !== "all") {
-      storyMatchStage.status = status;
-    }
-
-    if (visibility !== "all") {
-      storyMatchStage.visibility = visibility;
-    }
-
-    const confessionMatchStage = {
-      authorId: userObjectId,
-      deletedAt: null,
-    };
+    const {
+      matchStage: confessionMatchStage,
+      includeConfessions,
+      notes,
+    } = buildDashboardConfessionMatchStage({
+      userObjectId,
+      status,
+      visibility,
+      deleted,
+    });
 
     const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
@@ -262,7 +310,13 @@ const getDashboardFeed = async (req, res) => {
       { $match: storyMatchStage },
       { $addFields: { type: { $literal: "story" } } },
       buildActivityProjection("story"),
-      {
+      { $sort: { [sortField]: sortDirection, _id: sortDirection } },
+      { $skip: skip },
+      { $limit: parsedLimit },
+    ];
+
+    if (includeConfessions) {
+      pipeline.splice(3, 0, {
         $unionWith: {
           coll: "confessions",
           pipeline: [
@@ -271,18 +325,17 @@ const getDashboardFeed = async (req, res) => {
             buildActivityProjection("confession"),
           ],
         },
-      },
-      { $sort: { [sortField]: sortDirection, _id: sortDirection } },
-      { $skip: skip },
-      { $limit: parsedLimit },
-    ];
+      });
+    }
 
     const [feedItems, storyTotal, confessionTotal] = await Promise.all([
       storiesCollection
         .aggregate(pipeline, collation ? { collation } : {})
         .toArray(),
       storiesCollection.countDocuments(storyMatchStage),
-      confessionsCollection.countDocuments(confessionMatchStage),
+      includeConfessions
+        ? confessionsCollection.countDocuments(confessionMatchStage)
+        : 0,
     ]);
 
     const total = storyTotal + confessionTotal;
@@ -295,6 +348,7 @@ const getDashboardFeed = async (req, res) => {
         total,
         totalPages: Math.ceil(total / parsedLimit),
       },
+      notes,
       filters: {
         status,
         visibility,
