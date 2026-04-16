@@ -15,7 +15,10 @@ import {
   Loader2,
   SendHorizontal,
   X,
+  MoreHorizontal,
 } from "lucide-react";
+
+const normalizeId = (value) => String(value || "").trim();
 
 const parseResponse = async (response) => response.json().catch(() => ({}));
 
@@ -132,6 +135,14 @@ export default function Confession() {
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
   const [gestureLikeBurstId, setGestureLikeBurstId] = useState(null);
+  const [editingConfessionId, setEditingConfessionId] = useState("");
+  const [editConfessionContent, setEditConfessionContent] = useState("");
+  const [editConfessionIsAnonymous, setEditConfessionIsAnonymous] =
+    useState(true);
+  const [editConfessionVisibility, setEditConfessionVisibility] =
+    useState("public");
+  const [menuConfessionId, setMenuConfessionId] = useState("");
+  const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
   const [activeCommentConfessionId, setActiveCommentConfessionId] =
     useState("");
   const [commentModalTitle, setCommentModalTitle] = useState("");
@@ -140,6 +151,17 @@ export default function Confession() {
   const [modalCommentsError, setModalCommentsError] = useState("");
   const sentinelRef = useRef(null);
   const lastTapRef = useRef({ confessionId: "", time: 0 });
+
+  const currentUserId = React.useMemo(() => {
+    try {
+      const currentUser = JSON.parse(
+        localStorage.getItem("currentUser") || "null",
+      );
+      return normalizeId(currentUser?.id || currentUser?._id || "");
+    } catch {
+      return "";
+    }
+  }, []);
 
   const loadConfessions = async ({ cursor = "", append = false } = {}) => {
     if (append) {
@@ -229,6 +251,66 @@ export default function Confession() {
       await loadConfessions();
     } catch (error) {
       setErrorMessage(error.message || "Failed to post confession.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveEditedConfession = async () => {
+    if (!editingConfessionId) {
+      return;
+    }
+
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const cleanedContent = stripTagsFromContent(editConfessionContent);
+
+    if (cleanedContent.length < 5) {
+      setErrorMessage("Write at least 5 characters before updating.");
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErrorMessage("Please log in again to update a confession.");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const extractedTags = extractTagsFromContent(editConfessionContent);
+
+      const response = await fetch(`/api/confessions/${editingConfessionId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          content: cleanedContent,
+          isAnonymous: editConfessionIsAnonymous,
+          visibility: editConfessionVisibility,
+          tags: extractedTags,
+        }),
+      });
+
+      const payload = await parseResponse(response);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to update confession.");
+      }
+
+      setEditingConfessionId("");
+      setEditConfessionContent("");
+      setEditConfessionIsAnonymous(true);
+      setEditConfessionVisibility("public");
+      setMenuConfessionId("");
+      setSuccessMessage("Confession updated successfully.");
+      await loadConfessions();
+    } catch (error) {
+      setErrorMessage(error.message || "Failed to update confession.");
     } finally {
       setIsSubmitting(false);
     }
@@ -324,6 +406,90 @@ export default function Confession() {
       );
     } catch (error) {
       setErrorMessage(error.message || "Failed to toggle bookmark.");
+    }
+  };
+
+  const handleToggleConfessionMenu = (confessionId) => {
+    setMenuConfessionId((currentId) =>
+      currentId === confessionId ? "" : confessionId,
+    );
+  };
+
+  const handleEditConfession = (item) => {
+    const existingTags = Array.isArray(item?.tags) ? item.tags : [];
+    const reconstructedEditContent = [
+      item?.content || "",
+      existingTags.map((tag) => `#${tag}`).join(" "),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .replaceAll(/[ \t]{2,}/g, " ")
+      .trim();
+
+    setMenuConfessionId("");
+    setEditingConfessionId(String(item?._id || item?.id || ""));
+    setEditConfessionContent(reconstructedEditContent);
+    setEditConfessionIsAnonymous(Boolean(item?.isAnonymous));
+    setEditConfessionVisibility(
+      item?.visibility === "private" ? "private" : "public",
+    );
+    setSuccessMessage("");
+    setErrorMessage("");
+  };
+
+  const handleDeleteConfession = (confessionId) => {
+    setMenuConfessionId("");
+    setDeleteTargetConfessionId(confessionId);
+  };
+
+  const handleCancelEditConfession = () => {
+    setEditingConfessionId("");
+    setEditConfessionContent("");
+    setEditConfessionIsAnonymous(true);
+    setEditConfessionVisibility("public");
+  };
+
+  const handleConfirmDeleteConfession = async () => {
+    if (!deleteTargetConfessionId) {
+      return;
+    }
+
+    const confessionId = deleteTargetConfessionId;
+    setDeleteTargetConfessionId("");
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErrorMessage("Please log in again to delete a confession.");
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/confessions/${confessionId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await parseResponse(response);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to delete confession.");
+      }
+
+      setConfessionFeed((prev) =>
+        prev.filter(
+          (item) => String(item?._id || item?.id || "") !== confessionId,
+        ),
+      );
+
+      if (editingConfessionId === confessionId) {
+        handleCancelEditConfession();
+      }
+
+      setSuccessMessage("Confession deleted successfully.");
+    } catch (error) {
+      setErrorMessage(error.message || "Failed to delete confession.");
     }
   };
 
@@ -512,6 +678,8 @@ export default function Confession() {
       const tags =
         Array.isArray(item?.tags) && item.tags.length > 0 ? item.tags : [];
       const confessionId = String(item?._id || item?.id || authorSeed);
+      const canManageConfession =
+        Boolean(currentUserId) && normalizeId(item?.authorId) === currentUserId;
 
       return (
         <div
@@ -520,6 +688,38 @@ export default function Confession() {
           data-liked-by-current-user={Boolean(item?.likedByCurrentUser)}
           className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
         >
+          {canManageConfession && (
+            <div className="absolute right-4 top-4 z-20">
+              <button
+                type="button"
+                onClick={() => handleToggleConfessionMenu(confessionId)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                aria-label="Confession actions"
+              >
+                <MoreHorizontal size={18} />
+              </button>
+
+              {menuConfessionId === confessionId && (
+                <div className="absolute right-0 top-10 w-28 rounded-xl border border-slate-200 bg-white shadow-lg py-1 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => handleEditConfession(item)}
+                    className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteConfession(confessionId)}
+                    className="w-full px-3 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {gestureLikeBurstId === confessionId && (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
               <Heart
@@ -541,9 +741,10 @@ export default function Confession() {
                   <h3 className="font-semibold text-slate-900 truncate">
                     {author}
                   </h3>
-                  <span className="text-slate-400 text-xs">
-                    • {getRelativeTime(item?.createdAt)}
-                  </span>
+                  <div className="flex items-center gap-1 text-xs text-slate-400">
+                    <span>• {getRelativeTime(item?.createdAt)}</span>
+                    {item?.isEdited ? <span>• Edited</span> : null}
+                  </div>
                 </div>
               </div>
             </div>
@@ -632,7 +833,7 @@ export default function Confession() {
 
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="max-w-4xl flex flex-col items-center justify-start">
+            <div className="max-w-4xl mx-auto flex flex-col items-center justify-start">
               {errorMessage && (
                 <div className="w-full mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {errorMessage}
@@ -699,19 +900,13 @@ export default function Confession() {
                       ) : (
                         <SendHorizontal className="h-4 w-4" />
                       )}
-                      {isSubmitting ? "Posting..." : "Post"}
+                      Post
                     </button>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-8 w-full">
-                <div className="mb-4 flex items-center justify-between">
-                  <h3 className="text-xl sm:text-2xl font-semibold text-slate-900">
-                    Confession Feed
-                  </h3>
-                </div>
-
+              <div className="mt-8 w-full pt-4 border-t border-gray-300">
                 {feedContent}
 
                 {isLoadingMoreFeed && (
@@ -804,6 +999,133 @@ export default function Confession() {
                       </div>
                     );
                   })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {editingConfessionId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] px-4 py-6">
+            <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
+                  Edit Confession
+                </h4>
+                <button
+                  type="button"
+                  onClick={handleCancelEditConfession}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+                  aria-label="Close edit confession modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="px-4 py-4 space-y-4">
+                <textarea
+                  value={editConfessionContent}
+                  onChange={(event) =>
+                    setEditConfessionContent(event.target.value)
+                  }
+                  className="w-full min-h-50 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
+                  placeholder="Edit your confession..."
+                />
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditConfessionIsAnonymous((prev) => !prev)
+                    }
+                    aria-pressed={editConfessionIsAnonymous}
+                    className="text-xs text-slate-500 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 cursor-pointer hover:border-slate-400 hover:text-slate-700 transition-colors"
+                  >
+                    {editConfessionIsAnonymous ? (
+                      <Lock className="w-3.5 h-3.5" />
+                    ) : (
+                      <LockOpen className="w-3.5 h-3.5" />
+                    )}
+                    {editConfessionIsAnonymous ? "Anonymous" : "Identified"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setEditConfessionVisibility((prev) =>
+                        prev === "public" ? "private" : "public",
+                      )
+                    }
+                    aria-pressed={editConfessionVisibility === "private"}
+                    className="text-xs text-slate-500 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 cursor-pointer hover:border-slate-400 hover:text-slate-700 transition-colors"
+                  >
+                    {editConfessionVisibility === "public" ? (
+                      <Eye className="w-3.5 h-3.5" />
+                    ) : (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    )}
+                    {editConfessionVisibility === "public"
+                      ? "Public"
+                      : "Private"}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelEditConfession}
+                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveEditedConfession}
+                    disabled={isSubmitting}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isSubmitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : null}
+                    {isSubmitting ? "Updating..." : "Save changes"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deleteTargetConfessionId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <button
+              type="button"
+              aria-label="Close delete confession modal"
+              onClick={() => setDeleteTargetConfessionId("")}
+              className="absolute inset-0 cursor-default bg-slate-900/40 backdrop-blur-[2px]"
+            />
+
+            <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5">
+              <h3 className="text-base font-semibold text-slate-900 mb-2">
+                Delete this confession?
+              </h3>
+              <p className="text-sm text-slate-500 mb-5">
+                This action cannot be undone.
+              </p>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTargetConfessionId("")}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteConfession}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 cursor-pointer"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           </div>

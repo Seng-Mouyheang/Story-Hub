@@ -12,6 +12,7 @@ const PROTECTED_FIELDS = [
   "views",
   "likesCount",
   "commentCount",
+  "isEdited",
   "createdAt",
   "deletedAt",
 ];
@@ -91,6 +92,7 @@ const createConfession = async (confessionData) => {
     tags: confessionData.tags || [],
     isAnonymous: confessionData.isAnonymous !== false,
     visibility: confessionData.visibility || "public",
+    isEdited: false,
     views: 0,
     likesCount: 0,
     commentCount: 0,
@@ -378,6 +380,7 @@ const updateConfession = async (id, userId, updateData) => {
     {
       $set: {
         ...updateData,
+        isEdited: true,
         updatedAt: new Date(),
       },
     },
