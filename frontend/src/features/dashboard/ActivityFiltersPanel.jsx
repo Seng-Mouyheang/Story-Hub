@@ -44,25 +44,14 @@ export default function ActivityFiltersPanel({
           onChange={(event) => updateFilter("sortBy", event.target.value)}
           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
         >
-          <option value="default">All</option>
-          <option value="likes">Most Likes</option>
-          <option value="comments">Most Comments</option>
-        </select>
-
-        <label
-          htmlFor="dashboard-sort-order"
-          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-        >
-          Sort Order
-        </label>
-        <select
-          id="dashboard-sort-order"
-          value={activityFilters.order}
-          onChange={(event) => updateFilter("order", event.target.value)}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-        >
-          <option value="desc">Latest</option>
-          <option value="asc">Oldest</option>
+          <option value="updated_desc">Latest</option>
+          <option value="updated_asc">Oldest</option>
+          <option value="title_asc">Title (A-Z)</option>
+          <option value="title_desc">Title (Z-A)</option>
+          <option value="likes_desc">Most Likes</option>
+          <option value="likes_asc">Least Likes</option>
+          <option value="comments_desc">Most Comments</option>
+          <option value="comments_asc">Least Comments</option>
         </select>
 
         <label

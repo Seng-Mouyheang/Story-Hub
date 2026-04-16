@@ -18,8 +18,11 @@ import {
   buildFetchParams,
   formatCount,
   getSavedDashboardFilters,
+  getSortConfig,
+  getStoryQueryFilters,
   normalizeActivityItem,
   normalizePayloadItems,
+  sortMergedActivities,
 } from "../features/dashboard/dashboardUtils";
 
 export default function Dashboard() {
@@ -63,22 +66,25 @@ export default function Dashboard() {
 
       const shouldFetchStories = activityFilters.contentType !== "confession";
       const shouldFetchConfessions = activityFilters.contentType !== "story";
+      const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+      const { status, deleted, visibility } =
+        getStoryQueryFilters(activityFilters);
 
       const storyParams = new URLSearchParams({
         limit: "8",
         page: "1",
-        sortBy: activityFilters.sortBy,
-        order: activityFilters.order,
-        status: activityFilters.storyStatus,
-        visibility: activityFilters.storyVisibility,
-        deleted: "active",
+        sortBy: apiSortBy,
+        order,
+        status,
+        visibility,
+        deleted,
       });
 
       const confessionParams = new URLSearchParams({
         limit: "8",
         page: "1",
-        sortBy: activityFilters.sortBy,
-        order: activityFilters.order,
+        sortBy: apiSortBy,
+        order,
       });
 
       const [statsResponse, storiesResponse, confessionsResponse] =
@@ -143,8 +149,9 @@ export default function Dashboard() {
           )
         : [];
 
-      const mergedActivity = [...mappedStories, ...mappedConfessions].sort(
-        (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+      const mergedActivity = sortMergedActivities(
+        [...mappedStories, ...mappedConfessions],
+        activityFilters,
       );
 
       setActivities(mergedActivity);
@@ -208,6 +215,9 @@ export default function Dashboard() {
         activityFilters.contentType !== "confession" && hasMoreStories;
       const shouldFetchConfessions =
         activityFilters.contentType !== "story" && hasMoreConfessions;
+      const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+      const { status, deleted, visibility } =
+        getStoryQueryFilters(activityFilters);
 
       const [storiesResponse, confessionsResponse] = await Promise.all([
         shouldFetchStories
@@ -215,11 +225,11 @@ export default function Dashboard() {
               `/api/dashboard/stories?${buildFetchParams({
                 limit: "8",
                 page: storyPage + 1,
-                sortBy: activityFilters.sortBy,
-                order: activityFilters.order,
-                status: activityFilters.storyStatus,
-                visibility: activityFilters.storyVisibility,
-                deleted: "active",
+                sortBy: apiSortBy,
+                order,
+                status,
+                visibility,
+                deleted,
               })}`,
               { headers },
             )
@@ -229,8 +239,8 @@ export default function Dashboard() {
               `/api/dashboard/confessions?${buildFetchParams({
                 limit: "8",
                 page: confessionPage + 1,
-                sortBy: activityFilters.sortBy,
-                order: activityFilters.order,
+                sortBy: apiSortBy,
+                order,
               })}`,
               { headers },
             )
@@ -252,9 +262,7 @@ export default function Dashboard() {
       ];
 
       setActivities((prev) =>
-        [...prev, ...allNewItems].sort(
-          (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
-        ),
+        sortMergedActivities([...prev, ...allNewItems], activityFilters),
       );
 
       updatePaginationState(storiesResponse, storiesPayload, "story");
@@ -331,17 +339,23 @@ export default function Dashboard() {
     setActivityFilters(DEFAULT_ACTIVITY_FILTERS);
   }, []);
 
-  const canLoadMore = useMemo(
-    () => hasMoreStories || hasMoreConfessions,
-    [hasMoreConfessions, hasMoreStories],
-  );
+  const canLoadMore = useMemo(() => {
+    if (activityFilters.contentType === "story") {
+      return hasMoreStories;
+    }
+
+    if (activityFilters.contentType === "confession") {
+      return hasMoreConfessions;
+    }
+
+    return hasMoreStories || hasMoreConfessions;
+  }, [activityFilters.contentType, hasMoreConfessions, hasMoreStories]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
 
     if (activityFilters.contentType !== "all") count += 1;
-    if (activityFilters.sortBy !== "default") count += 1;
-    if (activityFilters.order !== "desc") count += 1;
+    if (activityFilters.sortBy !== "updated_desc") count += 1;
     if (activityFilters.storyStatus !== "all") count += 1;
     if (activityFilters.storyVisibility !== "all") count += 1;
 
