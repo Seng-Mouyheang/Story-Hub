@@ -352,6 +352,10 @@ const getConfessionById = async (id, currentUserId = null) => {
     followedByCurrentUser,
     savedByCurrentUser,
     authorDisplayName: resolveAuthorDisplayName(confession, currentUserId),
+    authorProfilePicture: resolveAuthorProfilePicture(
+      confession,
+      currentUserId,
+    ),
   };
 };
 
@@ -551,7 +555,7 @@ const getUserConfessions = async (userId, cursor, limit) => {
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -574,6 +578,7 @@ const getUserConfessions = async (userId, cursor, limit) => {
     ...confession,
     followedByCurrentUser: false,
     authorDisplayName: resolveAuthorDisplayName(confession, userId),
+    authorProfilePicture: resolveAuthorProfilePicture(confession, userId),
   }));
 
   let nextCursor = null;
