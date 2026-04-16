@@ -271,9 +271,13 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     }
   };
 
+  const closeCommentMenu = React.useCallback(() => {
+    setActiveCommentMenuId("");
+  }, []);
+
   useOutsideClickCloser(
     Boolean(activeCommentMenuId),
-    () => setActiveCommentMenuId(""),
+    closeCommentMenu,
     "[data-comment-menu]",
   );
 

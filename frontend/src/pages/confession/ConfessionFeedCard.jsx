@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import {
   Heart,
   MessageCircle,
@@ -14,14 +13,55 @@ import {
   normalizeId,
 } from "./confessionUtils";
 
+/**
+ * @typedef {Object} ConfessionFeedItem
+ * @property {string | object} [_id]
+ * @property {string | object} [id]
+ * @property {string | object} [authorId]
+ * @property {string} [authorDisplayName]
+ * @property {string} [authorProfilePicture]
+ * @property {boolean} [isAnonymous]
+ * @property {string[]} [tags]
+ * @property {string} [content]
+ * @property {string} [createdAt]
+ * @property {boolean} [isEdited]
+ * @property {boolean} [likedByCurrentUser]
+ * @property {boolean} [savedByCurrentUser]
+ * @property {number} [likesCount]
+ * @property {number} [commentCount]
+ */
+
+/**
+ * @typedef {Object} ConfessionFeedCardProps
+ * @property {ConfessionFeedItem} item
+ * @property {string} [currentUserId]
+ * @property {Record<string, boolean>} [expandedConfessionIds]
+ * @property {string} [menuConfessionId]
+ * @property {string | null} [gestureLikeBurstId]
+ * @property {string | null} [pressedLikeId]
+ * @property {string | null} [pressedBookmarkId]
+ * @property {(confessionId: string) => void} onToggleConfessionMenu
+ * @property {(item: ConfessionFeedItem) => void} onEditConfession
+ * @property {(confessionId: string) => void} onDeleteConfession
+ * @property {(confessionId: string) => void} onToggleExpandedConfession
+ * @property {(confessionId: string) => void} onToggleLike
+ * @property {(confessionId: string, author: string) => void} onOpenCommentModal
+ * @property {(confessionId: string) => void} onToggleBookmark
+ * @property {(payload: { tag: string, confessionId: string, item: ConfessionFeedItem }) => void} [onTagClick]
+ * @property {(payload: { confessionId: string, item: ConfessionFeedItem, shareUrl: string, method: string }) => void | Promise<void>} [onShare]
+ */
+
+/**
+ * @param {ConfessionFeedCardProps} props
+ */
 export default function ConfessionFeedCard({
   item,
-  currentUserId,
-  expandedConfessionIds,
-  menuConfessionId,
-  gestureLikeBurstId,
-  pressedLikeId,
-  pressedBookmarkId,
+  currentUserId = "",
+  expandedConfessionIds = {},
+  menuConfessionId = "",
+  gestureLikeBurstId = null,
+  pressedLikeId = null,
+  pressedBookmarkId = null,
   onToggleConfessionMenu,
   onEditConfession,
   onDeleteConfession,
@@ -29,6 +69,8 @@ export default function ConfessionFeedCard({
   onToggleLike,
   onOpenCommentModal,
   onToggleBookmark,
+  onTagClick,
+  onShare,
 }) {
   const originalAuthor = item?.authorDisplayName || "Unknown Author";
   const author = item?.isAnonymous ? "Anonymous" : originalAuthor;
@@ -49,10 +91,77 @@ export default function ConfessionFeedCard({
     item?.content,
     isExpanded,
   );
+  const shareUrl =
+    typeof window === "undefined"
+      ? ""
+      : `${window.location.origin}${window.location.pathname}#confession-${confessionId}`;
+
+  const handleShare = async () => {
+    const shareTitle =
+      author === "Anonymous" ? "Confession" : `${author}'s confession`;
+    const shareText = (item?.content || "Read this confession on Story Hub.")
+      .slice(0, 160)
+      .trim();
+
+    const emitShare = async (method) => {
+      if (typeof onShare === "function") {
+        await onShare({
+          confessionId,
+          item,
+          shareUrl,
+          method,
+        });
+      }
+    };
+
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function"
+      ) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        await emitShare("web-share");
+        return;
+      }
+
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        await navigator.clipboard.writeText(shareUrl);
+        await emitShare("clipboard");
+        return;
+      }
+    } catch {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.writeText === "function"
+      ) {
+        await navigator.clipboard.writeText(shareUrl);
+        await emitShare("clipboard");
+        return;
+      }
+    }
+
+    if (typeof window !== "undefined") {
+      window.open(
+        `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(
+          `${shareText}\n\n${shareUrl}`,
+        )}`,
+        "_self",
+      );
+      await emitShare("mailto");
+    }
+  };
 
   return (
     <div
-      key={confessionId}
       data-confession-card-id={confessionId}
       data-liked-by-current-user={Boolean(item?.likedByCurrentUser)}
       className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
@@ -141,6 +250,7 @@ export default function ConfessionFeedCard({
             <button
               key={`${confessionId}-${tag}`}
               type="button"
+              onClick={() => onTagClick?.({ tag, confessionId, item })}
               className="text-xs font-semibold tracking-wide text-rose-600 hover:underline cursor-pointer"
             >
               #{tag}
@@ -153,6 +263,7 @@ export default function ConfessionFeedCard({
         <div className="flex items-center gap-6 min-w-0">
           <div className="relative">
             <button
+              type="button"
               onClick={() => onToggleLike(confessionId)}
               className={`flex items-center gap-2 transition-all duration-200 cursor-pointer ${
                 item?.likedByCurrentUser
@@ -171,6 +282,7 @@ export default function ConfessionFeedCard({
           </div>
 
           <button
+            type="button"
             onClick={() => onOpenCommentModal(confessionId, author)}
             className="flex items-center gap-2 text-slate-500 transition-all duration-200 hover:text-sky-500 cursor-pointer"
           >
@@ -183,6 +295,7 @@ export default function ConfessionFeedCard({
 
         <div className="flex items-center gap-6 shrink-0">
           <button
+            type="button"
             onClick={() => onToggleBookmark(confessionId)}
             className={`transition-colors cursor-pointer ${
               item?.savedByCurrentUser
@@ -195,7 +308,12 @@ export default function ConfessionFeedCard({
               fill={item?.savedByCurrentUser ? "currentColor" : "none"}
             />
           </button>
-          <button className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+          <button
+            type="button"
+            onClick={handleShare}
+            className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+            aria-label="Share confession"
+          >
             <Share2 size={20} />
           </button>
         </div>
@@ -203,29 +321,3 @@ export default function ConfessionFeedCard({
     </div>
   );
 }
-
-ConfessionFeedCard.propTypes = {
-  item: PropTypes.object.isRequired,
-  currentUserId: PropTypes.string,
-  expandedConfessionIds: PropTypes.object,
-  menuConfessionId: PropTypes.string,
-  gestureLikeBurstId: PropTypes.string,
-  pressedLikeId: PropTypes.string,
-  pressedBookmarkId: PropTypes.string,
-  onToggleConfessionMenu: PropTypes.func.isRequired,
-  onEditConfession: PropTypes.func.isRequired,
-  onDeleteConfession: PropTypes.func.isRequired,
-  onToggleExpandedConfession: PropTypes.func.isRequired,
-  onToggleLike: PropTypes.func.isRequired,
-  onOpenCommentModal: PropTypes.func.isRequired,
-  onToggleBookmark: PropTypes.func.isRequired,
-};
-
-ConfessionFeedCard.defaultProps = {
-  currentUserId: "",
-  expandedConfessionIds: {},
-  menuConfessionId: "",
-  gestureLikeBurstId: null,
-  pressedLikeId: null,
-  pressedBookmarkId: null,
-};

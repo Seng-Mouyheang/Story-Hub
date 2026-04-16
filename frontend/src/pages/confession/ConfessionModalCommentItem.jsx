@@ -1,17 +1,51 @@
-import PropTypes from "prop-types";
 import { Loader2, MoreHorizontal } from "lucide-react";
 
 import { getRelativeTime, normalizeId } from "./confessionUtils";
 
+/**
+ * @typedef {Object} ConfessionComment
+ * @property {string | object} [_id]
+ * @property {string | object} [id]
+ * @property {string | object} [userId]
+ * @property {string} [authorDisplayName]
+ * @property {string} [authorProfilePicture]
+ * @property {string} [createdAt]
+ * @property {string} [content]
+ * @property {boolean} [isEdited]
+ */
+
+/**
+ * @typedef {Object} ConfessionModalCommentItemProps
+ * @property {ConfessionComment | null} [comment]
+ * @property {string} [currentUserId]
+ * @property {string} [activeCommentMenuId]
+ * @property {string} [editingCommentId]
+ * @property {string} [editCommentContent]
+ * @property {boolean} [isSavingEditedComment]
+ * @property {string} [deleteTargetCommentId]
+ * @property {boolean} [isDeletingComment]
+ * @property {(commentId: string) => void} onToggleMenu
+ * @property {(comment: ConfessionComment | null) => void} onStartEdit
+ * @property {(commentId: string) => void} onDelete
+ * @property {() => void} onCancelEdit
+ * @property {(value: string) => void} onEditContentChange
+ * @property {(commentId: string) => void} onSaveEdit
+ * @property {() => void} onCancelDelete
+ * @property {() => void} onConfirmDelete
+ */
+
+/**
+ * @param {ConfessionModalCommentItemProps} props
+ */
 export default function ConfessionModalCommentItem({
-  comment,
-  currentUserId,
-  activeCommentMenuId,
-  editingCommentId,
-  editCommentContent,
-  isSavingEditedComment,
-  deleteTargetCommentId,
-  isDeletingComment,
+  comment = null,
+  currentUserId = "",
+  activeCommentMenuId = "",
+  editingCommentId = "",
+  editCommentContent = "",
+  isSavingEditedComment = false,
+  deleteTargetCommentId = "",
+  isDeletingComment = false,
   onToggleMenu,
   onStartEdit,
   onDelete,
@@ -153,42 +187,3 @@ export default function ConfessionModalCommentItem({
     </div>
   );
 }
-
-ConfessionModalCommentItem.propTypes = {
-  comment: PropTypes.shape({
-    _id: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
-    id: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
-    userId: PropTypes.oneOfType([PropTypes.string, PropTypes.object]),
-    authorDisplayName: PropTypes.string,
-    authorProfilePicture: PropTypes.string,
-    createdAt: PropTypes.string,
-    content: PropTypes.string,
-    isEdited: PropTypes.bool,
-  }),
-  currentUserId: PropTypes.string,
-  activeCommentMenuId: PropTypes.string,
-  editingCommentId: PropTypes.string,
-  editCommentContent: PropTypes.string,
-  isSavingEditedComment: PropTypes.bool,
-  deleteTargetCommentId: PropTypes.string,
-  isDeletingComment: PropTypes.bool,
-  onToggleMenu: PropTypes.func.isRequired,
-  onStartEdit: PropTypes.func.isRequired,
-  onDelete: PropTypes.func.isRequired,
-  onCancelEdit: PropTypes.func.isRequired,
-  onEditContentChange: PropTypes.func.isRequired,
-  onSaveEdit: PropTypes.func.isRequired,
-  onCancelDelete: PropTypes.func.isRequired,
-  onConfirmDelete: PropTypes.func.isRequired,
-};
-
-ConfessionModalCommentItem.defaultProps = {
-  comment: null,
-  currentUserId: "",
-  activeCommentMenuId: "",
-  editingCommentId: "",
-  editCommentContent: "",
-  isSavingEditedComment: false,
-  deleteTargetCommentId: "",
-  isDeletingComment: false,
-};

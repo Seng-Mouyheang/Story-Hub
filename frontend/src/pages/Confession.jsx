@@ -26,6 +26,175 @@ import { useConfessionComments } from "./confession/useConfessionComments";
 import ConfessionFeedCard from "./confession/ConfessionFeedCard";
 import ConfessionModalCommentItem from "./confession/ConfessionModalCommentItem";
 
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+const PREFERRED_FOCUS_SELECTOR = [
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "button:not([disabled])",
+  "a[href]",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+const getFocusableElements = (container) => {
+  if (!(container instanceof HTMLElement)) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      element instanceof HTMLElement &&
+      !element.hasAttribute("disabled") &&
+      element.getAttribute("aria-hidden") !== "true",
+  );
+};
+
+const moveFocusIntoDialog = (container) => {
+  const preferredFocusableElement =
+    container instanceof HTMLElement
+      ? container.querySelector(PREFERRED_FOCUS_SELECTOR)
+      : null;
+
+  if (preferredFocusableElement instanceof HTMLElement) {
+    preferredFocusableElement.focus();
+    return;
+  }
+
+  if (container instanceof HTMLElement) {
+    container.focus();
+  }
+};
+
+function ModalDialog({
+  isOpen,
+  onClose,
+  title,
+  titleId,
+  closeLabel,
+  widthClassName = "max-w-xl",
+  children,
+}) {
+  const dialogRef = React.useRef(null);
+  const previousFocusRef = React.useRef(null);
+  const onCloseRef = React.useRef(onClose);
+
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    requestAnimationFrame(() => {
+      moveFocusIntoDialog(dialogRef.current);
+    });
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const firstFocusableElement = focusableElements[0];
+      const lastFocusableElement =
+        focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === firstFocusableElement) {
+        event.preventDefault();
+        lastFocusableElement.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeElement === lastFocusableElement) {
+        event.preventDefault();
+        firstFocusableElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus();
+      }
+    };
+  }, [isOpen]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      <button
+        type="button"
+        aria-label={closeLabel}
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+      />
+
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`relative z-10 w-full ${widthClassName} rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden`}
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h4
+            id={titleId}
+            className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4"
+          >
+            {title}
+          </h4>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+            aria-label={closeLabel}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function Confession() {
   // NOSONAR
   const TOAST_DURATION_MS = 3200;
@@ -38,10 +207,13 @@ export default function Confession() {
   const [hasMoreFeed, setHasMoreFeed] = useState(false);
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
+  const [feedError, setFeedError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
+  const [pendingLikeIds, setPendingLikeIds] = useState(() => new Set());
+  const [pendingBookmarkIds, setPendingBookmarkIds] = useState(() => new Set());
   const [gestureLikeBurstId, setGestureLikeBurstId] = useState(null);
   const [editingConfessionId, setEditingConfessionId] = useState("");
   const [editConfessionContent, setEditConfessionContent] = useState("");
@@ -54,9 +226,14 @@ export default function Confession() {
   const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
   const sentinelRef = useRef(null);
   const lastTapRef = useRef({ confessionId: "", time: 0 });
+  const pendingLikeIdsRef = useRef(new Set());
+  const pendingBookmarkIdsRef = useRef(new Set());
   const toastTimeoutRef = useRef(null);
   const toastExitTimeoutRef = useRef(null);
   const [isToastVisible, setIsToastVisible] = useState(false);
+  const commentDialogTitleId = "confession-comments-dialog-title";
+  const editDialogTitleId = "confession-edit-dialog-title";
+  const deleteDialogTitleId = "confession-delete-dialog-title";
 
   const hideToast = React.useCallback(() => {
     setIsToastVisible(false);
@@ -157,8 +334,8 @@ export default function Confession() {
     isDeletingComment,
     isLoadingModalComments,
     modalCommentsError,
-    closeCommentModal,
-    openCommentModal,
+    closeCommentModal: closeCommentModalState,
+    openCommentModal: openCommentModalState,
     handleAddComment,
     handleToggleCommentMenu,
     handleStartEditComment,
@@ -167,6 +344,17 @@ export default function Confession() {
     handleDeleteComment,
     handleConfirmDeleteComment,
   } = useConfessionComments({ setConfessionFeed });
+
+  const closeCommentModal = React.useCallback(() => {
+    closeCommentModalState();
+  }, [closeCommentModalState]);
+
+  const openCommentModal = React.useCallback(
+    async (...args) => {
+      await openCommentModalState(...args);
+    },
+    [openCommentModalState],
+  );
 
   const loadConfessions = React.useCallback(
     async ({ cursor = "", append = false } = {}) => {
@@ -199,10 +387,12 @@ export default function Confession() {
 
         const data = Array.isArray(payload?.data) ? payload.data : [];
 
+        setFeedError("");
         setConfessionFeed((prev) => (append ? [...prev, ...data] : data));
         setNextCursor(payload?.nextCursor || "");
         setHasMoreFeed(Boolean(payload?.hasMore));
       } catch (error) {
+        setFeedError(error.message || "Failed to load confessions.");
         showError(error.message || "Failed to load confessions.");
       } finally {
         setIsLoadingFeed(false);
@@ -324,11 +514,25 @@ export default function Confession() {
 
   const handleToggleLike = React.useCallback(
     async (confessionId) => {
+      if (
+        pendingLikeIdsRef.current.has(confessionId) ||
+        pendingLikeIds.has(confessionId)
+      ) {
+        return;
+      }
+
       const token = localStorage.getItem("token");
       if (!token) {
         showError("Please log in to like confessions.");
         return;
       }
+
+      pendingLikeIdsRef.current.add(confessionId);
+      setPendingLikeIds((prev) => {
+        const next = new Set(prev);
+        next.add(confessionId);
+        return next;
+      });
 
       setPressedLikeId(confessionId);
       setTimeout(() => {
@@ -367,17 +571,38 @@ export default function Confession() {
         );
       } catch (error) {
         showError(error.message || "Failed to toggle like.");
+      } finally {
+        pendingLikeIdsRef.current.delete(confessionId);
+        setPendingLikeIds((prev) => {
+          const next = new Set(prev);
+          next.delete(confessionId);
+          return next;
+        });
       }
     },
-    [showError],
+    [pendingLikeIds, showError],
   );
 
   const handleToggleBookmark = async (confessionId) => {
+    if (
+      pendingBookmarkIdsRef.current.has(confessionId) ||
+      pendingBookmarkIds.has(confessionId)
+    ) {
+      return;
+    }
+
     const token = localStorage.getItem("token");
     if (!token) {
       showError("Please log in to bookmark confessions.");
       return;
     }
+
+    pendingBookmarkIdsRef.current.add(confessionId);
+    setPendingBookmarkIds((prev) => {
+      const next = new Set(prev);
+      next.add(confessionId);
+      return next;
+    });
 
     setPressedBookmarkId(confessionId);
     setTimeout(() => {
@@ -415,6 +640,13 @@ export default function Confession() {
       );
     } catch (error) {
       showError(error.message || "Failed to toggle bookmark.");
+    } finally {
+      pendingBookmarkIdsRef.current.delete(confessionId);
+      setPendingBookmarkIds((prev) => {
+        const next = new Set(prev);
+        next.delete(confessionId);
+        return next;
+      });
     }
   };
 
@@ -661,6 +893,21 @@ export default function Confession() {
         Loading confessions...
       </div>
     );
+  } else if (feedError) {
+    feedContent = (
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm">
+        <div className="text-sm text-rose-700">{feedError}</div>
+        <button
+          type="button"
+          onClick={() => {
+            loadConfessions().catch(() => {});
+          }}
+          className="mt-4 inline-flex items-center rounded-full border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+        >
+          Retry
+        </button>
+      </div>
+    );
   } else if (confessionFeed.length === 0) {
     feedContent = (
       <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
@@ -775,235 +1022,186 @@ export default function Confession() {
           </div>
         </main>
 
-        {isCommentModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-            <button
-              type="button"
-              aria-label="Close comments modal"
-              onClick={closeCommentModal}
-              className="absolute inset-0 bg-slate-900/40"
-            />
+        <ModalDialog
+          isOpen={isCommentModalOpen}
+          onClose={closeCommentModal}
+          title={`Comments - ${commentModalTitle}`}
+          titleId={commentDialogTitleId}
+          closeLabel="Close comments modal"
+          widthClassName="max-w-xl"
+        >
+          <div className="max-h-[65vh] overflow-y-auto px-4 py-4 space-y-3">
+            {isLoadingModalComments && (
+              <p className="text-sm text-slate-500">Loading comments...</p>
+            )}
 
-            <div className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
-                  Comments - {commentModalTitle}
-                </h4>
-                <button
-                  type="button"
-                  onClick={closeCommentModal}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
-                  aria-label="Close comments"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+            {!isLoadingModalComments && modalCommentsError && (
+              <p className="text-sm text-rose-600">{modalCommentsError}</p>
+            )}
 
-              <div className="max-h-[65vh] overflow-y-auto px-4 py-4 space-y-3">
-                {isLoadingModalComments && (
-                  <p className="text-sm text-slate-500">Loading comments...</p>
-                )}
+            {!isLoadingModalComments &&
+              !modalCommentsError &&
+              modalComments.length === 0 && (
+                <p className="text-sm text-slate-500">No comments yet.</p>
+              )}
 
-                {!isLoadingModalComments && modalCommentsError && (
-                  <p className="text-sm text-rose-600">{modalCommentsError}</p>
-                )}
-
-                {!isLoadingModalComments &&
-                  !modalCommentsError &&
-                  modalComments.length === 0 && (
-                    <p className="text-sm text-slate-500">No comments yet.</p>
-                  )}
-
-                {!isLoadingModalComments &&
-                  !modalCommentsError &&
-                  modalComments.map((comment) => {
-                    return (
-                      <ConfessionModalCommentItem
-                        key={String(comment?._id || comment?.id || "comment")}
-                        comment={comment}
-                        currentUserId={currentUserId}
-                        activeCommentMenuId={activeCommentMenuId}
-                        editingCommentId={editingCommentId}
-                        editCommentContent={editCommentContent}
-                        isSavingEditedComment={isSavingEditedComment}
-                        deleteTargetCommentId={deleteTargetCommentId}
-                        isDeletingComment={isDeletingComment}
-                        onToggleMenu={handleToggleCommentMenu}
-                        onStartEdit={handleStartEditComment}
-                        onDelete={handleDeleteComment}
-                        onCancelEdit={handleCancelEditComment}
-                        onEditContentChange={setEditCommentContent}
-                        onSaveEdit={handleSaveEditedComment}
-                        onCancelDelete={() => setDeleteTargetCommentId("")}
-                        onConfirmDelete={handleConfirmDeleteComment}
-                      />
-                    );
-                  })}
-              </div>
-
-              <div className="border-t border-slate-100 px-4 py-3">
-                <div className="flex items-end gap-2">
-                  <textarea
-                    value={newCommentContent}
-                    onChange={(event) =>
-                      setNewCommentContent(event.target.value)
-                    }
-                    className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
-                    rows={2}
-                    placeholder="Write a comment..."
+            {!isLoadingModalComments &&
+              !modalCommentsError &&
+              modalComments.map((comment) => {
+                return (
+                  <ConfessionModalCommentItem
+                    key={String(comment?._id || comment?.id || "comment")}
+                    comment={comment}
+                    currentUserId={currentUserId}
+                    activeCommentMenuId={activeCommentMenuId}
+                    editingCommentId={editingCommentId}
+                    editCommentContent={editCommentContent}
+                    isSavingEditedComment={isSavingEditedComment}
+                    deleteTargetCommentId={deleteTargetCommentId}
+                    isDeletingComment={isDeletingComment}
+                    onToggleMenu={handleToggleCommentMenu}
+                    onStartEdit={handleStartEditComment}
+                    onDelete={handleDeleteComment}
+                    onCancelEdit={handleCancelEditComment}
+                    onEditContentChange={setEditCommentContent}
+                    onSaveEdit={handleSaveEditedComment}
+                    onCancelDelete={() => setDeleteTargetCommentId("")}
+                    onConfirmDelete={handleConfirmDeleteComment}
                   />
-                  <button
-                    type="button"
-                    onClick={handleAddComment}
-                    disabled={isSubmittingComment}
-                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    {isSubmittingComment ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <SendHorizontal className="h-3.5 w-3.5" />
-                    )}
-                    {isSubmittingComment ? "Posting..." : "Post"}
-                  </button>
-                </div>
-              </div>
+                );
+              })}
+          </div>
+
+          <div className="border-t border-slate-100 px-4 py-3">
+            <div className="flex items-end gap-2">
+              <textarea
+                value={newCommentContent}
+                onChange={(event) => setNewCommentContent(event.target.value)}
+                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
+                rows={2}
+                placeholder="Write a comment..."
+              />
+              <button
+                type="button"
+                onClick={handleAddComment}
+                disabled={isSubmittingComment}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {isSubmittingComment ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <SendHorizontal className="h-3.5 w-3.5" />
+                )}
+                {isSubmittingComment ? "Posting..." : "Post"}
+              </button>
             </div>
           </div>
-        )}
+        </ModalDialog>
 
-        {editingConfessionId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
-            <button
-              type="button"
-              aria-label="Close edit confession modal"
-              onClick={handleCancelEditConfession}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+        <ModalDialog
+          isOpen={Boolean(editingConfessionId)}
+          onClose={handleCancelEditConfession}
+          title="Edit Confession"
+          titleId={editDialogTitleId}
+          closeLabel="Close edit confession modal"
+          widthClassName="max-w-2xl"
+        >
+          <div className="px-4 py-4 space-y-4">
+            <textarea
+              value={editConfessionContent}
+              onChange={(event) => setEditConfessionContent(event.target.value)}
+              className="w-full min-h-50 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
+              placeholder="Edit your confession..."
             />
 
-            <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
-                  Edit Confession
-                </h4>
-                <button
-                  type="button"
-                  onClick={handleCancelEditConfession}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
-                  aria-label="Close edit confession modal"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditConfessionIsAnonymous((prev) => !prev)}
+                aria-pressed={editConfessionIsAnonymous}
+                className="text-xs text-slate-500 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 cursor-pointer hover:border-slate-400 hover:text-slate-700 transition-colors"
+              >
+                {editConfessionIsAnonymous ? (
+                  <Lock className="w-3.5 h-3.5" />
+                ) : (
+                  <LockOpen className="w-3.5 h-3.5" />
+                )}
+                {editConfessionIsAnonymous ? "Anonymous" : "Identified"}
+              </button>
 
-              <div className="px-4 py-4 space-y-4">
-                <textarea
-                  value={editConfessionContent}
-                  onChange={(event) =>
-                    setEditConfessionContent(event.target.value)
-                  }
-                  className="w-full min-h-50 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
-                  placeholder="Edit your confession..."
-                />
+              <button
+                type="button"
+                onClick={() =>
+                  setEditConfessionVisibility((prev) =>
+                    prev === "public" ? "private" : "public",
+                  )
+                }
+                aria-pressed={editConfessionVisibility === "private"}
+                className="text-xs text-slate-500 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 cursor-pointer hover:border-slate-400 hover:text-slate-700 transition-colors"
+              >
+                {editConfessionVisibility === "public" ? (
+                  <Eye className="w-3.5 h-3.5" />
+                ) : (
+                  <EyeOff className="w-3.5 h-3.5" />
+                )}
+                {editConfessionVisibility === "public" ? "Public" : "Private"}
+              </button>
+            </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditConfessionIsAnonymous((prev) => !prev)
-                    }
-                    aria-pressed={editConfessionIsAnonymous}
-                    className="text-xs text-slate-500 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 cursor-pointer hover:border-slate-400 hover:text-slate-700 transition-colors"
-                  >
-                    {editConfessionIsAnonymous ? (
-                      <Lock className="w-3.5 h-3.5" />
-                    ) : (
-                      <LockOpen className="w-3.5 h-3.5" />
-                    )}
-                    {editConfessionIsAnonymous ? "Anonymous" : "Identified"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setEditConfessionVisibility((prev) =>
-                        prev === "public" ? "private" : "public",
-                      )
-                    }
-                    aria-pressed={editConfessionVisibility === "private"}
-                    className="text-xs text-slate-500 inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 cursor-pointer hover:border-slate-400 hover:text-slate-700 transition-colors"
-                  >
-                    {editConfessionVisibility === "public" ? (
-                      <Eye className="w-3.5 h-3.5" />
-                    ) : (
-                      <EyeOff className="w-3.5 h-3.5" />
-                    )}
-                    {editConfessionVisibility === "public"
-                      ? "Public"
-                      : "Private"}
-                  </button>
-                </div>
-
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelEditConfession}
-                    className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveEditedConfession}
-                    disabled={isSubmitting}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
-                  >
-                    {isSubmitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : null}
-                    {isSubmitting ? "Updating..." : "Save changes"}
-                  </button>
-                </div>
-              </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCancelEditConfession}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEditedConfession}
+                disabled={isSubmitting}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                {isSubmitting ? "Updating..." : "Save changes"}
+              </button>
             </div>
           </div>
-        )}
+        </ModalDialog>
 
-        {deleteTargetConfessionId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <button
-              type="button"
-              aria-label="Close delete confession modal"
-              onClick={() => setDeleteTargetConfessionId("")}
-              className="absolute inset-0 cursor-default bg-slate-900/40 backdrop-blur-[2px]"
-            />
+        <ModalDialog
+          isOpen={Boolean(deleteTargetConfessionId)}
+          onClose={() => setDeleteTargetConfessionId("")}
+          title="Delete this confession?"
+          titleId={deleteDialogTitleId}
+          closeLabel="Close delete confession modal"
+          widthClassName="max-w-sm"
+        >
+          <div className="p-5">
+            <p className="text-sm text-slate-500 mb-5">
+              This action cannot be undone.
+            </p>
 
-            <div className="relative z-10 w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5">
-              <h3 className="text-base font-semibold text-slate-900 mb-2">
-                Delete this confession?
-              </h3>
-              <p className="text-sm text-slate-500 mb-5">
-                This action cannot be undone.
-              </p>
-
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDeleteTargetConfessionId("")}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDeleteConfession}
-                  className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 cursor-pointer"
-                >
-                  Delete
-                </button>
-              </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetConfessionId("")}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteConfession}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 cursor-pointer"
+              >
+                Delete
+              </button>
             </div>
           </div>
-        )}
+        </ModalDialog>
       </div>
 
       {toast && (

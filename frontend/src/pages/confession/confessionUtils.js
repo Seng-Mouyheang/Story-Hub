@@ -61,6 +61,10 @@ export const getRelativeTime = (dateString) => {
   const diffMs = Date.now() - sourceDate.getTime();
   const diffMinutes = Math.floor(diffMs / (1000 * 60));
 
+  if (diffMinutes < 0) {
+    return "Recently";
+  }
+
   for (const step of RELATIVE_TIME_STEPS) {
     if (diffMinutes < step.limitMinutes) {
       return step.toLabel(diffMinutes);
