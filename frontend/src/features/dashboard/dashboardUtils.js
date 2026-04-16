@@ -2,10 +2,42 @@ export const DASHBOARD_FILTERS_STORAGE_KEY = "dashboardActivityFilters";
 
 export const DEFAULT_ACTIVITY_FILTERS = {
   contentType: "all",
-  sortBy: "default",
-  order: "desc",
+  sortBy: "updated_desc",
   storyStatus: "all",
   storyVisibility: "all",
+};
+
+const VALID_SORT_BY_VALUES = new Set([
+  "updated_desc",
+  "updated_asc",
+  "title_desc",
+  "title_asc",
+  "likes_desc",
+  "likes_asc",
+  "comments_desc",
+  "comments_asc",
+]);
+
+const normalizeSortByValue = (sortBy, order) => {
+  if (typeof sortBy === "string" && VALID_SORT_BY_VALUES.has(sortBy)) {
+    return sortBy;
+  }
+
+  const normalizedOrder = order === "asc" ? "asc" : "desc";
+
+  if (sortBy === "likes") {
+    return `likes_${normalizedOrder}`;
+  }
+
+  if (sortBy === "comments") {
+    return `comments_${normalizedOrder}`;
+  }
+
+  if (sortBy === "title") {
+    return `title_${normalizedOrder}`;
+  }
+
+  return `updated_${normalizedOrder}`;
 };
 
 export const getSavedDashboardFilters = () => {
@@ -18,9 +50,17 @@ export const getSavedDashboardFilters = () => {
 
     const parsed = JSON.parse(raw);
 
+    const parsedObject =
+      typeof parsed === "object" && parsed !== null ? parsed : {};
+    const normalizedSortBy = normalizeSortByValue(
+      parsedObject.sortBy,
+      parsedObject.order,
+    );
+
     return {
       ...DEFAULT_ACTIVITY_FILTERS,
-      ...(typeof parsed === "object" && parsed !== null ? parsed : {}),
+      ...parsedObject,
+      sortBy: normalizedSortBy,
     };
   } catch {
     return DEFAULT_ACTIVITY_FILTERS;
@@ -155,6 +195,80 @@ export const buildFetchParams = (config) => {
   });
 
   return params.toString();
+};
+
+export const getSortConfig = (sortBy) => {
+  switch (sortBy) {
+    case "updated_asc":
+      return { apiSortBy: "date", order: "asc", metric: "updated" };
+    case "likes_desc":
+      return { apiSortBy: "likes", order: "desc", metric: "likes" };
+    case "likes_asc":
+      return { apiSortBy: "likes", order: "asc", metric: "likes" };
+    case "title_desc":
+      return { apiSortBy: "title", order: "desc", metric: "title" };
+    case "title_asc":
+      return { apiSortBy: "title", order: "asc", metric: "title" };
+    case "comments_desc":
+      return { apiSortBy: "comments", order: "desc", metric: "comments" };
+    case "comments_asc":
+      return { apiSortBy: "comments", order: "asc", metric: "comments" };
+    default:
+      return { apiSortBy: "date", order: "desc", metric: "updated" };
+  }
+};
+
+export const getStoryQueryFilters = (activityFilters) => {
+  const storyStatus = activityFilters?.storyStatus || "all";
+
+  return {
+    status:
+      storyStatus === "published" || storyStatus === "draft"
+        ? storyStatus
+        : "all",
+    deleted: storyStatus === "deleted" ? "deleted" : "active",
+    visibility: activityFilters?.storyVisibility || "all",
+  };
+};
+
+const compareDateValues = (a, b) => {
+  const dateA = new Date(a || 0).getTime();
+  const dateB = new Date(b || 0).getTime();
+
+  return dateA - dateB;
+};
+
+export const sortMergedActivities = (activities, activityFilters) => {
+  const { metric, order } = getSortConfig(activityFilters?.sortBy);
+  const direction = order === "asc" ? 1 : -1;
+
+  return [...activities].sort((left, right) => {
+    if (metric === "likes") {
+      const value = (left.likesCount - right.likesCount) * direction;
+      if (value !== 0) return value;
+    }
+
+    if (metric === "comments") {
+      const value = (left.commentCount - right.commentCount) * direction;
+      if (value !== 0) return value;
+    }
+
+    if (metric === "title") {
+      const value =
+        String(left.title || "").localeCompare(
+          String(right.title || ""),
+          undefined,
+          { sensitivity: "base" },
+        ) * direction;
+      if (value !== 0) return value;
+    }
+
+    const updatedValue =
+      compareDateValues(left.updatedAt, right.updatedAt) * direction;
+    if (updatedValue !== 0) return updatedValue;
+
+    return compareDateValues(left.createdAt, right.createdAt) * direction;
+  });
 };
 
 const sanitizeActivityIdPart = (value) =>

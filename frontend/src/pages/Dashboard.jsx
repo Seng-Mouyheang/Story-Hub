@@ -18,9 +18,147 @@ import {
   buildFetchParams,
   formatCount,
   getSavedDashboardFilters,
+  getSortConfig,
+  getStoryQueryFilters,
   normalizeActivityItem,
   normalizePayloadItems,
+  sortMergedActivities,
 } from "../features/dashboard/dashboardUtils";
+
+const DASHBOARD_PAGE_SIZE = 8;
+
+const parseDashboardResponse = async (response) =>
+  response.json().catch(() => ({}));
+
+const loadDashboardFeedData = async ({ headers, activityFilters }) => {
+  const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+  const { status, deleted, visibility } = getStoryQueryFilters(activityFilters);
+
+  const feedParams = new URLSearchParams({
+    limit: String(DASHBOARD_PAGE_SIZE),
+    page: "1",
+    sortBy: apiSortBy,
+    order,
+    status,
+    visibility,
+    deleted,
+  });
+
+  const [statsResponse, feedResponse] = await Promise.all([
+    fetch("/api/dashboard/stats", { headers }),
+    fetch(`/api/dashboard/feed?${feedParams.toString()}`, { headers }),
+  ]);
+
+  const [statsPayload, feedPayload] = await Promise.all([
+    parseDashboardResponse(statsResponse),
+    parseDashboardResponse(feedResponse),
+  ]);
+
+  if (!statsResponse.ok) {
+    throw new Error(
+      statsPayload?.message || "Unable to load dashboard statistics.",
+    );
+  }
+
+  if (!feedResponse.ok) {
+    throw new Error(
+      feedPayload?.message || "Unable to load dashboard activity.",
+    );
+  }
+
+  return {
+    statsPayload,
+    activities: Array.isArray(feedPayload?.data)
+      ? feedPayload.data.map((item) =>
+          normalizeActivityItem(item, item?.type || "story"),
+        )
+      : [],
+    hasMoreFeed: Number(feedPayload?.pagination?.totalPages || 0) > 1,
+  };
+};
+
+const loadDashboardSplitData = async ({ headers, activityFilters }) => {
+  const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+  const { status, deleted, visibility } = getStoryQueryFilters(activityFilters);
+
+  const storyParams = new URLSearchParams({
+    limit: String(DASHBOARD_PAGE_SIZE),
+    page: "1",
+    sortBy: apiSortBy,
+    order,
+    status,
+    visibility,
+    deleted,
+  });
+
+  const confessionParams = new URLSearchParams({
+    limit: String(DASHBOARD_PAGE_SIZE),
+    page: "1",
+    sortBy: apiSortBy,
+    order,
+  });
+
+  const [statsResponse, storiesResponse, confessionsResponse] =
+    await Promise.all([
+      fetch("/api/dashboard/stats", { headers }),
+      fetch(`/api/dashboard/stories?${storyParams.toString()}`, {
+        headers,
+      }),
+      fetch(`/api/dashboard/confessions?${confessionParams.toString()}`, {
+        headers,
+      }),
+    ]);
+
+  const [statsPayload, storiesPayload, confessionsPayload] = await Promise.all([
+    parseDashboardResponse(statsResponse),
+    parseDashboardResponse(storiesResponse),
+    parseDashboardResponse(confessionsResponse),
+  ]);
+
+  if (!statsResponse.ok) {
+    throw new Error(
+      statsPayload?.message || "Unable to load dashboard statistics.",
+    );
+  }
+
+  if (!storiesResponse.ok) {
+    throw new Error(
+      storiesPayload?.message || "Unable to load dashboard stories.",
+    );
+  }
+
+  if (!confessionsResponse.ok) {
+    throw new Error(
+      confessionsPayload?.message || "Unable to load dashboard confessions.",
+    );
+  }
+
+  const mappedStories = Array.isArray(storiesPayload?.data)
+    ? storiesPayload.data.map((story) => normalizeActivityItem(story, "story"))
+    : [];
+
+  const mappedConfessions = Array.isArray(confessionsPayload?.data)
+    ? confessionsPayload.data.map((confession) =>
+        normalizeActivityItem(confession, "confession"),
+      )
+    : [];
+
+  return {
+    statsPayload,
+    activities: sortMergedActivities(
+      [...mappedStories, ...mappedConfessions],
+      activityFilters,
+    ),
+    hasMoreStories: Number(storiesPayload?.pagination?.totalPages || 0) > 1,
+    hasMoreConfessions:
+      Number(confessionsPayload?.pagination?.totalPages || 0) > 1,
+  };
+};
+
+const loadDashboardData = async ({ headers, activityFilters }) =>
+  activityFilters.contentType === "all"
+    ? loadDashboardFeedData({ headers, activityFilters })
+    : loadDashboardSplitData({ headers, activityFilters });
 
 export default function Dashboard() {
   const [showFilters, setShowFilters] = useState(false);
@@ -38,8 +176,10 @@ export default function Dashboard() {
   const [errorMessage, setErrorMessage] = useState("");
   const [storyPage, setStoryPage] = useState(1);
   const [confessionPage, setConfessionPage] = useState(1);
+  const [feedPage, setFeedPage] = useState(1);
   const [hasMoreStories, setHasMoreStories] = useState(true);
   const [hasMoreConfessions, setHasMoreConfessions] = useState(true);
+  const [hasMoreFeed, setHasMoreFeed] = useState(true);
   const filterPanelRef = useRef(null);
   const filterButtonRef = useRef(null);
 
@@ -61,101 +201,21 @@ export default function Dashboard() {
         Authorization: `Bearer ${token}`,
       };
 
-      const shouldFetchStories = activityFilters.contentType !== "confession";
-      const shouldFetchConfessions = activityFilters.contentType !== "story";
-
-      const storyParams = new URLSearchParams({
-        limit: "8",
-        page: "1",
-        sortBy: activityFilters.sortBy,
-        order: activityFilters.order,
-        status: activityFilters.storyStatus,
-        visibility: activityFilters.storyVisibility,
-        deleted: "active",
-      });
-
-      const confessionParams = new URLSearchParams({
-        limit: "8",
-        page: "1",
-        sortBy: activityFilters.sortBy,
-        order: activityFilters.order,
-      });
-
-      const [statsResponse, storiesResponse, confessionsResponse] =
-        await Promise.all([
-          fetch("/api/dashboard/stats", { headers }),
-          shouldFetchStories
-            ? fetch(`/api/dashboard/stories?${storyParams.toString()}`, {
-                headers,
-              })
-            : Promise.resolve({ ok: true, json: async () => ({ data: [] }) }),
-          shouldFetchConfessions
-            ? fetch(
-                `/api/dashboard/confessions?${confessionParams.toString()}`,
-                {
-                  headers,
-                },
-              )
-            : Promise.resolve({ ok: true, json: async () => ({ data: [] }) }),
-        ]);
-
-      const [statsPayload, storiesPayload, confessionsPayload] =
-        await Promise.all([
-          statsResponse.json().catch(() => ({})),
-          storiesResponse.json().catch(() => ({})),
-          confessionsResponse.json().catch(() => ({})),
-        ]);
-
-      if (!statsResponse.ok) {
-        throw new Error(
-          statsPayload?.message || "Unable to load dashboard statistics.",
-        );
-      }
-
-      if (!storiesResponse.ok) {
-        throw new Error(
-          storiesPayload?.message || "Unable to load dashboard stories.",
-        );
-      }
-
-      if (!confessionsResponse.ok) {
-        throw new Error(
-          confessionsPayload?.message ||
-            "Unable to load dashboard confessions.",
-        );
-      }
+      const result = await loadDashboardData({ headers, activityFilters });
 
       setStats({
-        totalPosts: Number(statsPayload?.stats?.totalPosts || 0),
-        totalWords: Number(statsPayload?.stats?.totalWords || 0),
-        totalLikes: Number(statsPayload?.stats?.totalLikes || 0),
+        totalPosts: Number(result.statsPayload?.stats?.totalPosts || 0),
+        totalWords: Number(result.statsPayload?.stats?.totalWords || 0),
+        totalLikes: Number(result.statsPayload?.stats?.totalLikes || 0),
       });
 
-      const mappedStories = Array.isArray(storiesPayload?.data)
-        ? storiesPayload.data.map((story) =>
-            normalizeActivityItem(story, "story"),
-          )
-        : [];
-
-      const mappedConfessions = Array.isArray(confessionsPayload?.data)
-        ? confessionsPayload.data.map((confession) =>
-            normalizeActivityItem(confession, "confession"),
-          )
-        : [];
-
-      const mergedActivity = [...mappedStories, ...mappedConfessions].sort(
-        (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
-      );
-
-      setActivities(mergedActivity);
+      setActivities(result.activities);
       setStoryPage(1);
       setConfessionPage(1);
-      setHasMoreStories(
-        Number(storiesPayload?.pagination?.totalPages || 0) > 1,
-      );
-      setHasMoreConfessions(
-        Number(confessionsPayload?.pagination?.totalPages || 0) > 1,
-      );
+      setFeedPage(1);
+      setHasMoreFeed(Boolean(result.hasMoreFeed));
+      setHasMoreStories(Boolean(result.hasMoreStories));
+      setHasMoreConfessions(Boolean(result.hasMoreConfessions));
     } catch (error) {
       setErrorMessage(error.message || "Unable to load dashboard right now.");
     } finally {
@@ -165,11 +225,21 @@ export default function Dashboard() {
 
   const validateAndParseResponse = async (response, type) => {
     if (!response) return null;
+
     const payload = await response.json().catch(() => ({}));
+
     if (!response.ok) {
-      const errorType = type === "story" ? "stories" : "confessions";
+      let errorType = "confessions";
+
+      if (type === "story") {
+        errorType = "stories";
+      } else if (type === "feed") {
+        errorType = "activities";
+      }
+
       throw new Error(payload?.message || `Unable to load more ${errorType}.`);
     }
+
     return payload;
   };
 
@@ -190,7 +260,14 @@ export default function Dashboard() {
   };
 
   const loadMoreActivities = useCallback(async () => {
-    if (isLoadingMore || (!hasMoreStories && !hasMoreConfessions)) return;
+    if (
+      isLoadingMore ||
+      (activityFilters.contentType === "all"
+        ? !hasMoreFeed
+        : !hasMoreStories && !hasMoreConfessions)
+    ) {
+      return;
+    }
 
     setIsLoadingMore(true);
     setErrorMessage("");
@@ -204,10 +281,52 @@ export default function Dashboard() {
 
     try {
       const headers = { Authorization: `Bearer ${token}` };
+
+      if (activityFilters.contentType === "all") {
+        const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+        const { status, deleted, visibility } =
+          getStoryQueryFilters(activityFilters);
+
+        const feedResponse = await fetch(
+          `/api/dashboard/feed?${buildFetchParams({
+            limit: "8",
+            page: feedPage + 1,
+            sortBy: apiSortBy,
+            order,
+            status,
+            visibility,
+            deleted,
+          })}`,
+          { headers },
+        );
+
+        const feedPayload = await validateAndParseResponse(
+          feedResponse,
+          "feed",
+        );
+
+        const newFeedItems = Array.isArray(feedPayload?.data)
+          ? feedPayload.data.map((item) =>
+              normalizeActivityItem(item, item?.type || "story"),
+            )
+          : [];
+
+        setActivities((prev) => [...prev, ...newFeedItems]);
+        setFeedPage((prev) => prev + 1);
+        setHasMoreFeed(
+          Number(feedPayload?.pagination?.page || 0) <
+            Number(feedPayload?.pagination?.totalPages || 0),
+        );
+        return;
+      }
+
       const shouldFetchStories =
         activityFilters.contentType !== "confession" && hasMoreStories;
       const shouldFetchConfessions =
         activityFilters.contentType !== "story" && hasMoreConfessions;
+      const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+      const { status, deleted, visibility } =
+        getStoryQueryFilters(activityFilters);
 
       const [storiesResponse, confessionsResponse] = await Promise.all([
         shouldFetchStories
@@ -215,11 +334,11 @@ export default function Dashboard() {
               `/api/dashboard/stories?${buildFetchParams({
                 limit: "8",
                 page: storyPage + 1,
-                sortBy: activityFilters.sortBy,
-                order: activityFilters.order,
-                status: activityFilters.storyStatus,
-                visibility: activityFilters.storyVisibility,
-                deleted: "active",
+                sortBy: apiSortBy,
+                order,
+                status,
+                visibility,
+                deleted,
               })}`,
               { headers },
             )
@@ -229,8 +348,8 @@ export default function Dashboard() {
               `/api/dashboard/confessions?${buildFetchParams({
                 limit: "8",
                 page: confessionPage + 1,
-                sortBy: activityFilters.sortBy,
-                order: activityFilters.order,
+                sortBy: apiSortBy,
+                order,
               })}`,
               { headers },
             )
@@ -252,9 +371,7 @@ export default function Dashboard() {
       ];
 
       setActivities((prev) =>
-        [...prev, ...allNewItems].sort(
-          (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
-        ),
+        sortMergedActivities([...prev, ...allNewItems], activityFilters),
       );
 
       updatePaginationState(storiesResponse, storiesPayload, "story");
@@ -274,7 +391,9 @@ export default function Dashboard() {
     hasMoreConfessions,
     hasMoreStories,
     isLoadingMore,
+    feedPage,
     storyPage,
+    hasMoreFeed,
   ]);
 
   useEffect(() => {
@@ -331,19 +450,36 @@ export default function Dashboard() {
     setActivityFilters(DEFAULT_ACTIVITY_FILTERS);
   }, []);
 
-  const canLoadMore = useMemo(
-    () => hasMoreStories || hasMoreConfessions,
-    [hasMoreConfessions, hasMoreStories],
-  );
+  const canLoadMore = useMemo(() => {
+    if (activityFilters.contentType === "all") {
+      return hasMoreFeed;
+    }
+
+    if (activityFilters.contentType === "story") {
+      return hasMoreStories;
+    }
+
+    if (activityFilters.contentType === "confession") {
+      return hasMoreConfessions;
+    }
+
+    return hasMoreStories || hasMoreConfessions;
+  }, [
+    activityFilters.contentType,
+    hasMoreConfessions,
+    hasMoreFeed,
+    hasMoreStories,
+  ]);
 
   const activeFiltersCount = useMemo(() => {
     let count = 0;
 
     if (activityFilters.contentType !== "all") count += 1;
-    if (activityFilters.sortBy !== "default") count += 1;
-    if (activityFilters.order !== "desc") count += 1;
-    if (activityFilters.storyStatus !== "all") count += 1;
-    if (activityFilters.storyVisibility !== "all") count += 1;
+    if (activityFilters.sortBy !== "updated_desc") count += 1;
+    if (activityFilters.contentType !== "confession") {
+      if (activityFilters.storyStatus !== "all") count += 1;
+      if (activityFilters.storyVisibility !== "all") count += 1;
+    }
 
     return count;
   }, [activityFilters]);
