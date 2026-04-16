@@ -8,137 +8,28 @@ import {
   LockOpen,
   Eye,
   EyeOff,
-  Heart,
-  MessageCircle,
-  Bookmark,
-  Share2,
   Loader2,
   SendHorizontal,
   X,
-  MoreHorizontal,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
-
-const normalizeId = (value) => String(value || "").trim();
-
-const parseResponse = async (response) => response.json().catch(() => ({}));
-
-const formatCount = (value) => {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-  }
-
-  return String(value);
-};
-
-const RELATIVE_TIME_STEPS = [
-  { limitMinutes: 1, toLabel: () => "Just now" },
-  {
-    limitMinutes: 60,
-    toLabel: (minutes) => `${minutes} minute${minutes > 1 ? "s" : ""} ago`,
-  },
-  {
-    limitMinutes: 24 * 60,
-    toLabel: (minutes) => {
-      const hours = Math.floor(minutes / 60);
-      return `${hours} hour${hours > 1 ? "s" : ""} ago`;
-    },
-  },
-  {
-    limitMinutes: 7 * 24 * 60,
-    toLabel: (minutes) => {
-      const days = Math.floor(minutes / (24 * 60));
-      return `${days} day${days > 1 ? "s" : ""} ago`;
-    },
-  },
-  {
-    limitMinutes: 5 * 7 * 24 * 60,
-    toLabel: (minutes) => {
-      const weeks = Math.floor(minutes / (7 * 24 * 60));
-      return `${weeks} week${weeks > 1 ? "s" : ""} ago`;
-    },
-  },
-  {
-    limitMinutes: 12 * 30 * 24 * 60,
-    toLabel: (minutes) => {
-      const months = Math.floor(minutes / (30 * 24 * 60));
-      return `${months} month${months > 1 ? "s" : ""} ago`;
-    },
-  },
-];
-
-const getRelativeTime = (dateString) => {
-  const sourceDate = new Date(dateString);
-
-  if (Number.isNaN(sourceDate.getTime())) {
-    return "Recently";
-  }
-
-  const diffMs = Date.now() - sourceDate.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-
-  for (const step of RELATIVE_TIME_STEPS) {
-    if (diffMinutes < step.limitMinutes) {
-      return step.toLabel(diffMinutes);
-    }
-  }
-
-  const diffYears = Math.floor(diffMinutes / (365 * 24 * 60));
-  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
-};
-
-const CONFESSION_FEED_LIMIT = 8;
-const CONFESSION_CONTENT_PREVIEW_LIMIT = 280;
-
-const extractTagsFromContent = (content) => {
-  const matches = content.match(/#\w+/g) || [];
-  const uniqueByLowercase = new Map();
-
-  for (const rawTag of matches) {
-    const cleanedTag = rawTag.slice(1).trim();
-
-    if (!cleanedTag) {
-      continue;
-    }
-
-    const normalizedKey = cleanedTag.toLowerCase();
-
-    if (!uniqueByLowercase.has(normalizedKey)) {
-      uniqueByLowercase.set(normalizedKey, cleanedTag);
-    }
-  }
-
-  return Array.from(uniqueByLowercase.values());
-};
-
-const stripTagsFromContent = (content) =>
-  content
-    .replaceAll(/#\w+/g, "")
-    .replaceAll(/[ \t]{2,}/g, " ")
-    .replaceAll(/\n{3,}/g, "\n\n")
-    .trim();
-
-const getConfessionContentPreview = (content, isExpanded) => {
-  const safeContent = content || "No confession content";
-  const isLongContent = safeContent.length > CONFESSION_CONTENT_PREVIEW_LIMIT;
-
-  if (!isLongContent || isExpanded) {
-    return {
-      visibleContent: safeContent,
-      isLongContent,
-    };
-  }
-
-  return {
-    visibleContent: `${safeContent.slice(0, CONFESSION_CONTENT_PREVIEW_LIMIT)}...`,
-    isLongContent,
-  };
-};
+import {
+  normalizeId,
+  parseResponse,
+  CONFESSION_FEED_LIMIT,
+  extractTagsFromContent,
+  stripTagsFromContent,
+} from "./confession/confessionUtils";
+import { useOutsideClickCloser } from "./confession/useOutsideClickCloser";
+import { useConfessionComments } from "./confession/useConfessionComments";
+import ConfessionFeedCard from "./confession/ConfessionFeedCard";
+import ConfessionModalCommentItem from "./confession/ConfessionModalCommentItem";
 
 export default function Confession() {
+  // NOSONAR
+  const TOAST_DURATION_MS = 3200;
+  const TOAST_EXIT_MS = 220;
   const [confession, setConfession] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [visibility, setVisibility] = useState("public");
@@ -148,8 +39,7 @@ export default function Confession() {
   const [isLoadingFeed, setIsLoadingFeed] = useState(true);
   const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [toast, setToast] = useState(null);
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
   const [gestureLikeBurstId, setGestureLikeBurstId] = useState(null);
@@ -162,14 +52,82 @@ export default function Confession() {
   const [menuConfessionId, setMenuConfessionId] = useState("");
   const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
   const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
-  const [activeCommentConfessionId, setActiveCommentConfessionId] =
-    useState("");
-  const [commentModalTitle, setCommentModalTitle] = useState("");
-  const [modalComments, setModalComments] = useState([]);
-  const [isLoadingModalComments, setIsLoadingModalComments] = useState(false);
-  const [modalCommentsError, setModalCommentsError] = useState("");
   const sentinelRef = useRef(null);
   const lastTapRef = useRef({ confessionId: "", time: 0 });
+  const toastTimeoutRef = useRef(null);
+  const toastExitTimeoutRef = useRef(null);
+  const [isToastVisible, setIsToastVisible] = useState(false);
+
+  const hideToast = React.useCallback(() => {
+    setIsToastVisible(false);
+
+    if (toastExitTimeoutRef.current) {
+      clearTimeout(toastExitTimeoutRef.current);
+    }
+
+    toastExitTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+      toastExitTimeoutRef.current = null;
+    }, TOAST_EXIT_MS);
+  }, [TOAST_EXIT_MS]);
+
+  const dismissToast = React.useCallback(() => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+
+    hideToast();
+  }, [hideToast]);
+
+  const showToast = React.useCallback(
+    (type, message) => {
+      if (!message) {
+        return;
+      }
+
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+
+      if (toastExitTimeoutRef.current) {
+        clearTimeout(toastExitTimeoutRef.current);
+        toastExitTimeoutRef.current = null;
+      }
+
+      setToast({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type,
+        message,
+      });
+
+      setIsToastVisible(false);
+
+      requestAnimationFrame(() => {
+        setIsToastVisible(true);
+      });
+
+      toastTimeoutRef.current = setTimeout(() => {
+        hideToast();
+        toastTimeoutRef.current = null;
+      }, TOAST_DURATION_MS);
+    },
+    [TOAST_DURATION_MS, hideToast],
+  );
+
+  const showError = React.useCallback(
+    (message) => {
+      showToast("error", message);
+    },
+    [showToast],
+  );
+
+  const showSuccess = React.useCallback(
+    (message) => {
+      showToast("success", message);
+    },
+    [showToast],
+  );
 
   const currentUserId = React.useMemo(() => {
     try {
@@ -182,61 +140,91 @@ export default function Confession() {
     }
   }, []);
 
-  const loadConfessions = async ({ cursor = "", append = false } = {}) => {
-    if (append) {
-      setIsLoadingMoreFeed(true);
-    } else {
-      setIsLoadingFeed(true);
-    }
+  const {
+    activeCommentConfessionId,
+    commentModalTitle,
+    modalComments,
+    newCommentContent,
+    setNewCommentContent,
+    isSubmittingComment,
+    activeCommentMenuId,
+    editingCommentId,
+    editCommentContent,
+    setEditCommentContent,
+    isSavingEditedComment,
+    deleteTargetCommentId,
+    setDeleteTargetCommentId,
+    isDeletingComment,
+    isLoadingModalComments,
+    modalCommentsError,
+    closeCommentModal,
+    openCommentModal,
+    handleAddComment,
+    handleToggleCommentMenu,
+    handleStartEditComment,
+    handleCancelEditComment,
+    handleSaveEditedComment,
+    handleDeleteComment,
+    handleConfirmDeleteComment,
+  } = useConfessionComments({ setConfessionFeed });
 
-    try {
-      const params = new URLSearchParams({
-        limit: String(CONFESSION_FEED_LIMIT),
-      });
-
-      if (cursor) {
-        params.set("cursor", cursor);
+  const loadConfessions = React.useCallback(
+    async ({ cursor = "", append = false } = {}) => {
+      if (append) {
+        setIsLoadingMoreFeed(true);
+      } else {
+        setIsLoadingFeed(true);
       }
 
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      try {
+        const params = new URLSearchParams({
+          limit: String(CONFESSION_FEED_LIMIT),
+        });
 
-      const response = await fetch(`/api/confessions?${params.toString()}`, {
-        headers,
-      });
-      const payload = await parseResponse(response);
+        if (cursor) {
+          params.set("cursor", cursor);
+        }
 
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to load confessions.");
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+        const response = await fetch(`/api/confessions?${params.toString()}`, {
+          headers,
+        });
+        const payload = await parseResponse(response);
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Failed to load confessions.");
+        }
+
+        const data = Array.isArray(payload?.data) ? payload.data : [];
+
+        setConfessionFeed((prev) => (append ? [...prev, ...data] : data));
+        setNextCursor(payload?.nextCursor || "");
+        setHasMoreFeed(Boolean(payload?.hasMore));
+      } catch (error) {
+        showError(error.message || "Failed to load confessions.");
+      } finally {
+        setIsLoadingFeed(false);
+        setIsLoadingMoreFeed(false);
       }
-
-      const data = Array.isArray(payload?.data) ? payload.data : [];
-
-      setConfessionFeed((prev) => (append ? [...prev, ...data] : data));
-      setNextCursor(payload?.nextCursor || "");
-      setHasMoreFeed(Boolean(payload?.hasMore));
-    } catch (error) {
-      setErrorMessage(error.message || "Failed to load confessions.");
-    } finally {
-      setIsLoadingFeed(false);
-      setIsLoadingMoreFeed(false);
-    }
-  };
+    },
+    [showError],
+  );
 
   const handleSubmit = async () => {
-    setErrorMessage("");
-    setSuccessMessage("");
+    dismissToast();
 
     const cleanedContent = stripTagsFromContent(confession);
 
     if (cleanedContent.length < 5) {
-      setErrorMessage("Write at least 5 characters before posting.");
+      showError("Write at least 5 characters before posting.");
       return;
     }
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setErrorMessage("Please log in again to post a confession.");
+      showError("Please log in again to post a confession.");
       return;
     }
 
@@ -266,10 +254,10 @@ export default function Confession() {
       }
 
       setConfession("");
-      setSuccessMessage("Confession posted successfully.");
+      showSuccess("Confession posted successfully.");
       await loadConfessions();
     } catch (error) {
-      setErrorMessage(error.message || "Failed to post confession.");
+      showError(error.message || "Failed to post confession.");
     } finally {
       setIsSubmitting(false);
     }
@@ -280,19 +268,18 @@ export default function Confession() {
       return;
     }
 
-    setErrorMessage("");
-    setSuccessMessage("");
+    dismissToast();
 
     const cleanedContent = stripTagsFromContent(editConfessionContent);
 
     if (cleanedContent.length < 5) {
-      setErrorMessage("Write at least 5 characters before updating.");
+      showError("Write at least 5 characters before updating.");
       return;
     }
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setErrorMessage("Please log in again to update a confession.");
+      showError("Please log in again to update a confession.");
       return;
     }
 
@@ -326,66 +313,69 @@ export default function Confession() {
       setEditConfessionIsAnonymous(true);
       setEditConfessionVisibility("public");
       setMenuConfessionId("");
-      setSuccessMessage("Confession updated successfully.");
+      showSuccess("Confession updated successfully.");
       await loadConfessions();
     } catch (error) {
-      setErrorMessage(error.message || "Failed to update confession.");
+      showError(error.message || "Failed to update confession.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleToggleLike = React.useCallback(async (confessionId) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setErrorMessage("Please log in to like confessions.");
-      return;
-    }
-
-    setPressedLikeId(confessionId);
-    setTimeout(() => {
-      setPressedLikeId((currentId) =>
-        currentId === confessionId ? null : currentId,
-      );
-    }, 150);
-
-    try {
-      const response = await fetch(
-        `/api/confessions/${confessionId}/toggle-like`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to toggle like.");
+  const handleToggleLike = React.useCallback(
+    async (confessionId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showError("Please log in to like confessions.");
+        return;
       }
 
-      const payload = await parseResponse(response);
+      setPressedLikeId(confessionId);
+      setTimeout(() => {
+        setPressedLikeId((currentId) =>
+          currentId === confessionId ? null : currentId,
+        );
+      }, 150);
 
-      setConfessionFeed((prev) =>
-        prev.map((item) =>
-          item._id === confessionId || item.id === confessionId
-            ? {
-                ...item,
-                likedByCurrentUser: Boolean(payload.likedByCurrentUser),
-                likesCount: Number(payload.likesCount || 0),
-              }
-            : item,
-        ),
-      );
-    } catch (error) {
-      setErrorMessage(error.message || "Failed to toggle like.");
-    }
-  }, []);
+      try {
+        const response = await fetch(
+          `/api/confessions/${confessionId}/toggle-like`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to toggle like.");
+        }
+
+        const payload = await parseResponse(response);
+
+        setConfessionFeed((prev) =>
+          prev.map((item) =>
+            item._id === confessionId || item.id === confessionId
+              ? {
+                  ...item,
+                  likedByCurrentUser: Boolean(payload.likedByCurrentUser),
+                  likesCount: Number(payload.likesCount || 0),
+                }
+              : item,
+          ),
+        );
+      } catch (error) {
+        showError(error.message || "Failed to toggle like.");
+      }
+    },
+    [showError],
+  );
 
   const handleToggleBookmark = async (confessionId) => {
     const token = localStorage.getItem("token");
     if (!token) {
-      setErrorMessage("Please log in to bookmark confessions.");
+      showError("Please log in to bookmark confessions.");
       return;
     }
 
@@ -424,7 +414,7 @@ export default function Confession() {
         ),
       );
     } catch (error) {
-      setErrorMessage(error.message || "Failed to toggle bookmark.");
+      showError(error.message || "Failed to toggle bookmark.");
     }
   };
 
@@ -459,8 +449,7 @@ export default function Confession() {
     setEditConfessionVisibility(
       item?.visibility === "private" ? "private" : "public",
     );
-    setSuccessMessage("");
-    setErrorMessage("");
+    dismissToast();
   };
 
   const handleDeleteConfession = (confessionId) => {
@@ -485,7 +474,7 @@ export default function Confession() {
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setErrorMessage("Please log in again to delete a confession.");
+      showError("Please log in again to delete a confession.");
       return;
     }
 
@@ -513,9 +502,9 @@ export default function Confession() {
         handleCancelEditConfession();
       }
 
-      setSuccessMessage("Confession deleted successfully.");
+      showSuccess("Confession deleted successfully.");
     } catch (error) {
-      setErrorMessage(error.message || "Failed to delete confession.");
+      showError(error.message || "Failed to delete confession.");
     }
   };
 
@@ -536,43 +525,6 @@ export default function Confession() {
     },
     [handleToggleLike],
   );
-
-  const closeCommentModal = () => {
-    setActiveCommentConfessionId("");
-    setCommentModalTitle("");
-    setModalComments([]);
-    setModalCommentsError("");
-    setIsLoadingModalComments(false);
-  };
-
-  const openCommentModal = async (confessionId, authorName) => {
-    setActiveCommentConfessionId(confessionId);
-    setCommentModalTitle(authorName || "Confession");
-    setModalComments([]);
-    setModalCommentsError("");
-    setIsLoadingModalComments(true);
-
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await fetch(
-        `/api/confessions/${confessionId}/comments?limit=10`,
-        { headers },
-      );
-      const payload = await parseResponse(response);
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to load comments.");
-      }
-
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
-      setModalComments(comments);
-    } catch (error) {
-      setModalCommentsError(error.message || "Failed to load comments.");
-    } finally {
-      setIsLoadingModalComments(false);
-    }
-  };
 
   React.useEffect(() => {
     const getCardMeta = (eventTarget) => {
@@ -644,33 +596,27 @@ export default function Confession() {
   }, [handleCardLikeGesture]);
 
   React.useEffect(() => {
-    void loadConfessions();
-  }, []);
+    loadConfessions().catch(() => {});
+  }, [loadConfessions]);
 
-  React.useEffect(() => {
-    if (!menuConfessionId) {
-      return undefined;
-    }
-
-    const handleClickOutsideMenu = (event) => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest("[data-confession-menu]")
-      ) {
-        return;
+  React.useEffect(
+    () => () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
       }
 
-      setMenuConfessionId("");
-    };
+      if (toastExitTimeoutRef.current) {
+        clearTimeout(toastExitTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
-    document.addEventListener("mousedown", handleClickOutsideMenu);
-    document.addEventListener("touchstart", handleClickOutsideMenu);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutsideMenu);
-      document.removeEventListener("touchstart", handleClickOutsideMenu);
-    };
-  }, [menuConfessionId]);
+  useOutsideClickCloser(
+    Boolean(menuConfessionId),
+    () => setMenuConfessionId(""),
+    "[data-confession-menu]",
+  );
 
   React.useEffect(() => {
     const observer = new IntersectionObserver(
@@ -681,7 +627,7 @@ export default function Confession() {
           !isLoadingMoreFeed &&
           !isLoadingFeed
         ) {
-          void loadConfessions({ cursor: nextCursor, append: true });
+          loadConfessions({ cursor: nextCursor, append: true }).catch(() => {});
         }
       },
       { threshold: 0.1 },
@@ -698,7 +644,13 @@ export default function Confession() {
         observer.unobserve(currentSentinel);
       }
     };
-  }, [hasMoreFeed, nextCursor, isLoadingMoreFeed, isLoadingFeed]);
+  }, [
+    hasMoreFeed,
+    nextCursor,
+    isLoadingMoreFeed,
+    isLoadingFeed,
+    loadConfessions,
+  ]);
 
   let feedContent = null;
   const isCommentModalOpen = Boolean(activeCommentConfessionId);
@@ -716,180 +668,25 @@ export default function Confession() {
       </div>
     );
   } else {
-    feedContent = confessionFeed.map((item) => {
-      const originalAuthor = item?.authorDisplayName || "Unknown Author";
-      const author = item?.isAnonymous ? "Anonymous" : originalAuthor;
-      const authorSeed = String(author || "author");
-      const avatarSrc =
-        !item?.isAnonymous && item?.authorProfilePicture
-          ? item.authorProfilePicture
-          : `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-              authorSeed,
-            )}`;
-      const tags =
-        Array.isArray(item?.tags) && item.tags.length > 0 ? item.tags : [];
-      const confessionId = String(item?._id || item?.id || authorSeed);
-      const canManageConfession =
-        Boolean(currentUserId) && normalizeId(item?.authorId) === currentUserId;
-      const isExpanded = Boolean(expandedConfessionIds[confessionId]);
-      const { visibleContent, isLongContent } = getConfessionContentPreview(
-        item?.content,
-        isExpanded,
-      );
-
-      return (
-        <div
-          key={confessionId}
-          data-confession-card-id={confessionId}
-          data-liked-by-current-user={Boolean(item?.likedByCurrentUser)}
-          className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
-        >
-          {canManageConfession && (
-            <div className="absolute right-4 top-4 z-20" data-confession-menu>
-              <button
-                type="button"
-                onClick={() => handleToggleConfessionMenu(confessionId)}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
-                aria-label="Confession actions"
-              >
-                <MoreHorizontal size={18} />
-              </button>
-
-              {menuConfessionId === confessionId && (
-                <div className="absolute right-0 top-10 w-28 rounded-xl border border-slate-200 bg-white shadow-lg py-1 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => handleEditConfession(item)}
-                    className="w-full px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteConfession(confessionId)}
-                    className="w-full px-3 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {gestureLikeBurstId === confessionId && (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-              <Heart
-                size={56}
-                className="text-rose-500/90 animate-pulse"
-                fill="currentColor"
-              />
-            </div>
-          )}
-
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-                <img src={avatarSrc} alt="avatar" />
-              </div>
-
-              <div className="min-w-0">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                  <h3 className="font-semibold text-slate-900 truncate">
-                    {author}
-                  </h3>
-                  <div className="flex items-center gap-1 text-xs text-slate-400">
-                    <span>• {getRelativeTime(item?.createdAt)}</span>
-                    {item?.isEdited ? <span>• Edited</span> : null}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
-            {visibleContent}
-          </p>
-
-          {isLongContent && (
-            <button
-              type="button"
-              onClick={() => handleToggleExpandedConfession(confessionId)}
-              className="mt-2 mb-6 text-xs font-semibold text-slate-500 hover:underline cursor-pointer"
-            >
-              {isExpanded ? "Show less" : "Show more"}
-            </button>
-          )}
-
-          {!isLongContent && <div className="mb-6" />}
-
-          {tags.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
-              {tags.slice(0, 4).map((tag) => (
-                <button
-                  key={`${confessionId}-${tag}`}
-                  type="button"
-                  className="text-xs font-semibold tracking-wide text-rose-600 hover:underline cursor-pointer"
-                >
-                  #{tag}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="relative">
-                <button
-                  onClick={() => handleToggleLike(confessionId)}
-                  className={`flex items-center gap-2 transition-all duration-200 cursor-pointer ${
-                    item?.likedByCurrentUser
-                      ? "text-rose-500"
-                      : "text-slate-500 hover:text-rose-500"
-                  } ${pressedLikeId === confessionId ? "scale-95" : "scale-100"}`}
-                >
-                  <Heart
-                    size={20}
-                    fill={item?.likedByCurrentUser ? "currentColor" : "none"}
-                  />
-                  <span className="text-xs sm:text-sm font-medium">
-                    {formatCount(Number(item?.likesCount || 0))}
-                  </span>
-                </button>
-              </div>
-
-              <button
-                onClick={() => openCommentModal(confessionId, author)}
-                className="flex items-center gap-2 text-slate-500 transition-all duration-200 hover:text-sky-500 cursor-pointer"
-              >
-                <MessageCircle size={20} />
-                <span className="text-xs sm:text-sm font-medium">
-                  {formatCount(Number(item?.commentCount || 0))}
-                </span>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => handleToggleBookmark(confessionId)}
-                className={`transition-colors cursor-pointer ${
-                  item?.savedByCurrentUser
-                    ? "text-rose-500"
-                    : "text-slate-500 hover:text-rose-500"
-                } ${pressedBookmarkId === confessionId ? "scale-95" : "scale-100"}`}
-              >
-                <Bookmark
-                  size={20}
-                  fill={item?.savedByCurrentUser ? "currentColor" : "none"}
-                />
-              </button>
-              <button className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
-                <Share2 size={20} />
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    });
+    feedContent = confessionFeed.map((item) => (
+      <ConfessionFeedCard
+        key={String(item?._id || item?.id || "")}
+        item={item}
+        currentUserId={currentUserId}
+        expandedConfessionIds={expandedConfessionIds}
+        menuConfessionId={menuConfessionId}
+        gestureLikeBurstId={gestureLikeBurstId}
+        pressedLikeId={pressedLikeId}
+        pressedBookmarkId={pressedBookmarkId}
+        onToggleConfessionMenu={handleToggleConfessionMenu}
+        onEditConfession={handleEditConfession}
+        onDeleteConfession={handleDeleteConfession}
+        onToggleExpandedConfession={handleToggleExpandedConfession}
+        onToggleLike={handleToggleLike}
+        onOpenCommentModal={openCommentModal}
+        onToggleBookmark={handleToggleBookmark}
+      />
+    ));
   }
 
   return (
@@ -902,18 +699,6 @@ export default function Confession() {
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-4xl mx-auto flex flex-col items-center justify-start">
-              {errorMessage && (
-                <div className="w-full mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                  {errorMessage}
-                </div>
-              )}
-
-              {successMessage && (
-                <div className="w-full mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                  {successMessage}
-                </div>
-              )}
-
               <div className="bg-slate-900 text-white p-8 rounded-3xl sm:rounded-[40px] text-left relative overflow-hidden w-full shadow-sm">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/20 blur-3xl"></div>
                 <div className="relative z-10">
@@ -1032,48 +817,55 @@ export default function Confession() {
                 {!isLoadingModalComments &&
                   !modalCommentsError &&
                   modalComments.map((comment) => {
-                    const commentId = String(
-                      comment?._id || comment?.id || "comment",
-                    );
-                    const commentAuthor =
-                      comment?.authorDisplayName || "Anonymous";
-                    const commentAvatarSrc =
-                      comment?.authorProfilePicture ||
-                      `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
-                        commentAuthor,
-                      )}`;
-
                     return (
-                      <div
-                        key={commentId}
-                        className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"
-                      >
-                        <div className="mb-2 flex items-start gap-3">
-                          <div className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0">
-                            <img
-                              src={commentAvatarSrc}
-                              alt="commenter avatar"
-                              className="h-full w-full object-cover"
-                            />
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-3">
-                              <span className="text-xs font-semibold text-slate-700 truncate">
-                                {commentAuthor}
-                              </span>
-                              <span className="text-[11px] text-slate-400 shrink-0">
-                                {getRelativeTime(comment?.createdAt)}
-                              </span>
-                            </div>
-                            <p className="text-sm text-slate-700 whitespace-pre-wrap mt-1">
-                              {comment?.content || "No comment content"}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                      <ConfessionModalCommentItem
+                        key={String(comment?._id || comment?.id || "comment")}
+                        comment={comment}
+                        currentUserId={currentUserId}
+                        activeCommentMenuId={activeCommentMenuId}
+                        editingCommentId={editingCommentId}
+                        editCommentContent={editCommentContent}
+                        isSavingEditedComment={isSavingEditedComment}
+                        deleteTargetCommentId={deleteTargetCommentId}
+                        isDeletingComment={isDeletingComment}
+                        onToggleMenu={handleToggleCommentMenu}
+                        onStartEdit={handleStartEditComment}
+                        onDelete={handleDeleteComment}
+                        onCancelEdit={handleCancelEditComment}
+                        onEditContentChange={setEditCommentContent}
+                        onSaveEdit={handleSaveEditedComment}
+                        onCancelDelete={() => setDeleteTargetCommentId("")}
+                        onConfirmDelete={handleConfirmDeleteComment}
+                      />
                     );
                   })}
+              </div>
+
+              <div className="border-t border-slate-100 px-4 py-3">
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={newCommentContent}
+                    onChange={(event) =>
+                      setNewCommentContent(event.target.value)
+                    }
+                    className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
+                    rows={2}
+                    placeholder="Write a comment..."
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddComment}
+                    disabled={isSubmittingComment}
+                    className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
+                  >
+                    {isSubmittingComment ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <SendHorizontal className="h-3.5 w-3.5" />
+                    )}
+                    {isSubmittingComment ? "Posting..." : "Post"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1213,6 +1005,77 @@ export default function Confession() {
           </div>
         )}
       </div>
+
+      {toast && (
+        <div className="pointer-events-none fixed right-4 top-4 z-90 w-[min(92vw,360px)]">
+          <div
+            className={`pointer-events-auto rounded-2xl border bg-white/95 shadow-2xl backdrop-blur px-4 py-3 transition-all duration-200 ease-out ${
+              isToastVisible
+                ? "translate-x-0 opacity-100"
+                : "translate-x-8 opacity-0"
+            } ${
+              {
+                success: "border-emerald-200",
+                error: "border-rose-200",
+              }[toast.type]
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className={`mt-0.5 shrink-0 ${
+                  toast.type === "success"
+                    ? "text-emerald-600"
+                    : "text-rose-600"
+                }`}
+              >
+                {toast.type === "success" ? (
+                  <CheckCircle2 size={18} />
+                ) : (
+                  <AlertCircle size={18} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] font-semibold text-slate-900">
+                  {toast.type === "success" ? "Done" : "Alert"}
+                </p>
+                <p className="mt-0.5 text-sm leading-snug text-slate-600 wrap-break-word">
+                  {toast.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={dismissToast}
+                className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                aria-label="Dismiss notification"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <div className="mt-3 h-1 overflow-hidden rounded-full bg-slate-100">
+              <div
+                key={toast.id}
+                className={`h-full origin-left ${
+                  toast.type === "success"
+                    ? "bg-emerald-500/70"
+                    : "bg-rose-500/70"
+                }`}
+                style={{
+                  animation: `toastCountDown ${TOAST_DURATION_MS}ms linear forwards`,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes toastCountDown {
+          from { transform: scaleX(1); }
+          to { transform: scaleX(0); }
+        }
+      `}</style>
     </div>
   );
 }
