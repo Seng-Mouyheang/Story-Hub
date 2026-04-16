@@ -157,7 +157,7 @@ const getCommentsByConfession = async (
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -198,6 +198,7 @@ const getCommentsByConfession = async (
     likedByCurrentUser: likedCommentIds.has(comment._id.toString()),
     replyCount: comment.replyCount || 0,
     authorDisplayName: comment.author?.displayName || null,
+    authorProfilePicture: comment.author?.profilePicture || "",
   }));
 
   let nextCursor = null;
@@ -264,7 +265,7 @@ const getRepliesByComment = async (
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -302,6 +303,7 @@ const getRepliesByComment = async (
     ...reply,
     likedByCurrentUser: likedReplyIds.has(reply._id.toString()),
     authorDisplayName: reply.author?.displayName || null,
+    authorProfilePicture: reply.author?.profilePicture || "",
   }));
 
   let nextCursor = null;

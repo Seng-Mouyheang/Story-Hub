@@ -63,6 +63,24 @@ const resolveAuthorDisplayName = (confession, currentUserId = null) => {
   return "Anonymous";
 };
 
+const resolveAuthorProfilePicture = (confession, currentUserId = null) => {
+  const profilePicture = confession.author?.profilePicture || "";
+
+  if (!confession.isAnonymous) {
+    return profilePicture;
+  }
+
+  if (
+    currentUserId &&
+    ObjectId.isValid(currentUserId) &&
+    confession.authorId.toString() === currentUserId.toString()
+  ) {
+    return profilePicture;
+  }
+
+  return "";
+};
+
 const createConfession = async (confessionData) => {
   const collection = await getCollection();
   const wordCount = confessionData.content.trim().split(/\s+/).length;
@@ -140,7 +158,7 @@ const getPublishedConfessions = async (cursor, limit, currentUserId, tag) => {
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -218,6 +236,10 @@ const getPublishedConfessions = async (cursor, limit, currentUserId, tag) => {
       confession.authorId.toString(),
     ),
     authorDisplayName: resolveAuthorDisplayName(confession, currentUserId),
+    authorProfilePicture: resolveAuthorProfilePicture(
+      confession,
+      currentUserId,
+    ),
   }));
 
   let nextCursor = null;
@@ -266,7 +288,7 @@ const getConfessionById = async (id, currentUserId = null) => {
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
