@@ -91,6 +91,7 @@ const getRelativeTime = (dateString) => {
 };
 
 const CONFESSION_FEED_LIMIT = 8;
+const CONFESSION_CONTENT_PREVIEW_LIMIT = 280;
 
 const extractTagsFromContent = (content) => {
   const matches = content.match(/#\w+/g) || [];
@@ -120,6 +121,23 @@ const stripTagsFromContent = (content) =>
     .replaceAll(/\n{3,}/g, "\n\n")
     .trim();
 
+const getConfessionContentPreview = (content, isExpanded) => {
+  const safeContent = content || "No confession content";
+  const isLongContent = safeContent.length > CONFESSION_CONTENT_PREVIEW_LIMIT;
+
+  if (!isLongContent || isExpanded) {
+    return {
+      visibleContent: safeContent,
+      isLongContent,
+    };
+  }
+
+  return {
+    visibleContent: `${safeContent.slice(0, CONFESSION_CONTENT_PREVIEW_LIMIT)}...`,
+    isLongContent,
+  };
+};
+
 export default function Confession() {
   const [confession, setConfession] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
@@ -142,6 +160,7 @@ export default function Confession() {
   const [editConfessionVisibility, setEditConfessionVisibility] =
     useState("public");
   const [menuConfessionId, setMenuConfessionId] = useState("");
+  const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
   const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
   const [activeCommentConfessionId, setActiveCommentConfessionId] =
     useState("");
@@ -415,6 +434,13 @@ export default function Confession() {
     );
   };
 
+  const handleToggleExpandedConfession = (confessionId) => {
+    setExpandedConfessionIds((prev) => ({
+      ...prev,
+      [confessionId]: !prev[confessionId],
+    }));
+  };
+
   const handleEditConfession = (item) => {
     const existingTags = Array.isArray(item?.tags) ? item.tags : [];
     const reconstructedEditContent = [
@@ -622,6 +648,31 @@ export default function Confession() {
   }, []);
 
   React.useEffect(() => {
+    if (!menuConfessionId) {
+      return undefined;
+    }
+
+    const handleClickOutsideMenu = (event) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-confession-menu]")
+      ) {
+        return;
+      }
+
+      setMenuConfessionId("");
+    };
+
+    document.addEventListener("mousedown", handleClickOutsideMenu);
+    document.addEventListener("touchstart", handleClickOutsideMenu);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutsideMenu);
+      document.removeEventListener("touchstart", handleClickOutsideMenu);
+    };
+  }, [menuConfessionId]);
+
+  React.useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (
@@ -680,6 +731,11 @@ export default function Confession() {
       const confessionId = String(item?._id || item?.id || authorSeed);
       const canManageConfession =
         Boolean(currentUserId) && normalizeId(item?.authorId) === currentUserId;
+      const isExpanded = Boolean(expandedConfessionIds[confessionId]);
+      const { visibleContent, isLongContent } = getConfessionContentPreview(
+        item?.content,
+        isExpanded,
+      );
 
       return (
         <div
@@ -689,7 +745,7 @@ export default function Confession() {
           className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
         >
           {canManageConfession && (
-            <div className="absolute right-4 top-4 z-20">
+            <div className="absolute right-4 top-4 z-20" data-confession-menu>
               <button
                 type="button"
                 onClick={() => handleToggleConfessionMenu(confessionId)}
@@ -750,9 +806,21 @@ export default function Confession() {
             </div>
           </div>
 
-          <p className="text-slate-600 text-sm leading-relaxed mb-6 whitespace-pre-wrap">
-            {item?.content || "No confession content"}
+          <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
+            {visibleContent}
           </p>
+
+          {isLongContent && (
+            <button
+              type="button"
+              onClick={() => handleToggleExpandedConfession(confessionId)}
+              className="mt-2 mb-6 text-xs font-semibold text-slate-500 hover:underline cursor-pointer"
+            >
+              {isExpanded ? "Show less" : "Show more"}
+            </button>
+          )}
+
+          {!isLongContent && <div className="mb-6" />}
 
           {tags.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -768,8 +836,8 @@ export default function Confession() {
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-slate-100">
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="relative">
                 <button
                   onClick={() => handleToggleLike(confessionId)}
@@ -800,7 +868,7 @@ export default function Confession() {
               </button>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 shrink-0">
               <button
                 onClick={() => handleToggleBookmark(confessionId)}
                 className={`transition-colors cursor-pointer ${
@@ -846,17 +914,17 @@ export default function Confession() {
                 </div>
               )}
 
-              <div className="bg-slate-900 text-white sm:p-8 rounded-3xl sm:rounded-[40px] text-left relative overflow-hidden w-full shadow-sm">
+              <div className="bg-slate-900 text-white p-8 rounded-3xl sm:rounded-[40px] text-left relative overflow-hidden w-full shadow-sm">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/20 blur-3xl"></div>
                 <div className="relative z-10">
                   <div className="w-12 h-1 bg-rose-500 rounded-full mb-4"></div>
                   <textarea
                     value={confession}
                     onChange={(e) => setConfession(e.target.value)}
-                    className="bg-transparent border-none outline-none w-full h-36 sm:h-32 text-base lg:text-md sm:text-lg text-slate-200 resize-none placeholder:text-slate-400"
+                    className="bg-transparent border-none outline-none w-full h-32 text-base text-md text-slate-200 resize-none placeholder:text-slate-400"
                     placeholder="Write your confession..."
                   />
-                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mt-4">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mt-2">
                     <div className="inline-flex items-center gap-2">
                       <button
                         type="button"
@@ -923,8 +991,15 @@ export default function Confession() {
         </main>
 
         {isCommentModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4 py-6">
-            <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+            <button
+              type="button"
+              aria-label="Close comments modal"
+              onClick={closeCommentModal}
+              className="absolute inset-0 bg-slate-900/40"
+            />
+
+            <div className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
                   Comments - {commentModalTitle}
@@ -1005,8 +1080,15 @@ export default function Confession() {
         )}
 
         {editingConfessionId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-[2px] px-4 py-6">
-            <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+            <button
+              type="button"
+              aria-label="Close edit confession modal"
+              onClick={handleCancelEditConfession}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+            />
+
+            <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <h4 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
                   Edit Confession
