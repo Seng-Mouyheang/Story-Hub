@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -8,11 +8,85 @@ import {
   LockOpen,
   Eye,
   EyeOff,
+  Heart,
+  MessageCircle,
+  Bookmark,
+  Share2,
   Loader2,
   SendHorizontal,
 } from "lucide-react";
 
 const parseResponse = async (response) => response.json().catch(() => ({}));
+
+const formatCount = (value) => {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  }
+
+  return String(value);
+};
+
+const RELATIVE_TIME_STEPS = [
+  { limitMinutes: 1, toLabel: () => "Just now" },
+  {
+    limitMinutes: 60,
+    toLabel: (minutes) => `${minutes} minute${minutes > 1 ? "s" : ""} ago`,
+  },
+  {
+    limitMinutes: 24 * 60,
+    toLabel: (minutes) => {
+      const hours = Math.floor(minutes / 60);
+      return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+    },
+  },
+  {
+    limitMinutes: 7 * 24 * 60,
+    toLabel: (minutes) => {
+      const days = Math.floor(minutes / (24 * 60));
+      return `${days} day${days > 1 ? "s" : ""} ago`;
+    },
+  },
+  {
+    limitMinutes: 5 * 7 * 24 * 60,
+    toLabel: (minutes) => {
+      const weeks = Math.floor(minutes / (7 * 24 * 60));
+      return `${weeks} week${weeks > 1 ? "s" : ""} ago`;
+    },
+  },
+  {
+    limitMinutes: 12 * 30 * 24 * 60,
+    toLabel: (minutes) => {
+      const months = Math.floor(minutes / (30 * 24 * 60));
+      return `${months} month${months > 1 ? "s" : ""} ago`;
+    },
+  },
+];
+
+const getRelativeTime = (dateString) => {
+  const sourceDate = new Date(dateString);
+
+  if (Number.isNaN(sourceDate.getTime())) {
+    return "Recently";
+  }
+
+  const diffMs = Date.now() - sourceDate.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  for (const step of RELATIVE_TIME_STEPS) {
+    if (diffMinutes < step.limitMinutes) {
+      return step.toLabel(diffMinutes);
+    }
+  }
+
+  const diffYears = Math.floor(diffMinutes / (365 * 24 * 60));
+  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
+};
+
+const CONFESSION_FEED_LIMIT = 8;
 
 const extractTagsFromContent = (content) => {
   const matches = content.match(/#\w+/g) || [];
@@ -46,9 +120,60 @@ export default function Confession() {
   const [confession, setConfession] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [visibility, setVisibility] = useState("public");
+  const [confessionFeed, setConfessionFeed] = useState([]);
+  const [nextCursor, setNextCursor] = useState("");
+  const [hasMoreFeed, setHasMoreFeed] = useState(false);
+  const [isLoadingFeed, setIsLoadingFeed] = useState(true);
+  const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [pressedLikeId, setPressedLikeId] = useState(null);
+  const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
+  const [gestureLikeBurstId, setGestureLikeBurstId] = useState(null);
+  const sentinelRef = useRef(null);
+  const lastTapRef = useRef({ confessionId: "", time: 0 });
+
+  const loadConfessions = async ({ cursor = "", append = false } = {}) => {
+    if (append) {
+      setIsLoadingMoreFeed(true);
+    } else {
+      setIsLoadingFeed(true);
+    }
+
+    try {
+      const params = new URLSearchParams({
+        limit: String(CONFESSION_FEED_LIMIT),
+      });
+
+      if (cursor) {
+        params.set("cursor", cursor);
+      }
+
+      const token = localStorage.getItem("token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const response = await fetch(`/api/confessions?${params.toString()}`, {
+        headers,
+      });
+      const payload = await parseResponse(response);
+
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to load confessions.");
+      }
+
+      const data = Array.isArray(payload?.data) ? payload.data : [];
+
+      setConfessionFeed((prev) => (append ? [...prev, ...data] : data));
+      setNextCursor(payload?.nextCursor || "");
+      setHasMoreFeed(Boolean(payload?.hasMore));
+    } catch (error) {
+      setErrorMessage(error.message || "Failed to load confessions.");
+    } finally {
+      setIsLoadingFeed(false);
+      setIsLoadingMoreFeed(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setErrorMessage("");
@@ -94,12 +219,358 @@ export default function Confession() {
 
       setConfession("");
       setSuccessMessage("Confession posted successfully.");
+      await loadConfessions();
     } catch (error) {
       setErrorMessage(error.message || "Failed to post confession.");
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleToggleLike = React.useCallback(async (confessionId) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErrorMessage("Please log in to like confessions.");
+      return;
+    }
+
+    setPressedLikeId(confessionId);
+    setTimeout(() => {
+      setPressedLikeId((currentId) =>
+        currentId === confessionId ? null : currentId,
+      );
+    }, 150);
+
+    try {
+      const response = await fetch(
+        `/api/confessions/${confessionId}/toggle-like`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to toggle like.");
+      }
+
+      const payload = await parseResponse(response);
+
+      setConfessionFeed((prev) =>
+        prev.map((item) =>
+          item._id === confessionId || item.id === confessionId
+            ? {
+                ...item,
+                likedByCurrentUser: Boolean(payload.likedByCurrentUser),
+                likesCount: Number(payload.likesCount || 0),
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setErrorMessage(error.message || "Failed to toggle like.");
+    }
+  }, []);
+
+  const handleToggleBookmark = async (confessionId) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setErrorMessage("Please log in to bookmark confessions.");
+      return;
+    }
+
+    setPressedBookmarkId(confessionId);
+    setTimeout(() => {
+      setPressedBookmarkId((currentId) =>
+        currentId === confessionId ? null : currentId,
+      );
+    }, 150);
+
+    try {
+      const response = await fetch(
+        `/api/confessions/${confessionId}/toggle-bookmark`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to toggle bookmark.");
+      }
+
+      const payload = await parseResponse(response);
+
+      setConfessionFeed((prev) =>
+        prev.map((item) =>
+          item._id === confessionId || item.id === confessionId
+            ? {
+                ...item,
+                savedByCurrentUser: Boolean(payload.savedByCurrentUser),
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setErrorMessage(error.message || "Failed to toggle bookmark.");
+    }
+  };
+
+  const handleCardLikeGesture = React.useCallback(
+    (confessionId, likedByCurrentUser) => {
+      if (likedByCurrentUser) {
+        return;
+      }
+
+      setGestureLikeBurstId(confessionId);
+      setTimeout(() => {
+        setGestureLikeBurstId((currentId) =>
+          currentId === confessionId ? null : currentId,
+        );
+      }, 450);
+
+      handleToggleLike(confessionId);
+    },
+    [handleToggleLike],
+  );
+
+  React.useEffect(() => {
+    const getCardMeta = (eventTarget) => {
+      if (!(eventTarget instanceof Element) || eventTarget.closest("button")) {
+        return null;
+      }
+
+      const card = eventTarget.closest("[data-confession-card-id]");
+      if (!card) {
+        return null;
+      }
+
+      const confessionId = card.dataset.confessionCardId;
+      const likedByCurrentUser = card.dataset.likedByCurrentUser === "true";
+
+      if (!confessionId) {
+        return null;
+      }
+
+      return {
+        confessionId,
+        likedByCurrentUser,
+      };
+    };
+
+    const handleDocumentDoubleClick = (event) => {
+      const cardMeta = getCardMeta(event.target);
+      if (!cardMeta) {
+        return;
+      }
+
+      handleCardLikeGesture(cardMeta.confessionId, cardMeta.likedByCurrentUser);
+    };
+
+    const handleDocumentTouchEnd = (event) => {
+      const cardMeta = getCardMeta(event.target);
+      if (!cardMeta) {
+        return;
+      }
+
+      const now = Date.now();
+      const lastTap = lastTapRef.current;
+
+      if (
+        lastTap.confessionId === cardMeta.confessionId &&
+        now - lastTap.time < 300
+      ) {
+        lastTapRef.current = { confessionId: "", time: 0 };
+        handleCardLikeGesture(
+          cardMeta.confessionId,
+          cardMeta.likedByCurrentUser,
+        );
+        return;
+      }
+
+      lastTapRef.current = {
+        confessionId: cardMeta.confessionId,
+        time: now,
+      };
+    };
+
+    document.addEventListener("dblclick", handleDocumentDoubleClick);
+    document.addEventListener("touchend", handleDocumentTouchEnd);
+
+    return () => {
+      document.removeEventListener("dblclick", handleDocumentDoubleClick);
+      document.removeEventListener("touchend", handleDocumentTouchEnd);
+    };
+  }, [handleCardLikeGesture]);
+
+  React.useEffect(() => {
+    void loadConfessions();
+  }, []);
+
+  React.useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries[0].isIntersecting &&
+          hasMoreFeed &&
+          !isLoadingMoreFeed &&
+          !isLoadingFeed
+        ) {
+          void loadConfessions({ cursor: nextCursor, append: true });
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    const currentSentinel = sentinelRef.current;
+
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [hasMoreFeed, nextCursor, isLoadingMoreFeed, isLoadingFeed]);
+
+  let feedContent = null;
+
+  if (isLoadingFeed) {
+    feedContent = (
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
+        Loading confessions...
+      </div>
+    );
+  } else if (confessionFeed.length === 0) {
+    feedContent = (
+      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
+        No confessions yet. Be the first one to post.
+      </div>
+    );
+  } else {
+    feedContent = confessionFeed.map((item) => {
+      const originalAuthor = item?.authorDisplayName || "Unknown Author";
+      const author = item?.isAnonymous ? "Anonymous" : originalAuthor;
+      const authorSeed = String(author || "author");
+      const tags =
+        Array.isArray(item?.tags) && item.tags.length > 0 ? item.tags : [];
+      const confessionId = String(item?._id || item?.id || authorSeed);
+
+      return (
+        <div
+          key={confessionId}
+          data-confession-card-id={confessionId}
+          data-liked-by-current-user={Boolean(item?.likedByCurrentUser)}
+          className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
+        >
+          {gestureLikeBurstId === confessionId && (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+              <Heart
+                size={56}
+                className="text-rose-500/90 animate-pulse"
+                fill="currentColor"
+              />
+            </div>
+          )}
+
+          <div className="flex justify-between items-start mb-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+                <img
+                  src={`https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorSeed)}`}
+                  alt="avatar"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                  <h3 className="font-semibold text-slate-900 truncate">
+                    {author}
+                  </h3>
+                  <span className="text-slate-400 text-xs">
+                    • {getRelativeTime(item?.createdAt)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-slate-600 text-sm leading-relaxed mb-6 whitespace-pre-wrap">
+            {item?.content || "No confession content"}
+          </p>
+
+          {tags.length > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+              {tags.slice(0, 4).map((tag) => (
+                <button
+                  key={`${confessionId}-${tag}`}
+                  type="button"
+                  className="text-xs font-semibold tracking-wide text-rose-600 hover:underline cursor-pointer"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-slate-100">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              <div className="relative">
+                <button
+                  onClick={() => handleToggleLike(confessionId)}
+                  className={`flex items-center gap-2 transition-all duration-200 cursor-pointer ${
+                    item?.likedByCurrentUser
+                      ? "text-rose-500"
+                      : "text-slate-500 hover:text-rose-500"
+                  } ${pressedLikeId === confessionId ? "scale-95" : "scale-100"}`}
+                >
+                  <Heart
+                    size={20}
+                    fill={item?.likedByCurrentUser ? "currentColor" : "none"}
+                  />
+                  <span className="text-xs sm:text-sm font-medium">
+                    {formatCount(Number(item?.likesCount || 0))}
+                  </span>
+                </button>
+              </div>
+
+              <button className="flex items-center gap-2 text-slate-500 transition-all duration-200 hover:text-sky-500 cursor-pointer">
+                <MessageCircle size={20} />
+                <span className="text-xs sm:text-sm font-medium">
+                  {formatCount(Number(item?.commentCount || 0))}
+                </span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => handleToggleBookmark(confessionId)}
+                className={`transition-colors cursor-pointer ${
+                  item?.savedByCurrentUser
+                    ? "text-rose-500"
+                    : "text-slate-500 hover:text-rose-500"
+                } ${pressedBookmarkId === confessionId ? "scale-95" : "scale-100"}`}
+              >
+                <Bookmark
+                  size={20}
+                  fill={item?.savedByCurrentUser ? "currentColor" : "none"}
+                />
+              </button>
+              <button className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer">
+                <Share2 size={20} />
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    });
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -181,6 +652,24 @@ export default function Confession() {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div className="mt-8 w-full">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-xl sm:text-2xl font-semibold text-slate-900">
+                    Confession Feed
+                  </h3>
+                </div>
+
+                {feedContent}
+
+                {isLoadingMoreFeed && (
+                  <div className="mt-4 flex justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                  </div>
+                )}
+
+                <div ref={sentinelRef} className="h-10" />
               </div>
             </div>
             <SiteFooter />
