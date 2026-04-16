@@ -27,6 +27,27 @@ const getSortField = (sortBy) => {
   return "updatedAt";
 };
 
+const getTitleCollation = (sortBy) =>
+  sortBy === "title" ? { locale: "en", strength: 2 } : undefined;
+
+const applySortCollation = (cursor, sortBy) => {
+  const collation = getTitleCollation(sortBy);
+  return collation ? cursor.collation(collation) : cursor;
+};
+
+const buildActivityProjection = (type) => ({
+  $project: {
+    title: 1,
+    likesCount: 1,
+    commentCount: 1,
+    createdAt: 1,
+    updatedAt: 1,
+    status: 1,
+    visibility: 1,
+    type: { $literal: type },
+  },
+});
+
 const getDashboardStats = async (req, res) => {
   try {
     const userObjectId = getAuthenticatedUserObjectId(req, res);
@@ -95,12 +116,14 @@ const getDashboardStories = async (req, res) => {
     const sortDirection = order === "asc" ? 1 : -1;
 
     const [stories, total] = await Promise.all([
-      storiesCollection
-        .find(matchStage)
-        .sort({ [sortField]: sortDirection, _id: sortDirection })
-        .skip(skip)
-        .limit(parsedLimit)
-        .toArray(),
+      applySortCollation(
+        storiesCollection
+          .find(matchStage)
+          .sort({ [sortField]: sortDirection, _id: sortDirection })
+          .skip(skip)
+          .limit(parsedLimit),
+        sortBy,
+      ).toArray(),
       storiesCollection.countDocuments(matchStage),
     ]);
 
@@ -152,12 +175,14 @@ const getDashboardConfessions = async (req, res) => {
     const sortDirection = order === "asc" ? 1 : -1;
 
     const [confessions, total] = await Promise.all([
-      confessionsCollection
-        .find(matchStage)
-        .sort({ [sortField]: sortDirection, _id: sortDirection })
-        .skip(skip)
-        .limit(parsedLimit)
-        .toArray(),
+      applySortCollation(
+        confessionsCollection
+          .find(matchStage)
+          .sort({ [sortField]: sortDirection, _id: sortDirection })
+          .skip(skip)
+          .limit(parsedLimit),
+        sortBy,
+      ).toArray(),
       confessionsCollection.countDocuments(matchStage),
     ]);
 
@@ -180,8 +205,113 @@ const getDashboardConfessions = async (req, res) => {
   }
 };
 
+const getDashboardFeed = async (req, res) => {
+  try {
+    const userObjectId = getAuthenticatedUserObjectId(req, res);
+
+    if (!userObjectId) {
+      return;
+    }
+
+    const {
+      status = "all",
+      visibility = "all",
+      deleted = "active",
+      sortBy = "date",
+      order = "desc",
+      page = 1,
+      limit = 20,
+    } = req.query;
+
+    const parsedPage = Number.parseInt(page, 10) || 1;
+    const parsedLimit = Number.parseInt(limit, 10) || 20;
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const db = await connectToDatabase();
+    const storiesCollection = db.collection("stories");
+    const confessionsCollection = db.collection("confessions");
+
+    const storyMatchStage = {
+      authorId: userObjectId,
+    };
+
+    if (deleted === "active") {
+      storyMatchStage.deletedAt = null;
+    } else if (deleted === "deleted") {
+      storyMatchStage.deletedAt = { $ne: null };
+    }
+
+    if (status !== "all") {
+      storyMatchStage.status = status;
+    }
+
+    if (visibility !== "all") {
+      storyMatchStage.visibility = visibility;
+    }
+
+    const confessionMatchStage = {
+      authorId: userObjectId,
+      deletedAt: null,
+    };
+
+    const sortField = getSortField(sortBy);
+    const sortDirection = order === "asc" ? 1 : -1;
+    const collation = getTitleCollation(sortBy);
+
+    const pipeline = [
+      { $match: storyMatchStage },
+      { $addFields: { type: { $literal: "story" } } },
+      buildActivityProjection("story"),
+      {
+        $unionWith: {
+          coll: "confessions",
+          pipeline: [
+            { $match: confessionMatchStage },
+            { $addFields: { type: { $literal: "confession" } } },
+            buildActivityProjection("confession"),
+          ],
+        },
+      },
+      { $sort: { [sortField]: sortDirection, _id: sortDirection } },
+      { $skip: skip },
+      { $limit: parsedLimit },
+    ];
+
+    const [feedItems, storyTotal, confessionTotal] = await Promise.all([
+      storiesCollection
+        .aggregate(pipeline, collation ? { collation } : {})
+        .toArray(),
+      storiesCollection.countDocuments(storyMatchStage),
+      confessionsCollection.countDocuments(confessionMatchStage),
+    ]);
+
+    const total = storyTotal + confessionTotal;
+
+    res.json({
+      data: feedItems,
+      pagination: {
+        page: parsedPage,
+        limit: parsedLimit,
+        total,
+        totalPages: Math.ceil(total / parsedLimit),
+      },
+      filters: {
+        status,
+        visibility,
+        deleted,
+        sortBy,
+        order,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch dashboard feed" });
+  }
+};
+
 module.exports = {
   getDashboardStats,
+  getDashboardFeed,
   getDashboardStories,
   getDashboardConfessions,
 };
