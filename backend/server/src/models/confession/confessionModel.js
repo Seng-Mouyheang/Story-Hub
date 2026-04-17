@@ -375,6 +375,10 @@ const updateConfession = async (id, userId, updateData) => {
 
   PROTECTED_FIELDS.forEach((field) => delete updateData[field]);
 
+  if (Object.keys(updateData).length === 0) {
+    return { matchedCount: 1, modifiedCount: 0 };
+  }
+
   if (updateData.content) {
     updateData.wordCount = updateData.content.trim().split(/\s+/).length;
   }

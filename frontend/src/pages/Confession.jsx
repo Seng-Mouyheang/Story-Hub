@@ -306,15 +306,39 @@ export default function Confession() {
     [showToast],
   );
 
-  const currentUserId = React.useMemo(() => {
-    try {
-      const currentUser = JSON.parse(
-        localStorage.getItem("currentUser") || "null",
-      );
-      return normalizeId(currentUser?.id || currentUser?._id || "");
-    } catch {
-      return "";
-    }
+  const [currentUserId, setCurrentUserId] = React.useState("");
+
+  React.useEffect(() => {
+    const syncCurrentUserId = () => {
+      try {
+        const currentUser = JSON.parse(
+          localStorage.getItem("currentUser") || "null",
+        );
+
+        setCurrentUserId(
+          normalizeId(currentUser?.id || currentUser?._id || ""),
+        );
+      } catch {
+        setCurrentUserId("");
+      }
+    };
+
+    const handleStorage = (event) => {
+      if (event.key && event.key !== "currentUser") {
+        return;
+      }
+
+      syncCurrentUserId();
+    };
+
+    syncCurrentUserId();
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", syncCurrentUserId);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", syncCurrentUserId);
+    };
   }, []);
 
   const {
@@ -334,8 +358,10 @@ export default function Confession() {
     isDeletingComment,
     isLoadingModalComments,
     modalCommentsError,
+    modalCommentsHasMore,
     closeCommentModal: closeCommentModalState,
     openCommentModal: openCommentModalState,
+    loadMoreModalComments,
     handleAddComment,
     handleToggleCommentMenu,
     handleStartEditComment,
@@ -953,7 +979,7 @@ export default function Confession() {
                   <textarea
                     value={confession}
                     onChange={(e) => setConfession(e.target.value)}
-                    className="bg-transparent border-none outline-none w-full h-32 text-base text-md text-slate-200 resize-none placeholder:text-slate-400"
+                    className="bg-transparent border-none outline-none w-full h-32 text-base text-slate-200 resize-none placeholder:text-slate-400"
                     placeholder="Write your confession..."
                   />
                   <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mt-2">
@@ -1031,11 +1057,11 @@ export default function Confession() {
           widthClassName="max-w-xl"
         >
           <div className="max-h-[65vh] overflow-y-auto px-4 py-4 space-y-3">
-            {isLoadingModalComments && (
+            {isLoadingModalComments && modalComments.length === 0 && (
               <p className="text-sm text-slate-500">Loading comments...</p>
             )}
 
-            {!isLoadingModalComments && modalCommentsError && (
+            {modalCommentsError && (
               <p className="text-sm text-rose-600">{modalCommentsError}</p>
             )}
 
@@ -1045,8 +1071,7 @@ export default function Confession() {
                 <p className="text-sm text-slate-500">No comments yet.</p>
               )}
 
-            {!isLoadingModalComments &&
-              !modalCommentsError &&
+            {!modalCommentsError &&
               modalComments.map((comment) => {
                 return (
                   <ConfessionModalCommentItem
@@ -1070,6 +1095,19 @@ export default function Confession() {
                   />
                 );
               })}
+
+            {modalCommentsHasMore && !modalCommentsError && (
+              <div className="flex justify-center pt-1">
+                <button
+                  type="button"
+                  onClick={loadMoreModalComments}
+                  disabled={isLoadingModalComments}
+                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoadingModalComments ? "Loading..." : "Load more"}
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-slate-100 px-4 py-3">

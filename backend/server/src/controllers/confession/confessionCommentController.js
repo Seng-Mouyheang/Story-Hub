@@ -103,8 +103,12 @@ const updateComment = async (req, res) => {
     }
 
     await commentModel.updateComment(commentId, req.user.userId, req.body);
+    const updatedComment = await commentModel.getCommentById(
+      commentId,
+      req.user.userId,
+    );
 
-    res.json({ message: "Comment updated" });
+    res.json({ message: "Comment updated", comment: updatedComment });
   } catch (error) {
     if (error.message === "not found") {
       return res.status(404).json({ message: "comment not found" });
@@ -127,9 +131,12 @@ const deleteComment = async (req, res) => {
       return res.status(404).json({ message: "Comment not found" });
     }
 
-    await commentModel.deleteComment(req.user.userId, commentId);
+    const result = await commentModel.deleteComment(req.user.userId, commentId);
 
-    res.json({ message: "Comment deleted" });
+    res.json({
+      message: "Comment deleted",
+      removedCount: result?.removedCount,
+    });
   } catch (error) {
     if (error.message === "not found") {
       return res.status(404).json({ message: "comment not found" });

@@ -29,7 +29,7 @@ import { getRelativeTime, normalizeId } from "./confessionUtils";
  * @property {(commentId: string) => void} onDelete
  * @property {() => void} onCancelEdit
  * @property {(value: string) => void} onEditContentChange
- * @property {(commentId: string) => void} onSaveEdit
+ * @property {() => void} onSaveEdit
  * @property {() => void} onCancelDelete
  * @property {() => void} onConfirmDelete
  */
@@ -140,7 +140,7 @@ export default function ConfessionModalCommentItem({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onSaveEdit(commentId)}
+                  onClick={onSaveEdit}
                   disabled={isSavingEditedComment}
                   className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
                 >
