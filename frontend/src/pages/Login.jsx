@@ -42,7 +42,12 @@ export default function Login() {
       }
 
       localStorage.setItem("rememberLogin", remember ? "true" : "false");
-      navigate("/");
+
+      if (localStorage.getItem("needsProfileSetup") === "true") {
+        navigate("/edit-profile", { replace: true });
+      } else {
+        navigate("/");
+      }
     } catch (error) {
       setErrorMessage(error.message || "Unable to login right now.");
     } finally {

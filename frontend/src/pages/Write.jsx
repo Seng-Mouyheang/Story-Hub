@@ -4,6 +4,7 @@ import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
 import { Edit2, Plus, X } from "lucide-react";
+import { createStory, getStoryById, updateStory } from "../api/story/storyApi";
 
 export default function Write() {
   const [searchParams] = useSearchParams();
@@ -40,17 +41,7 @@ export default function Write() {
       setErrorMessage("");
 
       try {
-        const response = await fetch(`/api/stories/${editingStoryId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const payload = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error(payload?.message || "Failed to load story.");
-        }
+        const payload = await getStoryById(editingStoryId);
 
         if (!isMounted) {
           return;
@@ -132,31 +123,25 @@ export default function Write() {
         return;
       }
 
-      const endpoint = isEditMode
-        ? `/api/stories/${editingStoryId}`
-        : "/api/stories";
+      const mutationPromise = isEditMode
+        ? updateStory(editingStoryId, {
+            title: title.trim(),
+            content: content.trim(),
+            genres: genres.length > 0 ? genres : [],
+            tags: parseTagsArray(),
+            visibility,
+            status,
+          })
+        : createStory({
+            title: title.trim(),
+            content: content.trim(),
+            genres: genres.length > 0 ? genres : [],
+            tags: parseTagsArray(),
+            visibility,
+            status,
+          });
 
-      const response = await fetch(endpoint, {
-        method: isEditMode ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title: title.trim(),
-          content: content.trim(),
-          genres: genres.length > 0 ? genres : [],
-          tags: parseTagsArray(),
-          visibility,
-          status,
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload?.message || `Failed to ${status} story.`);
-      }
+      await mutationPromise;
 
       setSuccessMessage(
         isEditMode

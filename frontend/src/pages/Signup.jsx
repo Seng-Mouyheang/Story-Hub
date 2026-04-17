@@ -46,8 +46,13 @@ export default function Signup() {
         throw new Error(payload?.message || "Signup failed.");
       }
 
+      localStorage.setItem("needsProfileSetup", "true");
+
       navigate("/login", {
-        state: { message: "Account created successfully. Please log in." },
+        state: {
+          message:
+            "Account created successfully. Please log in to set up your profile.",
+        },
       });
     } catch (error) {
       setErrorMessage(error.message || "Unable to sign up right now.");

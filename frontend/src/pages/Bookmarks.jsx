@@ -3,16 +3,13 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
+import { Heart, MessageCircle, Bookmark, Share2, User } from "lucide-react";
 import {
-  Heart,
-  MessageCircle,
-  Bookmark,
-  Share2,
-  Sparkles,
-  BookOpenText,
-  MessageSquareQuote,
-} from "lucide-react";
-import ConfessionFeedCard from "./confession/ConfessionFeedCard";
+  getMyBookmarkedStories,
+  removeStoryBookmark,
+} from "../api/story/storyInteractionsApi";
+import { getProfileByUserId } from "../api/profile";
+import { getStoryById } from "../api/story/storyApi";
 
 const formatCount = (value) => {
   if (value >= 1000000) {
@@ -97,12 +94,16 @@ const PostCard = ({
     {/* Header */}
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-          <img
-            src={avatar}
-            alt="avatar"
-            className="w-full h-full object-cover"
-          />
+        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+          {avatar ? (
+            <img
+              src={avatar}
+              alt="avatar"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <User size={20} className="text-slate-400" />
+          )}
         </div>
 
         <div className="min-w-0">
@@ -189,22 +190,16 @@ const PostCard = ({
         </button>
       </div>
 
-      <div className="flex items-center gap-6 shrink-0">
+      <div className="flex items-center gap-4">
         <button
-          onClick={() => onToggleBookmark(id)}
-          className={`transition-colors cursor-pointer ${
-            savedByCurrentUser
-              ? "text-rose-500"
-              : "text-slate-500 hover:text-rose-500"
-          }`}
+          type="button"
+          onClick={() => onUnsave(id)}
+          className="text-rose-500 hover:text-rose-600 transition-colors"
           aria-label="Remove bookmark"
         >
-          <Bookmark
-            size={20}
-            fill={savedByCurrentUser ? "currentColor" : "none"}
-          />
+          <Bookmark size={20} fill="currentColor" />
         </button>
-        <button className="text-slate-500 hover:text-slate-900">
+        <button className="text-slate-500 hover:text-slate-900" type="button">
           <Share2 size={20} />
         </button>
       </div>
@@ -214,154 +209,105 @@ const PostCard = ({
 
 /* -------------------- Bookmarks Page -------------------- */
 export default function Bookmarks() {
-  const navigate = useNavigate();
-  const [activeType, setActiveType] = useState("stories");
-  const [storyBookmarks, setStoryBookmarks] = useState([]);
-  const [confessionBookmarks, setConfessionBookmarks] = useState([]);
-  const [activeStoryTag, setActiveStoryTag] = useState("");
-  const [activeStoryCommentId, setActiveStoryCommentId] = useState(null);
-  const [storyCommentsById, setStoryCommentsById] = useState({});
-  const [expandedStoryIds, setExpandedStoryIds] = useState({});
-  const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
-  const [pressedLikeId, setPressedLikeId] = useState(null);
-  const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
-  const timeoutRefs = useRef({});
-  const [loadingState, setLoadingState] = useState({
-    stories: true,
-    confessions: true,
-  });
-  const [errorState, setErrorState] = useState({
-    stories: "",
-    confessions: "",
-  });
+  const [stories, setStories] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
 
   const getAuthHeaders = useCallback(() => {
     const token = localStorage.getItem("token");
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, []);
 
-  const getBookmarkData = (payload) => {
-    if (Array.isArray(payload)) {
-      return payload;
-    }
-
-    if (Array.isArray(payload?.data)) {
-      return payload.data;
-    }
-
-    return [];
-  };
-
-  const mapStoryBookmarks = useCallback((stories) => {
-    return stories.map((story) => {
-      const authorId = normalizeId(story.authorId);
-      const authorSeed = String(
-        authorId || story.authorDisplayName || story.authorName || "author",
+    try {
+      const abortController = new AbortController();
+      const savedStoryIds = JSON.parse(
+        localStorage.getItem("savedStoryIds") || "[]",
       );
 
-      return {
-        id: String(story._id),
-        author:
-          story.authorDisplayName ||
-          `Author ${authorSeed.slice(-4).toUpperCase()}`,
-        avatar:
-          story.authorProfilePicture ||
-          `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorSeed)}`,
-        authorProfilePicture: story.authorProfilePicture || "",
-        tags:
-          Array.isArray(story.tags) && story.tags.length > 0
-            ? story.tags.map(String)
-            : [],
-        genre:
-          Array.isArray(story.genres) && story.genres.length > 0
-            ? story.genres.map((item) => String(item).toUpperCase()).join(" • ")
-            : "GENERAL",
-        time: getRelativeTime(story.publishedAt || story.createdAt),
-        title: story.title || "Untitled Story",
-        excerpt:
-          story.content?.slice(0, 180) ||
-          "No preview is available for this story.",
-        content: story.content || "",
-        likesCount: Number(story.likesCount || 0),
-        commentCount: Number(story.commentCount || 0),
-        likes: formatCount(Number(story.likesCount || 0)),
-        comments: formatCount(Number(story.commentCount || 0)),
-        likedByCurrentUser: Boolean(story.likedByCurrentUser),
-        savedByCurrentUser: Boolean(story.savedByCurrentUser),
-      };
-    });
-  }, []);
-
-  const mapConfessionBookmarks = useCallback((confessions) => {
-    return confessions.map((confession) => {
-      return {
-        id: String(confession._id),
-        _id: String(confession._id),
-        authorId: confession.authorId,
-        authorDisplayName: confession.authorDisplayName || "Anonymous",
-        authorProfilePicture: confession.authorProfilePicture || "",
-        isAnonymous: Boolean(confession.isAnonymous),
-        tags: Array.isArray(confession.tags) ? confession.tags : [],
-        content: confession.content || "",
-        createdAt: confession.createdAt,
-        isEdited: Boolean(confession.updatedAt),
-        likedByCurrentUser: Boolean(confession.likedByCurrentUser),
-        savedByCurrentUser: true,
-        likesCount: Number(confession.likesCount || 0),
-        commentCount: Number(confession.commentCount || 0),
-      };
-    });
-  }, []);
-
-  const loadStoryBookmarks = useCallback(async () => {
-    setErrorState((prev) => ({ ...prev, stories: "" }));
-    setLoadingState((prev) => ({ ...prev, stories: true }));
-
-    try {
-      const response = await fetch("/api/stories/bookmarks/me?limit=50", {
-        headers: getAuthHeaders(),
+      const backendResult = await getMyBookmarkedStories({
+        signal: abortController.signal,
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to load stories");
-      }
+      const backendStories = Array.isArray(backendResult?.data)
+        ? backendResult.data
+        : [];
 
-      const payload = await response.json();
-      const stories = getBookmarkData(payload);
-      setStoryBookmarks(mapStoryBookmarks(stories));
-    } catch {
-      setErrorState((prev) => ({
-        ...prev,
-        stories: "Unable to load story bookmarks right now.",
-      }));
-      setStoryBookmarks([]);
-    } finally {
-      setLoadingState((prev) => ({ ...prev, stories: false }));
-    }
-  }, [getAuthHeaders, mapStoryBookmarks]);
+      const localStories =
+        backendStories.length > 0 || !Array.isArray(savedStoryIds)
+          ? []
+          : await Promise.allSettled(
+              savedStoryIds.map((storyId) =>
+                getStoryById(storyId, abortController.signal),
+              ),
+            ).then((results) =>
+              results
+                .filter(
+                  (result) => result.status === "fulfilled" && result.value,
+                )
+                .map((result) => result.value),
+            );
 
-  const loadConfessionBookmarks = useCallback(async () => {
-    setErrorState((prev) => ({ ...prev, confessions: "" }));
-    setLoadingState((prev) => ({ ...prev, confessions: true }));
-
-    try {
-      const response = await fetch("/api/confessions/bookmarks/me?limit=50", {
-        headers: getAuthHeaders(),
+      const combinedStories = [...backendStories];
+      localStories.forEach((story) => {
+        const storyId = String(story._id);
+        if (
+          !combinedStories.some((existing) => String(existing._id) === storyId)
+        ) {
+          combinedStories.push(story);
+        }
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to load confessions");
+      if (combinedStories.length === 0) {
+        setStories([]);
+        return;
       }
 
-      const payload = await response.json();
-      const confessions = getBookmarkData(payload);
-      setConfessionBookmarks(mapConfessionBookmarks(confessions));
-    } catch {
-      setErrorState((prev) => ({
-        ...prev,
-        confessions: "Unable to load confession bookmarks right now.",
-      }));
-      setConfessionBookmarks([]);
+      const uniqueAuthorIds = [
+        ...new Set(
+          combinedStories.map((story) => story.authorId).filter(Boolean),
+        ),
+      ];
+
+      const profiles = {};
+      const profileResponses = await Promise.allSettled(
+        uniqueAuthorIds.map((authorId) => getProfileByUserId(authorId)),
+      );
+
+      profileResponses.forEach((response, index) => {
+        if (response.status === "fulfilled" && response.value) {
+          profiles[uniqueAuthorIds[index]] = response.value;
+        }
+      });
+
+      const mapped = combinedStories.map((story) => {
+        const authorId = normalizeId(story.authorId);
+        const profile = profiles[authorId];
+
+        return {
+          id: String(story._id),
+          author:
+            profile?.displayName ||
+            story.authorDisplayName ||
+            "Anonymous Author",
+          avatar: profile?.profilePicture || null,
+          genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+          time: getRelativeTime(story.publishedAt || story.createdAt),
+          title: story.title || "Untitled Story",
+          excerpt:
+            story.summary ||
+            story.content?.slice(0, 180) ||
+            "No preview is available for this story.",
+          likes: formatCount(Number(story.likesCount || 0)),
+          comments: formatCount(Number(story.commentCount || 0)),
+        };
+      });
+
+      setStories(mapped);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setErrorMessage("Unable to load bookmarks right now.");
+        console.error(error);
+      }
     } finally {
       setLoadingState((prev) => ({ ...prev, confessions: false }));
     }
@@ -375,205 +321,17 @@ export default function Bookmarks() {
     loadBookmarks();
   }, [loadBookmarks]);
 
-  useEffect(() => {
-    return () => {
-      Object.values(timeoutRefs.current).forEach((timeoutId) => {
-        clearTimeout(timeoutId);
-      });
-      timeoutRefs.current = {};
-    };
-  }, []);
-
-  const handleUnsave = useCallback(
-    async (itemId) => {
-      const itemIdText = String(itemId);
-
-      let removedStoryItem = null;
-      let removedStoryIndex = -1;
-      let removedConfessionItem = null;
-      let removedConfessionIndex = -1;
-
-      if (activeType === "stories") {
-        removedStoryIndex = storyBookmarks.findIndex(
-          (story) => String(story.id) === itemIdText,
-        );
-        removedStoryItem =
-          removedStoryIndex >= 0 ? storyBookmarks[removedStoryIndex] : null;
-      } else {
-        removedConfessionIndex = confessionBookmarks.findIndex((confession) => {
-          const confessionId = String(confession.id || confession._id || "");
-          return confessionId === itemIdText;
-        });
-        removedConfessionItem =
-          removedConfessionIndex >= 0
-            ? confessionBookmarks[removedConfessionIndex]
-            : null;
-      }
-
-      if (activeType === "stories") {
-        setStoryBookmarks((prev) =>
-          prev.filter((story) => String(story.id) !== itemIdText),
-        );
-      } else {
-        setConfessionBookmarks((prev) =>
-          prev.filter((confession) => {
-            const confessionId = String(confession.id || confession._id || "");
-            return confessionId !== itemIdText;
-          }),
-        );
-      }
-
-      try {
-        const endpoint =
-          activeType === "stories"
-            ? `/api/stories/${itemId}/bookmark`
-            : `/api/confessions/${itemId}/bookmark`;
-
-        const response = await fetch(endpoint, {
-          method: "DELETE",
-          headers: getAuthHeaders(),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to remove bookmark");
-        }
-      } catch {
-        if (activeType === "stories") {
-          if (removedStoryItem) {
-            setStoryBookmarks((prev) => {
-              const exists = prev.some(
-                (story) => String(story.id) === String(removedStoryItem.id),
-              );
-              if (exists) {
-                return prev;
-              }
-
-              const next = [...prev];
-              const insertIndex = Math.min(
-                Math.max(removedStoryIndex, 0),
-                next.length,
-              );
-              next.splice(insertIndex, 0, removedStoryItem);
-              return next;
-            });
-          }
-        } else if (removedConfessionItem) {
-          setConfessionBookmarks((prev) => {
-            const removedConfessionId = String(
-              removedConfessionItem.id || removedConfessionItem._id || "",
-            );
-            const exists = prev.some((confession) => {
-              const confessionId = String(
-                confession.id || confession._id || "",
-              );
-              return confessionId === removedConfessionId;
-            });
-            if (exists) {
-              return prev;
-            }
-
-            const next = [...prev];
-            const insertIndex = Math.min(
-              Math.max(removedConfessionIndex, 0),
-              next.length,
-            );
-            next.splice(insertIndex, 0, removedConfessionItem);
-            return next;
-          });
-        }
-
-        setErrorState((prev) => ({
-          ...prev,
-          [activeType]: "Unable to update bookmarks.",
-        }));
-      }
-    },
-    [activeType, confessionBookmarks, getAuthHeaders, storyBookmarks],
-  );
-
-  const handleToggleExpandedConfession = useCallback((confessionId) => {
-    setExpandedConfessionIds((prev) => ({
-      ...prev,
-      [confessionId]: !prev[confessionId],
-    }));
-  }, []);
-
-  const handleToggleExpandedStory = useCallback((storyId) => {
-    setExpandedStoryIds((prev) => ({
-      ...prev,
-      [storyId]: !prev[storyId],
-    }));
-  }, []);
-
-  const handleStoryTagClick = useCallback(({ tag }) => {
-    setActiveStoryTag((currentTag) => (currentTag === tag ? "" : tag));
-  }, []);
-
-  const handleClearStoryTagFilter = useCallback(() => {
-    setActiveStoryTag("");
-  }, []);
-
-  const currentUserName = useCallback(() => {
+  const handleUnsave = useCallback(async (storyId) => {
     try {
-      const currentUser = JSON.parse(
-        localStorage.getItem("currentUser") || "null",
-      );
-      return currentUser?.username || "You";
-    } catch {
-      return "You";
-    }
-  }, []);
-
-  const loadStoryComments = useCallback(async (storyId) => {
-    setStoryCommentsById((prev) => ({
-      ...prev,
-      [storyId]: {
-        ...prev[storyId],
-        loading: true,
-        error: "",
-      },
-    }));
-
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const response = await fetch(
-        `/api/stories/${storyId}/comments?limit=10`,
-        {
-          headers,
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
-
-      setStoryCommentsById((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...prev[storyId],
-          loading: false,
-          error: "",
-          loaded: true,
-          input: prev[storyId]?.input || "",
-          items: comments,
-        },
-      }));
-    } catch {
-      setStoryCommentsById((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...prev[storyId],
-          loading: false,
-          error: "Unable to load comments.",
-          loaded: true,
-          items: [],
-        },
-      }));
+      await removeStoryBookmark(storyId);
+      const nextSavedIds = JSON.parse(
+        localStorage.getItem("savedStoryIds") || "[]",
+      ).filter((id) => String(id) !== String(storyId));
+      localStorage.setItem("savedStoryIds", JSON.stringify(nextSavedIds));
+      setStories((prev) => prev.filter((story) => story.id !== storyId));
+    } catch (error) {
+      setErrorMessage("Failed to remove bookmark.");
+      console.error(error);
     }
   }, []);
 
@@ -957,161 +715,17 @@ export default function Bookmarks() {
                 </button>
               </div>
 
-              <div className="flex-1 flex flex-col">
-                {isLoading && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                    Loading {activeType} bookmarks...
-                  </div>
-                )}
+              {!isLoading && !errorMessage && stories.length === 0 && (
+                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
+                  No bookmarked stories yet.
+                </div>
+              )}
 
-                {!isLoading && errorMessage && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm">
-                    <p className="text-sm text-rose-600 mb-3">{errorMessage}</p>
-                    <button
-                      className="text-xs font-semibold text-rose-600 hover:underline"
-                      onClick={handleRetry}
-                    >
-                      Retry
-                    </button>
-                  </div>
-                )}
-
-                {!isLoading &&
-                  !errorMessage &&
-                  activeType === "stories" &&
-                  activeStoryTag &&
-                  visibleStoryBookmarks.length === 0 && (
-                    <div className="relative flex-1 min-h-70 overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm">
-                      <div className="pointer-events-none absolute -top-20 -right-16 h-56 w-56 rounded-full bg-amber-100/80 blur-2xl" />
-                      <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-sky-100/80 blur-2xl" />
-
-                      <div className="relative h-full flex items-center justify-center px-6 py-10 sm:px-10">
-                        <div className="w-full max-w-xl text-center flex flex-col items-center">
-                          <div className="mb-4 inline-flex items-center justify-center">
-                            <BookOpenText
-                              size={56}
-                              className="text-amber-500"
-                            />
-                          </div>
-
-                          <h3 className="text-lg sm:text-xl font-semibold text-slate-900">
-                            No stories match #{activeStoryTag}
-                          </h3>
-
-                          <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-                            Try clearing the current tag filter to see all your
-                            saved stories again.
-                          </p>
-
-                          <button
-                            type="button"
-                            className="mt-5 inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
-                            onClick={handleClearStoryTagFilter}
-                          >
-                            Clear Filter
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {!isLoading &&
-                  !errorMessage &&
-                  ((activeType === "stories" &&
-                    !activeStoryTag &&
-                    visibleStoryBookmarks.length === 0) ||
-                    (activeType === "confessions" &&
-                      activeBookmarks.length === 0)) && (
-                    <div className="relative flex-1 min-h-70 overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm">
-                      <div className="pointer-events-none absolute -top-20 -right-16 h-56 w-56 rounded-full bg-rose-100/80 blur-2xl" />
-                      <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-sky-100/80 blur-2xl" />
-
-                      <div className="relative h-full flex items-center justify-center px-6 py-10 sm:px-10">
-                        <div className="w-full max-w-xl text-center flex flex-col items-center">
-                          <div className="mb-4 inline-flex items-center justify-center">
-                            {activeType === "stories" ? (
-                              <BookOpenText
-                                size={56}
-                                className="text-rose-500"
-                              />
-                            ) : (
-                              <MessageSquareQuote
-                                size={56}
-                                className="text-rose-500"
-                              />
-                            )}
-                          </div>
-
-                          <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                            <Sparkles size={12} className="text-amber-500" />
-                            Your Collection Is Waiting
-                          </p>
-
-                          <h3 className="text-lg sm:text-xl font-semibold text-slate-900">
-                            {activeType === "stories"
-                              ? "No bookmarked stories yet"
-                              : "No bookmarked confessions yet"}
-                          </h3>
-
-                          <p className="mt-2 text-sm text-slate-500 leading-relaxed">
-                            {activeType === "stories"
-                              ? "Every story that catches your eye deserves a place to wait for you. We’ll save it right here! Neatly, waiting, and ready for your return."
-                              : "Some secrets ask to be kept. This is where they wait."}
-                          </p>
-
-                          <div className="mt-5">
-                            <a
-                              href={
-                                activeType === "stories"
-                                  ? "/home"
-                                  : "/confession"
-                              }
-                              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
-                            >
-                              {activeType === "stories"
-                                ? "Explore Stories"
-                                : "Explore Confessions"}
-                            </a>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                {!isLoading &&
-                  !errorMessage &&
-                  (activeType === "stories"
-                    ? visibleStoryBookmarks.map((post) => (
-                        <PostCard
-                          key={post.id}
-                          {...post}
-                          activeTag={activeStoryTag}
-                          commentsActive={activeStoryCommentId === post.id}
-                          isExpanded={Boolean(expandedStoryIds[post.id])}
-                          onToggleLike={handleToggleStoryLike}
-                          onOpenComments={handleOpenStoryComments}
-                          onToggleBookmark={handleToggleStoryBookmark}
-                          onToggleExpandedStory={handleToggleExpandedStory}
-                          onTagClick={handleStoryTagClick}
-                        />
-                      ))
-                    : activeBookmarks.map((item, index) => (
-                        <ConfessionFeedCard
-                          key={String(item._id)}
-                          item={item}
-                          index={index}
-                          expandedConfessionIds={expandedConfessionIds}
-                          pressedLikeId={pressedLikeId}
-                          pressedBookmarkId={pressedBookmarkId}
-                          onToggleExpandedConfession={
-                            handleToggleExpandedConfession
-                          }
-                          onToggleLike={handleToggleConfessionLike}
-                          onOpenCommentModal={handleOpenConfessionComments}
-                          onToggleBookmark={handleToggleConfessionBookmark}
-                        />
-                      )))}
-              </div>
+              {!isLoading &&
+                !errorMessage &&
+                stories.map((post) => (
+                  <PostCard key={post.id} {...post} onUnsave={handleUnsave} />
+                ))}
             </div>
 
             {activeType === "stories" && activeStoryCommentId && (

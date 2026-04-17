@@ -1,488 +1,195 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Filter, History } from "lucide-react";
-import ActivityFiltersPanel from "../features/dashboard/ActivityFiltersPanel";
-import RecentActivityTable from "../features/dashboard/RecentActivityTable";
-import StatsCard from "../features/dashboard/StatsCard";
+import { Filter, PenTool, Clock3, FileText } from "lucide-react";
 import {
-  DASHBOARD_FILTERS_STORAGE_KEY,
-  DEFAULT_ACTIVITY_FILTERS,
-  buildFetchParams,
-  formatCount,
-  getSavedDashboardFilters,
-  getSortConfig,
-  getStoryQueryFilters,
-  normalizeActivityItem,
-  normalizePayloadItems,
-  sortMergedActivities,
-} from "../features/dashboard/dashboardUtils";
+  getDashboardStats,
+  getDashboardStories,
+} from "../api/dashboard/dashboardApi";
 
-const DASHBOARD_PAGE_SIZE = 8;
+const StatCard = ({ title, value, subtitle, loading = false }) => (
+  <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between min-h-[160px] shadow-sm">
+    <div>
+      <h2 className="text-[10px] font-semibold tracking-[0.15em] text-slate-500 uppercase">
+        {title}
+      </h2>
+      <div className="mt-4 text-5xl sm:text-[64px] leading-tight font-light text-rose-500">
+        {loading ? "—" : value}
+      </div>
+    </div>
+    <div className="text-xs text-slate-400 font-medium tracking-tight">
+      {subtitle}
+    </div>
+  </div>
+);
 
-const parseDashboardResponse = async (response) =>
-  response.json().catch(() => ({}));
+const formatRelativeTime = (dateString) => {
+  const date = new Date(dateString);
 
-const loadDashboardFeedData = async ({ headers, activityFilters }) => {
-  const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
-  const { status, deleted, visibility } = getStoryQueryFilters(activityFilters);
-
-  const feedParams = new URLSearchParams({
-    limit: String(DASHBOARD_PAGE_SIZE),
-    page: "1",
-    sortBy: apiSortBy,
-    order,
-    status,
-    visibility,
-    deleted,
-  });
-
-  const [statsResponse, feedResponse] = await Promise.all([
-    fetch("/api/dashboard/stats", { headers }),
-    fetch(`/api/dashboard/feed?${feedParams.toString()}`, { headers }),
-  ]);
-
-  const [statsPayload, feedPayload] = await Promise.all([
-    parseDashboardResponse(statsResponse),
-    parseDashboardResponse(feedResponse),
-  ]);
-
-  if (!statsResponse.ok) {
-    throw new Error(
-      statsPayload?.message || "Unable to load dashboard statistics.",
-    );
+  if (Number.isNaN(date.getTime())) {
+    return "Recently";
   }
 
-  if (!feedResponse.ok) {
-    throw new Error(
-      feedPayload?.message || "Unable to load dashboard activity.",
-    );
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) {
+    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
   }
 
-  return {
-    statsPayload,
-    activities: Array.isArray(feedPayload?.data)
-      ? feedPayload.data.map((item) =>
-          normalizeActivityItem(item, item?.type || "story"),
-        )
-      : [],
-    hasMoreFeed: Number(feedPayload?.pagination?.totalPages || 0) > 1,
-  };
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+  }
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) {
+    return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+  }
+
+  return date.toLocaleDateString();
 };
 
-const loadDashboardSplitData = async ({ headers, activityFilters }) => {
-  const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
-  const { status, deleted, visibility } = getStoryQueryFilters(activityFilters);
+const DashboardStoryCard = ({ story }) => {
+  const title = story?.title || "Untitled Story";
+  const excerpt =
+    story?.summary || story?.content?.slice(0, 140) || "No preview available.";
+  const statusLabel = story?.status
+    ? `${story.status.charAt(0).toUpperCase()}${story.status.slice(1)}`
+    : "Draft";
+  const visibilityLabel = story?.visibility
+    ? `${story.visibility.charAt(0).toUpperCase()}${story.visibility.slice(1)}`
+    : "Public";
+  const wordCount = Number(story?.wordCount || 0);
 
-  const storyParams = new URLSearchParams({
-    limit: String(DASHBOARD_PAGE_SIZE),
-    page: "1",
-    sortBy: apiSortBy,
-    order,
-    status,
-    visibility,
-    deleted,
-  });
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5 hover:bg-white hover:shadow-sm transition-all">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-600">
+              {statusLabel}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+              {visibilityLabel}
+            </span>
+          </div>
 
-  const confessionParams = new URLSearchParams({
-    limit: String(DASHBOARD_PAGE_SIZE),
-    page: "1",
-    sortBy: apiSortBy,
-    order,
-  });
+          <h4 className="text-base sm:text-lg font-semibold text-slate-900 truncate">
+            {title}
+          </h4>
+          <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+            {excerpt}
+          </p>
+        </div>
 
-  const [statsResponse, storiesResponse, confessionsResponse] =
-    await Promise.all([
-      fetch("/api/dashboard/stats", { headers }),
-      fetch(`/api/dashboard/stories?${storyParams.toString()}`, {
-        headers,
-      }),
-      fetch(`/api/dashboard/confessions?${confessionParams.toString()}`, {
-        headers,
-      }),
-    ]);
+        <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to={`/write?storyId=${story.id}&returnTo=dashboard`}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+            Edit
+          </Link>
+        </div>
+      </div>
 
-  const [statsPayload, storiesPayload, confessionsPayload] = await Promise.all([
-    parseDashboardResponse(statsResponse),
-    parseDashboardResponse(storiesResponse),
-    parseDashboardResponse(confessionsResponse),
-  ]);
-
-  if (!statsResponse.ok) {
-    throw new Error(
-      statsPayload?.message || "Unable to load dashboard statistics.",
-    );
-  }
-
-  if (!storiesResponse.ok) {
-    throw new Error(
-      storiesPayload?.message || "Unable to load dashboard stories.",
-    );
-  }
-
-  if (!confessionsResponse.ok) {
-    throw new Error(
-      confessionsPayload?.message || "Unable to load dashboard confessions.",
-    );
-  }
-
-  const mappedStories = Array.isArray(storiesPayload?.data)
-    ? storiesPayload.data.map((story) => normalizeActivityItem(story, "story"))
-    : [];
-
-  const mappedConfessions = Array.isArray(confessionsPayload?.data)
-    ? confessionsPayload.data.map((confession) =>
-        normalizeActivityItem(confession, "confession"),
-      )
-    : [];
-
-  return {
-    statsPayload,
-    activities: sortMergedActivities(
-      [...mappedStories, ...mappedConfessions],
-      activityFilters,
-    ),
-    hasMoreStories: Number(storiesPayload?.pagination?.totalPages || 0) > 1,
-    hasMoreConfessions:
-      Number(confessionsPayload?.pagination?.totalPages || 0) > 1,
-  };
+      <div className="mt-4 flex flex-wrap items-center gap-4 text-[11px] font-semibold uppercase tracking-widest text-slate-400">
+        <span className="inline-flex items-center gap-1.5">
+          <Clock3 className="h-3.5 w-3.5" />
+          {formatRelativeTime(story?.updatedAt || story?.createdAt)}
+        </span>
+        <span>{wordCount} words</span>
+        <span>{Number(story?.likesCount || 0)} likes</span>
+      </div>
+    </div>
+  );
 };
-
-const loadDashboardData = async ({ headers, activityFilters }) =>
-  activityFilters.contentType === "all"
-    ? loadDashboardFeedData({ headers, activityFilters })
-    : loadDashboardSplitData({ headers, activityFilters });
 
 export default function Dashboard() {
-  const [showFilters, setShowFilters] = useState(false);
-  const [activityFilters, setActivityFilters] = useState(
-    getSavedDashboardFilters,
-  );
-  const [stats, setStats] = useState({
-    totalPosts: 0,
-    totalWords: 0,
-    totalLikes: 0,
-  });
-  const [activities, setActivities] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState(null);
+  const [recentStories, setRecentStories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [storyPage, setStoryPage] = useState(1);
-  const [confessionPage, setConfessionPage] = useState(1);
-  const [feedPage, setFeedPage] = useState(1);
-  const [hasMoreStories, setHasMoreStories] = useState(true);
-  const [hasMoreConfessions, setHasMoreConfessions] = useState(true);
-  const [hasMoreFeed, setHasMoreFeed] = useState(true);
-  const filterPanelRef = useRef(null);
-  const filterButtonRef = useRef(null);
-
-  const loadDashboard = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage("");
-
-    try {
-      const token = localStorage.getItem("token");
-
-      if (!token) {
-        setStats({ totalPosts: 0, totalWords: 0, totalLikes: 0 });
-        setActivities([]);
-        setErrorMessage("Please log in to load dashboard data.");
-        return;
-      }
-
-      const headers = {
-        Authorization: `Bearer ${token}`,
-      };
-
-      const result = await loadDashboardData({ headers, activityFilters });
-
-      setStats({
-        totalPosts: Number(result.statsPayload?.stats?.totalPosts || 0),
-        totalWords: Number(result.statsPayload?.stats?.totalWords || 0),
-        totalLikes: Number(result.statsPayload?.stats?.totalLikes || 0),
-      });
-
-      setActivities(result.activities);
-      setStoryPage(1);
-      setConfessionPage(1);
-      setFeedPage(1);
-      setHasMoreFeed(Boolean(result.hasMoreFeed));
-      setHasMoreStories(Boolean(result.hasMoreStories));
-      setHasMoreConfessions(Boolean(result.hasMoreConfessions));
-    } catch (error) {
-      setErrorMessage(error.message || "Unable to load dashboard right now.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activityFilters]);
-
-  const validateAndParseResponse = async (response, type) => {
-    if (!response) return null;
-
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      let errorType = "confessions";
-
-      if (type === "story") {
-        errorType = "stories";
-      } else if (type === "feed") {
-        errorType = "activities";
-      }
-
-      throw new Error(payload?.message || `Unable to load more ${errorType}.`);
-    }
-
-    return payload;
-  };
-
-  const updatePaginationState = (response, payload, type) => {
-    if (!response) return;
-    const pagination = payload?.pagination || {};
-    const currentPage = Number(pagination.page || 0);
-    const totalPages = Number(pagination.totalPages || 0);
-    const hasMore = currentPage < totalPages;
-
-    if (type === "story") {
-      setStoryPage((prev) => prev + 1);
-      setHasMoreStories(hasMore);
-    } else {
-      setConfessionPage((prev) => prev + 1);
-      setHasMoreConfessions(hasMore);
-    }
-  };
-
-  const loadMoreActivities = useCallback(async () => {
-    if (
-      isLoadingMore ||
-      (activityFilters.contentType === "all"
-        ? !hasMoreFeed
-        : !hasMoreStories && !hasMoreConfessions)
-    ) {
-      return;
-    }
-
-    setIsLoadingMore(true);
-    setErrorMessage("");
-
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setErrorMessage("Please log in to load more activities.");
-      setIsLoadingMore(false);
-      return;
-    }
-
-    try {
-      const headers = { Authorization: `Bearer ${token}` };
-
-      if (activityFilters.contentType === "all") {
-        const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
-        const { status, deleted, visibility } =
-          getStoryQueryFilters(activityFilters);
-
-        const feedResponse = await fetch(
-          `/api/dashboard/feed?${buildFetchParams({
-            limit: "8",
-            page: feedPage + 1,
-            sortBy: apiSortBy,
-            order,
-            status,
-            visibility,
-            deleted,
-          })}`,
-          { headers },
-        );
-
-        const feedPayload = await validateAndParseResponse(
-          feedResponse,
-          "feed",
-        );
-
-        const newFeedItems = Array.isArray(feedPayload?.data)
-          ? feedPayload.data.map((item) =>
-              normalizeActivityItem(item, item?.type || "story"),
-            )
-          : [];
-
-        setActivities((prev) => [...prev, ...newFeedItems]);
-        setFeedPage((prev) => prev + 1);
-        setHasMoreFeed(
-          Number(feedPayload?.pagination?.page || 0) <
-            Number(feedPayload?.pagination?.totalPages || 0),
-        );
-        return;
-      }
-
-      const shouldFetchStories =
-        activityFilters.contentType !== "confession" && hasMoreStories;
-      const shouldFetchConfessions =
-        activityFilters.contentType !== "story" && hasMoreConfessions;
-      const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
-      const { status, deleted, visibility } =
-        getStoryQueryFilters(activityFilters);
-
-      const [storiesResponse, confessionsResponse] = await Promise.all([
-        shouldFetchStories
-          ? fetch(
-              `/api/dashboard/stories?${buildFetchParams({
-                limit: "8",
-                page: storyPage + 1,
-                sortBy: apiSortBy,
-                order,
-                status,
-                visibility,
-                deleted,
-              })}`,
-              { headers },
-            )
-          : null,
-        shouldFetchConfessions
-          ? fetch(
-              `/api/dashboard/confessions?${buildFetchParams({
-                limit: "8",
-                page: confessionPage + 1,
-                sortBy: apiSortBy,
-                order,
-              })}`,
-              { headers },
-            )
-          : null,
-      ]);
-
-      const storiesPayload = await validateAndParseResponse(
-        storiesResponse,
-        "story",
-      );
-      const confessionsPayload = await validateAndParseResponse(
-        confessionsResponse,
-        "confession",
-      );
-
-      const allNewItems = [
-        ...normalizePayloadItems(storiesPayload, "story"),
-        ...normalizePayloadItems(confessionsPayload, "confession"),
-      ];
-
-      setActivities((prev) =>
-        sortMergedActivities([...prev, ...allNewItems], activityFilters),
-      );
-
-      updatePaginationState(storiesResponse, storiesPayload, "story");
-      updatePaginationState(
-        confessionsResponse,
-        confessionsPayload,
-        "confession",
-      );
-    } catch (error) {
-      setErrorMessage(error.message || "Unable to load more activities.");
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [
-    activityFilters,
-    confessionPage,
-    hasMoreConfessions,
-    hasMoreStories,
-    isLoadingMore,
-    feedPage,
-    storyPage,
-    hasMoreFeed,
-  ]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let isMounted = true;
+
+    const loadDashboard = async () => {
+      setIsLoading(true);
+      setErrorMessage("");
+
+      try {
+        const [statsPayload, storiesPayload] = await Promise.all([
+          getDashboardStats({ signal: controller.signal }),
+          getDashboardStories({
+            status: "all",
+            visibility: "all",
+            deleted: "active",
+            sortBy: "date",
+            order: "desc",
+            page: 1,
+            limit: 5,
+            signal: controller.signal,
+          }),
+        ]);
+
+        if (!isMounted) {
+          return;
+        }
+
+        setDashboardStats(statsPayload);
+        setRecentStories(
+          Array.isArray(storiesPayload?.data) ? storiesPayload.data : [],
+        );
+      } catch (error) {
+        if (error.name !== "AbortError" && isMounted) {
+          setErrorMessage(error.message || "Failed to load dashboard data.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
     loadDashboard();
-  }, [loadDashboard]);
-
-  useEffect(() => {
-    localStorage.setItem(
-      DASHBOARD_FILTERS_STORAGE_KEY,
-      JSON.stringify(activityFilters),
-    );
-  }, [activityFilters]);
-
-  useEffect(() => {
-    if (!showFilters) {
-      return;
-    }
-
-    const handleWindowClick = (event) => {
-      if (filterPanelRef.current?.contains(event.target)) {
-        return;
-      }
-
-      if (filterButtonRef.current?.contains(event.target)) {
-        return;
-      }
-
-      setShowFilters(false);
-    };
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        setShowFilters(false);
-      }
-    };
-
-    globalThis.addEventListener("mousedown", handleWindowClick);
-    globalThis.addEventListener("keydown", handleEscape);
 
     return () => {
-      globalThis.removeEventListener("mousedown", handleWindowClick);
-      globalThis.removeEventListener("keydown", handleEscape);
+      isMounted = false;
+      controller.abort();
     };
-  }, [showFilters]);
-
-  const updateFilter = useCallback((key, value) => {
-    setActivityFilters((prev) => ({
-      ...prev,
-      [key]: value,
-    }));
   }, []);
 
-  const resetFilters = useCallback(() => {
-    setActivityFilters(DEFAULT_ACTIVITY_FILTERS);
-  }, []);
+  const storyStats = useMemo(
+    () => dashboardStats?.stats?.breakdown || {},
+    [dashboardStats],
+  );
 
-  const canLoadMore = useMemo(() => {
-    if (activityFilters.contentType === "all") {
-      return hasMoreFeed;
-    }
-
-    if (activityFilters.contentType === "story") {
-      return hasMoreStories;
-    }
-
-    if (activityFilters.contentType === "confession") {
-      return hasMoreConfessions;
-    }
-
-    return hasMoreStories || hasMoreConfessions;
-  }, [
-    activityFilters.contentType,
-    hasMoreConfessions,
-    hasMoreFeed,
-    hasMoreStories,
-  ]);
-
-  const activeFiltersCount = useMemo(() => {
-    let count = 0;
-
-    if (activityFilters.contentType !== "all") count += 1;
-    if (activityFilters.sortBy !== "updated_desc") count += 1;
-    if (activityFilters.contentType !== "confession") {
-      if (activityFilters.storyStatus !== "all") count += 1;
-      if (activityFilters.storyVisibility !== "all") count += 1;
-    }
-
-    return count;
-  }, [activityFilters]);
+  const statCards = useMemo(
+    () => [
+      {
+        title: "Total Stories",
+        value: Number(storyStats.storyCount || 0),
+        subtitle: "Active stories on your dashboard",
+      },
+      {
+        title: "Total Word Count",
+        value: Number(storyStats.storyWords || 0),
+        subtitle: "Across your story drafts and posts",
+      },
+      {
+        title: "Total Reader Loves",
+        value: Number(storyStats.storyLikes || 0),
+        subtitle: "Likes on your stories",
+      },
+    ],
+    [storyStats],
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -490,58 +197,51 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
         <Navbar title="Analytics Dashboard" />
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="max-w-6xl mx-auto mb-4">
-              {/* Header */}
-              <header className="mb-8 sm:mb-10">
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-                  Writing Analytics
-                </h1>
-                <p className="mt-3 text-sm text-slate-500">
-                  Track your publishing progress and engagement at a glance.
-                </p>
+          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="max-w-6xl mx-auto">
+              <header className="mb-8 sm:mb-10 flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+                    Writing Analytics
+                  </h1>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Track your publishing progress and engagement at a glance.
+                  </p>
+                </div>
+                <button className="hidden sm:inline-flex p-2 hover:bg-slate-100 rounded-full transition-colors group">
+                  <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
+                </button>
               </header>
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
-                <StatsCard
-                  title="Published Stories"
-                  value={isLoading ? "..." : formatCount(stats.totalPosts)}
-                  subtitle="Total posts"
-                />
-                <StatsCard
-                  title="Total Word Count"
-                  value={isLoading ? "..." : formatCount(stats.totalWords)}
-                  subtitle="Across your stories and confessions"
-                />
-                <StatsCard
-                  title="Total Reader Loves"
-                  value={isLoading ? "..." : formatCount(stats.totalLikes)}
-                  subtitle="Total likes"
-                />
-              </div>
-
               {errorMessage && (
-                <div
-                  role="alert"
-                  className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
-                >
+                <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                   {errorMessage}
                 </div>
               )}
 
-              {/* Recent Activity Card */}
-              <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl overflow-visible min-h-115 sm:min-h-136 flex flex-col shadow-sm">
-                <div className="relative px-4 sm:px-8 py-5 border-b border-slate-100 flex justify-between items-center">
-                  <h3 className="flex items-center text-lg font-semibold text-slate-700 gap-2">
-                    <History strokeWidth={2} size={26} /> Your Recent Activity
-                  </h3>
-                  <button
-                    ref={filterButtonRef}
-                    onClick={() => setShowFilters((prev) => !prev)}
-                    className="relative p-2 hover:bg-slate-100 rounded-full transition-colors group"
-                    aria-label="Open activity filters"
-                  >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-8">
+                {statCards.map((card) => (
+                  <StatCard
+                    key={card.title}
+                    title={card.title}
+                    value={card.value}
+                    subtitle={card.subtitle}
+                    loading={isLoading}
+                  />
+                ))}
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl overflow-hidden min-h-[420px] sm:min-h-[500px] flex flex-col shadow-sm">
+                <div className="px-4 sm:px-8 py-5 border-b border-slate-100 flex justify-between items-center">
+                  <div>
+                    <h3 className="text-lg font-semibold text-slate-700">
+                      Your Recent Stories
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Latest items from your dashboard feed.
+                    </p>
+                  </div>
+                  <button className="p-2 hover:bg-slate-100 rounded-full transition-colors group">
                     <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
                     {activeFiltersCount > 0 && (
                       <span className="absolute -top-1 -right-1 min-w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-semibold px-1.5 flex items-center justify-center">
@@ -550,14 +250,49 @@ export default function Dashboard() {
                     )}
                   </button>
 
-                  {showFilters && (
-                    <ActivityFiltersPanel
-                      activityFilters={activityFilters}
-                      updateFilter={updateFilter}
-                      resetFilters={resetFilters}
-                      setShowFilters={setShowFilters}
-                      filterPanelRef={filterPanelRef}
-                    />
+                <div className="flex-1 p-4 sm:p-8">
+                  {isLoading ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map((item) => (
+                        <div
+                          key={item}
+                          className="h-32 animate-pulse rounded-2xl border border-slate-200 bg-slate-100"
+                        />
+                      ))}
+                    </div>
+                  ) : recentStories.length > 0 ? (
+                    <div className="space-y-4">
+                      {recentStories.map((story) => (
+                        <DashboardStoryCard
+                          key={story._id || story.id}
+                          story={{
+                            id: String(story._id || story.id),
+                            title: story.title,
+                            summary: story.summary,
+                            content: story.content,
+                            status: story.status,
+                            visibility: story.visibility,
+                            updatedAt: story.updatedAt,
+                            createdAt: story.createdAt,
+                            wordCount: story.wordCount,
+                            likesCount: story.likesCount,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex h-full min-h-[300px] flex-col items-center justify-center text-center">
+                      <div className="bg-slate-100 p-6 rounded-full mb-6">
+                        <PenTool
+                          className="w-12 h-12 text-slate-300"
+                          strokeWidth={1.5}
+                        />
+                      </div>
+                      <p className="text-slate-500 text-sm md:text-base font-medium max-w-md">
+                        You haven't written any stories yet. Start your first
+                        post to see dashboard activity here.
+                      </p>
+                    </div>
                   )}
                 </div>
 
