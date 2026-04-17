@@ -243,8 +243,12 @@ export default function Dashboard() {
                   </div>
                   <button className="p-2 hover:bg-slate-100 rounded-full transition-colors group">
                     <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
+                    {activeFiltersCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-semibold px-1.5 flex items-center justify-center">
+                        {activeFiltersCount}
+                      </span>
+                    )}
                   </button>
-                </div>
 
                 <div className="flex-1 p-4 sm:p-8">
                   {isLoading ? (
@@ -291,6 +295,14 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
+
+                <RecentActivityTable
+                  activities={activities}
+                  isLoading={isLoading}
+                  canLoadMore={canLoadMore}
+                  isLoadingMore={isLoadingMore}
+                  loadMoreActivities={loadMoreActivities}
+                />
               </div>
             </div>
             <SiteFooter />

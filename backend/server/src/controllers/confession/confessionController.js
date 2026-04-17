@@ -117,6 +117,25 @@ const deleteConfession = async (req, res) => {
   }
 };
 
+const restoreConfession = async (req, res) => {
+  try {
+    await confessionModel.restoreConfession(req.params.id, req.user.userId);
+
+    res.json({ message: "Confession restored" });
+  } catch (error) {
+    if (error.message === "not found") {
+      return res.status(404).json({ message: "Confession not found" });
+    }
+    if (error.message === "Unauthorized") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+    if (error.message === "Already active") {
+      return res.status(400).json({ message: "Confession is already active" });
+    }
+    res.status(500).json({ message: "Failed to restore confession" });
+  }
+};
+
 const getMyConfessions = async (req, res) => {
   try {
     const { cursor } = req.query;
@@ -134,6 +153,23 @@ const getMyConfessions = async (req, res) => {
   }
 };
 
+const getMyDeletedConfessions = async (req, res) => {
+  try {
+    const { cursor } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const result = await confessionModel.getDeletedUserConfessions(
+      req.user.userId,
+      cursor,
+      limit,
+    );
+
+    res.json(result);
+  } catch {
+    res.status(500).json({ message: "Failed to fetch deleted confessions" });
+  }
+};
+
 module.exports = {
   createConfession,
   getAllConfessions,
@@ -141,6 +177,7 @@ module.exports = {
   getConfession,
   updateConfession,
   deleteConfession,
-
+  restoreConfession,
   getMyConfessions,
+  getMyDeletedConfessions,
 };

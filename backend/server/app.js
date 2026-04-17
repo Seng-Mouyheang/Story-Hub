@@ -67,10 +67,12 @@ connectToDatabase()
 ╠════════════════════════════════════════════════╣            ╠════════════════════════════════════════════════╣  
 ║   - GET /api/stories/                          ║            ║   - GET /api/confessions/                      ║
 ║   - GET /api/stories/me                        ║            ║   - GET /api/confessions/me                    ║
+║   - GET /api/stories/me/deleted                ║            ║   - GET /api/confessions/me/deleted            ║
 ║   - GET /api/stories/:id                       ╠════════════╣   - GET /api/confessions/:id                   ║
 ║   - POST /api/stories/                         ║            ║   - POST /api/confessions/                     ║ 
 ║   - PUT /api/stories/:id                       ║            ║   - PUT /api/confessions/:id                   ║  
 ║   - DELETE /api/stories/:id                    ║            ║   - DELETE /api/confessions/:id                ║
+║   - POST /api/stories/:id/restore              ║            ║   - POST /api/confessions/:id/restore          ║
 ╚════════════════════════════════════════════════╝            ╚════════════════════════════════════════════════╝
 
 ╔════════════════════════════════════════════════╗            ╔════════════════════════════════════════════════╗       

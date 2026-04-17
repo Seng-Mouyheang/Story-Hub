@@ -73,6 +73,14 @@ router.get(
   storyController.getMyStories,
 );
 
+// Get current user's deleted stories
+router.get(
+  "/me/deleted",
+  authenticate,
+  validate(cursorPaginationSchema, "query"),
+  storyController.getMyDeletedStories,
+);
+
 // Get current user's bookmarked stories
 router.get(
   "/bookmarks/me",
@@ -116,6 +124,14 @@ router.delete(
   authenticate,
   validate(idParamSchema, "params"),
   storyController.deleteStory,
+);
+
+// Restore deleted story
+router.post(
+  "/:id/restore",
+  authenticate,
+  validate(idParamSchema, "params"),
+  storyController.restoreStory,
 );
 
 /* ============================= */

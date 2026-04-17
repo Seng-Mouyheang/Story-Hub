@@ -157,7 +157,7 @@ const getCommentsByConfession = async (
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -198,6 +198,7 @@ const getCommentsByConfession = async (
     likedByCurrentUser: likedCommentIds.has(comment._id.toString()),
     replyCount: comment.replyCount || 0,
     authorDisplayName: comment.author?.displayName || null,
+    authorProfilePicture: comment.author?.profilePicture || "",
   }));
 
   let nextCursor = null;
@@ -264,7 +265,7 @@ const getRepliesByComment = async (
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -302,6 +303,7 @@ const getRepliesByComment = async (
     ...reply,
     likedByCurrentUser: likedReplyIds.has(reply._id.toString()),
     authorDisplayName: reply.author?.displayName || null,
+    authorProfilePicture: reply.author?.profilePicture || "",
   }));
 
   let nextCursor = null;
@@ -334,9 +336,24 @@ const getCommentById = async (id, currentUserId = null) => {
     likedByCurrentUser = !!like;
   }
 
+  const author = await db.collection("profiles").findOne(
+    {
+      userId: comment.userId,
+      deletedAt: null,
+    },
+    {
+      projection: {
+        displayName: 1,
+        profilePicture: 1,
+      },
+    },
+  );
+
   return {
     ...comment,
     likedByCurrentUser,
+    authorDisplayName: author?.displayName || null,
+    authorProfilePicture: author?.profilePicture || "",
   };
 };
 
@@ -379,6 +396,7 @@ const deleteComment = async (userId, id) => {
   const session = client.startSession();
 
   const commentId = new ObjectId(id);
+  let removedCount = 0;
 
   try {
     await session.withTransaction(async () => {
@@ -437,6 +455,7 @@ const deleteComment = async (userId, id) => {
       );
 
       const totalDeleted = 1 + replyIds.length;
+      removedCount = totalDeleted;
 
       await confessionsCollection.updateOne(
         { _id: comment.confessionId },
@@ -445,7 +464,7 @@ const deleteComment = async (userId, id) => {
       );
     });
 
-    return { success: true };
+    return { success: true, removedCount };
   } catch (error) {
     console.error("Transaction failed:", error);
     throw error;

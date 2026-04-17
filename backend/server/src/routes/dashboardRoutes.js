@@ -11,6 +11,13 @@ const {
 router.get("/stats", authenticate, dashboardController.getDashboardStats);
 
 router.get(
+  "/feed",
+  authenticate,
+  validate(storyDashboardQuerySchema, "query"),
+  dashboardController.getDashboardFeed,
+);
+
+router.get(
   "/stories",
   authenticate,
   validate(storyDashboardQuerySchema, "query"),

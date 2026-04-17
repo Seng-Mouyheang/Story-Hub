@@ -30,6 +30,43 @@ const resolveAuthorDisplayName = (confession, currentUserId = null) => {
   return "Anonymous";
 };
 
+const resolveAuthorProfilePicture = (confession, currentUserId = null) => {
+  const profilePicture = confession.authorProfilePicture || "";
+
+  if (!confession.isAnonymous) {
+    return profilePicture;
+  }
+
+  if (
+    currentUserId &&
+    confession.authorId &&
+    confession.authorId.toString() === currentUserId.toString()
+  ) {
+    return profilePicture;
+  }
+
+  return "";
+};
+
+const resolveAuthorId = (confession, currentUserId = null) => {
+  if (!confession.authorId) {
+    return null;
+  }
+
+  if (!confession.isAnonymous) {
+    return confession.authorId;
+  }
+
+  if (
+    currentUserId &&
+    confession.authorId.toString() === currentUserId.toString()
+  ) {
+    return confession.authorId;
+  }
+
+  return null;
+};
+
 const toggleConfessionBookmark = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const client = getClient();
@@ -241,7 +278,7 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
               },
             },
             {
-              $project: { displayName: 1 },
+              $project: { displayName: 1, profilePicture: 1 },
             },
           ],
           as: "author",
@@ -265,6 +302,7 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
           createdAt: "$confession.createdAt",
           updatedAt: "$confession.updatedAt",
           authorDisplayName: "$author.displayName",
+          authorProfilePicture: "$author.profilePicture",
           savedByCurrentUser: { $literal: true },
           bookmarkId: "$_id",
           bookmarkCreatedAt: "$createdAt",
@@ -298,7 +336,12 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
   let followedAuthorIds = new Set();
   if (data.length > 0) {
     const authorIds = [
-      ...new Set(data.map((confession) => confession.authorId.toString())),
+      ...new Set(
+        data
+          .map((confession) => resolveAuthorId(confession, userId))
+          .filter(Boolean)
+          .map((authorId) => authorId.toString()),
+      ),
     ]
       .filter((id) => id !== userId)
       .map((id) => new ObjectId(id));
@@ -319,14 +362,20 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
     }
   }
 
-  const finalData = data.map((confession) => ({
-    ...confession,
-    likedByCurrentUser: likedConfessionIds.has(confession._id.toString()),
-    followedByCurrentUser: followedAuthorIds.has(
-      confession.authorId.toString(),
-    ),
-    authorDisplayName: resolveAuthorDisplayName(confession, userId),
-  }));
+  const finalData = data.map((confession) => {
+    const resolvedAuthorId = resolveAuthorId(confession, userId);
+
+    return {
+      ...confession,
+      authorId: resolvedAuthorId,
+      likedByCurrentUser: likedConfessionIds.has(confession._id.toString()),
+      followedByCurrentUser: resolvedAuthorId
+        ? followedAuthorIds.has(resolvedAuthorId.toString())
+        : false,
+      authorDisplayName: resolveAuthorDisplayName(confession, userId),
+      authorProfilePicture: resolveAuthorProfilePicture(confession, userId),
+    };
+  });
 
   let nextCursor = null;
   if (hasMore && data.length > 0) {
