@@ -749,7 +749,6 @@ export default function Confession() {
     }
 
     setIsDeletingConfession(true);
-    setDeleteTargetConfessionId("");
 
     try {
       const response = await fetch(`/api/confessions/${confessionId}`, {
@@ -775,6 +774,7 @@ export default function Confession() {
         handleCancelEditConfession();
       }
 
+      setDeleteTargetConfessionId("");
       showSuccess("Confession deleted successfully.");
     } catch (error) {
       showError(error.message || "Failed to delete confession.");
@@ -975,10 +975,11 @@ export default function Confession() {
       </div>
     );
   } else {
-    feedContent = confessionFeed.map((item) => (
+    feedContent = confessionFeed.map((item, index) => (
       <ConfessionFeedCard
-        key={String(item?._id || item?.id || "")}
+        key={String(item?._id || item?.id || `feed-${index}`)}
         item={item}
+        index={index}
         currentUserId={currentUserId}
         expandedConfessionIds={expandedConfessionIds}
         menuConfessionId={menuConfessionId}
@@ -1106,10 +1107,12 @@ export default function Confession() {
               )}
 
             {!modalCommentsError &&
-              modalComments.map((comment) => {
+              modalComments.map((comment, index) => {
                 return (
                   <ConfessionModalCommentItem
-                    key={String(comment?._id || comment?.id || "comment")}
+                    key={String(
+                      comment?._id || comment?.id || `comment-${index}`,
+                    )}
                     comment={comment}
                     currentUserId={currentUserId}
                     activeCommentMenuId={activeCommentMenuId}

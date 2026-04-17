@@ -40,6 +40,7 @@ import {
  * @property {string | null} [gestureLikeBurstId]
  * @property {string | null} [pressedLikeId]
  * @property {string | null} [pressedBookmarkId]
+ * @property {number} [index]
  * @property {(confessionId: string) => void} onToggleConfessionMenu
  * @property {(item: ConfessionFeedItem) => void} onEditConfession
  * @property {(confessionId: string) => void} onDeleteConfession
@@ -62,6 +63,7 @@ export default function ConfessionFeedCard({
   gestureLikeBurstId = null,
   pressedLikeId = null,
   pressedBookmarkId = null,
+  index = 0,
   onToggleConfessionMenu,
   onEditConfession,
   onDeleteConfession,
@@ -83,7 +85,7 @@ export default function ConfessionFeedCard({
         )}`;
   const tags =
     Array.isArray(item?.tags) && item.tags.length > 0 ? item.tags : [];
-  const confessionId = String(item?._id || item?.id || authorSeed);
+  const confessionId = String(item?._id || item?.id || `fallback-${index}`);
   const canManageConfession =
     Boolean(currentUserId) && normalizeId(item?.authorId) === currentUserId;
   const isExpanded = Boolean(expandedConfessionIds[confessionId]);
