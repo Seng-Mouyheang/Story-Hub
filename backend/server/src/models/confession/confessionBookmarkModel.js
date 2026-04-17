@@ -48,6 +48,25 @@ const resolveAuthorProfilePicture = (confession, currentUserId = null) => {
   return "";
 };
 
+const resolveAuthorId = (confession, currentUserId = null) => {
+  if (!confession.authorId) {
+    return null;
+  }
+
+  if (!confession.isAnonymous) {
+    return confession.authorId;
+  }
+
+  if (
+    currentUserId &&
+    confession.authorId.toString() === currentUserId.toString()
+  ) {
+    return confession.authorId;
+  }
+
+  return null;
+};
+
 const toggleConfessionBookmark = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const client = getClient();
@@ -340,6 +359,7 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
 
   const finalData = data.map((confession) => ({
     ...confession,
+    authorId: resolveAuthorId(confession, userId),
     likedByCurrentUser: likedConfessionIds.has(confession._id.toString()),
     followedByCurrentUser: followedAuthorIds.has(
       confession.authorId.toString(),

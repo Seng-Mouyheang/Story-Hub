@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -97,7 +98,11 @@ const PostCard = ({
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-          <img src={avatar} alt="avatar" />
+          <img
+            src={avatar}
+            alt="avatar"
+            className="w-full h-full object-cover"
+          />
         </div>
 
         <div className="min-w-0">
@@ -209,6 +214,7 @@ const PostCard = ({
 
 /* -------------------- Bookmarks Page -------------------- */
 export default function Bookmarks() {
+  const navigate = useNavigate();
   const [activeType, setActiveType] = useState("stories");
   const [storyBookmarks, setStoryBookmarks] = useState([]);
   const [confessionBookmarks, setConfessionBookmarks] = useState([]);
@@ -434,6 +440,10 @@ export default function Bookmarks() {
 
   const handleStoryTagClick = useCallback(({ tag }) => {
     setActiveStoryTag((currentTag) => (currentTag === tag ? "" : tag));
+  }, []);
+
+  const handleClearStoryTagFilter = useCallback(() => {
+    setActiveStoryTag("");
   }, []);
 
   const currentUserName = useCallback(() => {
@@ -686,9 +696,12 @@ export default function Bookmarks() {
     [handleUnsave],
   );
 
-  const handleOpenConfessionComments = useCallback((confessionId) => {
-    globalThis.location.href = `/confession#confession-${confessionId}`;
-  }, []);
+  const handleOpenConfessionComments = useCallback(
+    (confessionId) => {
+      navigate(`/confession#confession-${confessionId}`);
+    },
+    [navigate],
+  );
 
   const handleToggleConfessionLike = useCallback(
     async (confessionId) => {
@@ -862,7 +875,50 @@ export default function Bookmarks() {
 
                 {!isLoading &&
                   !errorMessage &&
-                  activeBookmarks.length === 0 && (
+                  activeType === "stories" &&
+                  activeStoryTag &&
+                  visibleStoryBookmarks.length === 0 && (
+                    <div className="relative flex-1 min-h-70 overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm">
+                      <div className="pointer-events-none absolute -top-20 -right-16 h-56 w-56 rounded-full bg-amber-100/80 blur-2xl" />
+                      <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-sky-100/80 blur-2xl" />
+
+                      <div className="relative h-full flex items-center justify-center px-6 py-10 sm:px-10">
+                        <div className="w-full max-w-xl text-center flex flex-col items-center">
+                          <div className="mb-4 inline-flex items-center justify-center">
+                            <BookOpenText
+                              size={56}
+                              className="text-amber-500"
+                            />
+                          </div>
+
+                          <h3 className="text-lg sm:text-xl font-semibold text-slate-900">
+                            No stories match #{activeStoryTag}
+                          </h3>
+
+                          <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+                            Try clearing the current tag filter to see all your
+                            saved stories again.
+                          </p>
+
+                          <button
+                            type="button"
+                            className="mt-5 inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+                            onClick={handleClearStoryTagFilter}
+                          >
+                            Clear Filter
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                {!isLoading &&
+                  !errorMessage &&
+                  ((activeType === "stories" &&
+                    !activeStoryTag &&
+                    visibleStoryBookmarks.length === 0) ||
+                    (activeType === "confessions" &&
+                      activeBookmarks.length === 0)) && (
                     <div className="relative flex-1 min-h-70 overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm">
                       <div className="pointer-events-none absolute -top-20 -right-16 h-56 w-56 rounded-full bg-rose-100/80 blur-2xl" />
                       <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-sky-100/80 blur-2xl" />
