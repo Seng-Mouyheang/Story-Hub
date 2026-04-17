@@ -361,9 +361,10 @@ const getConfessionById = async (id, currentUserId = null) => {
 
 const updateConfession = async (id, userId, updateData) => {
   const collection = await getCollection();
+  const confessionObjectId = new ObjectId(id);
 
   const confession = await collection.findOne({
-    _id: new ObjectId(id),
+    _id: confessionObjectId,
     deletedAt: null,
   });
 
@@ -376,15 +377,54 @@ const updateConfession = async (id, userId, updateData) => {
   PROTECTED_FIELDS.forEach((field) => delete updateData[field]);
 
   if (Object.keys(updateData).length === 0) {
-    return { matchedCount: 1, modifiedCount: 0 };
+    return {
+      acknowledged: true,
+      matchedCount: 1,
+      modifiedCount: 0,
+      upsertedCount: 0,
+      upsertedId: null,
+    };
   }
 
-  if (updateData.content) {
+  const fieldsToCompare = ["content", "tags", "isAnonymous", "visibility"];
+  const hasChanges = fieldsToCompare.some((field) => {
+    if (!Object.hasOwn(updateData, field)) {
+      return false;
+    }
+
+    if (field === "tags") {
+      const nextTags = Array.isArray(updateData.tags) ? updateData.tags : [];
+      const currentTags = Array.isArray(confession.tags) ? confession.tags : [];
+
+      if (nextTags.length !== currentTags.length) {
+        return true;
+      }
+
+      return nextTags.some((tag, index) => tag !== currentTags[index]);
+    }
+
+    return updateData[field] !== confession[field];
+  });
+
+  if (!hasChanges) {
+    return {
+      acknowledged: true,
+      matchedCount: 1,
+      modifiedCount: 0,
+      upsertedCount: 0,
+      upsertedId: null,
+    };
+  }
+
+  if (
+    Object.hasOwn(updateData, "content") &&
+    updateData.content !== confession.content
+  ) {
     updateData.wordCount = updateData.content.trim().split(/\s+/).length;
   }
 
   return collection.updateOne(
-    { _id: new ObjectId(id) },
+    { _id: confessionObjectId },
     {
       $set: {
         ...updateData,

@@ -224,6 +224,7 @@ export default function Confession() {
   const [menuConfessionId, setMenuConfessionId] = useState("");
   const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
   const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
+  const [isDeletingConfession, setIsDeletingConfession] = useState(false);
   const sentinelRef = useRef(null);
   const lastTapRef = useRef({ confessionId: "", time: 0 });
   const pendingLikeIdsRef = useRef(new Set());
@@ -736,18 +737,19 @@ export default function Confession() {
   };
 
   const handleConfirmDeleteConfession = async () => {
-    if (!deleteTargetConfessionId) {
+    if (!deleteTargetConfessionId || isDeletingConfession) {
       return;
     }
 
     const confessionId = deleteTargetConfessionId;
-    setDeleteTargetConfessionId("");
-
     const token = localStorage.getItem("token");
     if (!token) {
       showError("Please log in again to delete a confession.");
       return;
     }
+
+    setIsDeletingConfession(true);
+    setDeleteTargetConfessionId("");
 
     try {
       const response = await fetch(`/api/confessions/${confessionId}`, {
@@ -776,6 +778,8 @@ export default function Confession() {
       showSuccess("Confession deleted successfully.");
     } catch (error) {
       showError(error.message || "Failed to delete confession.");
+    } finally {
+      setIsDeletingConfession(false);
     }
   };
 
@@ -1241,7 +1245,13 @@ export default function Confession() {
 
         <ModalDialog
           isOpen={Boolean(deleteTargetConfessionId)}
-          onClose={() => setDeleteTargetConfessionId("")}
+          onClose={() => {
+            if (isDeletingConfession) {
+              return;
+            }
+
+            setDeleteTargetConfessionId("");
+          }}
           title="Delete this confession?"
           titleId={deleteDialogTitleId}
           closeLabel="Close delete confession modal"
@@ -1256,16 +1266,18 @@ export default function Confession() {
               <button
                 type="button"
                 onClick={() => setDeleteTargetConfessionId("")}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+                disabled={isDeletingConfession}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmDeleteConfession}
-                className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 cursor-pointer"
+                disabled={isDeletingConfession}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
               >
-                Delete
+                {isDeletingConfession ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
