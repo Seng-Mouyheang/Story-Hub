@@ -24,6 +24,32 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     React.useState("");
   const [modalCommentsHasMore, setModalCommentsHasMore] = React.useState(false);
 
+  const getCommentId = React.useCallback(
+    (comment) => String(comment?._id || comment?.id || ""),
+    [],
+  );
+
+  const mergeCommentsById = React.useCallback(
+    (incomingComments, existingComments = []) => {
+      const seenIds = new Set();
+      const mergedComments = [];
+
+      [...incomingComments, ...existingComments].forEach((comment) => {
+        const commentId = getCommentId(comment);
+
+        if (!commentId || seenIds.has(commentId)) {
+          return;
+        }
+
+        seenIds.add(commentId);
+        mergedComments.push(comment);
+      });
+
+      return mergedComments;
+    },
+    [getCommentId],
+  );
+
   const updateConfessionCommentCount = React.useCallback(
     (confessionId, by) => {
       setConfessionFeed((prev) =>
@@ -45,7 +71,7 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   );
 
   const loadModalComments = React.useCallback(
-    async (confessionId, cursor = "") => {
+    async (confessionId, cursor = "", { preservePagination = false } = {}) => {
       setModalCommentsError("");
       setIsLoadingModalComments(true);
 
@@ -74,16 +100,23 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
         const nextCursor = payload?.nextCursor || "";
         const hasMore = Boolean(payload?.hasMore);
 
-        setModalComments((prev) => [...prev, ...comments]);
-        setModalCommentsNextCursor(nextCursor);
-        setModalCommentsHasMore(hasMore);
+        setModalComments((prev) =>
+          preservePagination
+            ? mergeCommentsById(comments, prev)
+            : mergeCommentsById(prev, comments),
+        );
+
+        if (!preservePagination) {
+          setModalCommentsNextCursor(nextCursor);
+          setModalCommentsHasMore(hasMore);
+        }
       } catch (error) {
         setModalCommentsError(error.message || "Failed to load comments.");
       } finally {
         setIsLoadingModalComments(false);
       }
     },
-    [],
+    [mergeCommentsById],
   );
 
   const loadMoreModalComments = React.useCallback(async () => {
@@ -174,10 +207,9 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       }
 
       setNewCommentContent("");
-      setModalComments([]);
-      setModalCommentsNextCursor("");
-      setModalCommentsHasMore(false);
-      await loadModalComments(activeCommentConfessionId);
+      await loadModalComments(activeCommentConfessionId, "", {
+        preservePagination: true,
+      });
       updateConfessionCommentCount(activeCommentConfessionId, 1);
     } catch (error) {
       setModalCommentsError(error.message || "Failed to add comment.");
