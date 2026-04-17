@@ -230,6 +230,9 @@ export default function Confession() {
   const pendingBookmarkIdsRef = useRef(new Set());
   const toastTimeoutRef = useRef(null);
   const toastExitTimeoutRef = useRef(null);
+  const pressedLikeTimerRef = useRef(null);
+  const pressedBookmarkTimerRef = useRef(null);
+  const gestureLikeBurstTimerRef = useRef(null);
   const [isToastVisible, setIsToastVisible] = useState(false);
   const commentDialogTitleId = "confession-comments-dialog-title";
   const editDialogTitleId = "confession-edit-dialog-title";
@@ -561,10 +564,15 @@ export default function Confession() {
       });
 
       setPressedLikeId(confessionId);
-      setTimeout(() => {
+      if (pressedLikeTimerRef.current) {
+        clearTimeout(pressedLikeTimerRef.current);
+      }
+
+      pressedLikeTimerRef.current = setTimeout(() => {
         setPressedLikeId((currentId) =>
           currentId === confessionId ? null : currentId,
         );
+        pressedLikeTimerRef.current = null;
       }, 150);
 
       try {
@@ -631,10 +639,15 @@ export default function Confession() {
     });
 
     setPressedBookmarkId(confessionId);
-    setTimeout(() => {
+    if (pressedBookmarkTimerRef.current) {
+      clearTimeout(pressedBookmarkTimerRef.current);
+    }
+
+    pressedBookmarkTimerRef.current = setTimeout(() => {
       setPressedBookmarkId((currentId) =>
         currentId === confessionId ? null : currentId,
       );
+      pressedBookmarkTimerRef.current = null;
     }, 150);
 
     try {
@@ -773,10 +786,15 @@ export default function Confession() {
       }
 
       setGestureLikeBurstId(confessionId);
-      setTimeout(() => {
+      if (gestureLikeBurstTimerRef.current) {
+        clearTimeout(gestureLikeBurstTimerRef.current);
+      }
+
+      gestureLikeBurstTimerRef.current = setTimeout(() => {
         setGestureLikeBurstId((currentId) =>
           currentId === confessionId ? null : currentId,
         );
+        gestureLikeBurstTimerRef.current = null;
       }, 450);
 
       handleToggleLike(confessionId);
@@ -865,6 +883,18 @@ export default function Confession() {
 
       if (toastExitTimeoutRef.current) {
         clearTimeout(toastExitTimeoutRef.current);
+      }
+
+      if (pressedLikeTimerRef.current) {
+        clearTimeout(pressedLikeTimerRef.current);
+      }
+
+      if (pressedBookmarkTimerRef.current) {
+        clearTimeout(pressedBookmarkTimerRef.current);
+      }
+
+      if (gestureLikeBurstTimerRef.current) {
+        clearTimeout(gestureLikeBurstTimerRef.current);
       }
     },
     [],

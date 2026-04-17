@@ -641,7 +641,7 @@ const getDeletedUserConfessions = async (userId, cursor, limit) => {
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, profilePicture: 1 },
           },
         ],
         as: "author",
@@ -664,6 +664,7 @@ const getDeletedUserConfessions = async (userId, cursor, limit) => {
     ...confession,
     followedByCurrentUser: false,
     authorDisplayName: resolveAuthorDisplayName(confession, userId),
+    authorProfilePicture: resolveAuthorProfilePicture(confession, userId),
   }));
 
   let nextCursor = null;
