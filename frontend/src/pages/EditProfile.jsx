@@ -3,8 +3,13 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Camera } from "lucide-react";
-import { uploadFiles } from "../lib/uploadthing";
+import { Camera, User } from "lucide-react";
+import {
+  getProfileByUserId,
+  updateProfile,
+  uploadProfileImage,
+  uploadCoverImage,
+} from "../api/profile";
 
 export default function EditProfile() {
   const [name, setName] = useState("");
@@ -14,6 +19,7 @@ export default function EditProfile() {
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingField, setUploadingField] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [uploadDebug, setUploadDebug] = useState(null);
   const navigate = useNavigate();
   const profileInputRef = useRef(null);
   const coverInputRef = useRef(null);
@@ -26,35 +32,17 @@ export default function EditProfile() {
     }
   }, []);
 
-  const fallbackAvatar = useMemo(() => {
-    const stableSeed = String(
-      currentUser?.id || currentUser?.username || "storyhub-user",
-    );
-    return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(stableSeed)}`;
-  }, [currentUser]);
-
   useEffect(() => {
     if (!currentUser?.id) {
       navigate("/profile", { replace: true });
       return;
     }
 
-    const token = localStorage.getItem("token");
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
     let isMounted = true;
 
     const loadProfile = async () => {
       try {
-        const response = await fetch(`/api/profile/${currentUser.id}`, {
-          headers,
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to load profile");
-        }
-
-        const payload = await response.json();
+        const payload = await getProfileByUserId(currentUser.id);
 
         if (!isMounted) {
           return;
@@ -79,36 +67,46 @@ export default function EditProfile() {
     };
   }, [currentUser, navigate]);
 
-  const handleImageUpload = async (endpoint, file, fieldName) => {
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      setErrorMessage("You need to log in again before uploading images.");
-      return;
+  const formatFileSize = (bytes) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+      return "0 B";
     }
 
+    const units = ["B", "KB", "MB", "GB"];
+    const unitIndex = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1,
+    );
+    const size = bytes / 1024 ** unitIndex;
+
+    return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+  };
+
+  const handleImageUpload = async (file, fieldName) => {
     setErrorMessage("");
     setUploadingField(fieldName);
+    setUploadDebug({
+      fieldName,
+      fileName: file?.name || "unknown",
+      fileType: file?.type || "unknown",
+      fileSize: formatFileSize(file?.size || 0),
+      tokenPresent: Boolean(localStorage.getItem("token")),
+      endpoint: "/api/uploadthing",
+    });
 
     try {
-      const [uploadedFile] = await uploadFiles(endpoint, {
-        files: [file],
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const uploadedUrl = uploadedFile?.ufsUrl || "";
-
-      if (!uploadedUrl) {
-        throw new Error("Upload completed without a file URL");
-      }
+      const uploadedUrl =
+        fieldName === "profile"
+          ? await uploadProfileImage(file)
+          : await uploadCoverImage(file);
 
       if (fieldName === "profile") {
         setProfilePicture(uploadedUrl);
       } else {
         setCoverImage(uploadedUrl);
       }
+
+      setUploadDebug(null);
     } catch (error) {
       console.error(`Upload failed for ${fieldName}:`, error);
       setErrorMessage(
@@ -122,39 +120,28 @@ export default function EditProfile() {
   };
 
   const handleSave = async () => {
-    const token = localStorage.getItem("token");
+    setErrorMessage("");
 
-    if (!token) {
-      setErrorMessage("You need to log in again before saving your profile.");
+    if (!profilePicture) {
+      setErrorMessage("Profile picture is required.");
       return;
     }
 
-    setErrorMessage("");
     setIsSaving(true);
 
     try {
-      const response = await fetch("/api/profile", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          displayName: name.trim(),
-          bio,
-          profilePicture,
-          coverImage,
-        }),
+      await updateProfile({
+        displayName: name.trim(),
+        bio,
+        profilePicture,
+        coverImage,
       });
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(payload?.message || "Failed to save profile");
-      }
+      localStorage.removeItem("needsProfileSetup");
 
       navigate("/profile");
     } catch (error) {
-      setErrorMessage(error.message || "Failed to save profile.");
+      setErrorMessage(error?.message || "Failed to save profile.");
     } finally {
       setIsSaving(false);
     }
@@ -164,7 +151,12 @@ export default function EditProfile() {
     navigate("/profile");
   };
 
-  const previewProfileImage = profilePicture || fallbackAvatar;
+  const handleNotNow = () => {
+    localStorage.removeItem("needsProfileSetup");
+    navigate("/");
+  };
+
+  const previewProfileImage = profilePicture || null;
 
   return (
     <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
@@ -217,7 +209,7 @@ export default function EditProfile() {
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) {
-                          handleImageUpload("coverImage", file, "cover");
+                          handleImageUpload(file, "cover");
                         }
                         event.target.value = "";
                       }}
@@ -227,11 +219,17 @@ export default function EditProfile() {
                   {/* Profile Picture */}
                   <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 mb-8">
                     <div className="w-20 h-20 rounded-2xl bg-slate-100 relative group overflow-hidden">
-                      <img
-                        src={previewProfileImage}
-                        className="w-full h-full object-cover"
-                        alt="Profile"
-                      />
+                      {previewProfileImage ? (
+                        <img
+                          src={previewProfileImage}
+                          className="w-full h-full object-cover"
+                          alt="Profile"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-300">
+                          <User className="w-7 h-7" />
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => profileInputRef.current?.click()}
@@ -241,9 +239,11 @@ export default function EditProfile() {
                       </button>
                     </div>
                     <div>
-                      <h4 className="font-bold text-sm">Profile Picture</h4>
+                      <h4 className="font-bold text-sm">
+                        Profile Picture <span className="text-rose-500">*</span>
+                      </h4>
                       <p className="text-xs text-slate-400">
-                        Recommended size: 400x400px
+                        Required. Recommended size: 400x400px
                       </p>
                       <button
                         type="button"
@@ -264,7 +264,7 @@ export default function EditProfile() {
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) {
-                          handleImageUpload("profileImage", file, "profile");
+                          handleImageUpload(file, "profile");
                         }
                         event.target.value = "";
                       }}
@@ -305,12 +305,39 @@ export default function EditProfile() {
                   </div>
 
                   {errorMessage ? (
-                    <p className="text-sm text-red-500">{errorMessage}</p>
+                    <div className="space-y-2">
+                      <p className="text-sm text-red-500">{errorMessage}</p>
+                      {uploadDebug ? (
+                        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-xs text-red-700 space-y-1">
+                          <p className="font-semibold">Upload debug</p>
+                          <p>Field: {uploadDebug.fieldName}</p>
+                          <p>File: {uploadDebug.fileName}</p>
+                          <p>Type: {uploadDebug.fileType}</p>
+                          <p>Size: {uploadDebug.fileSize}</p>
+                          <p>
+                            Token found:{" "}
+                            {uploadDebug.tokenPresent ? "yes" : "no"}
+                          </p>
+                          <p>Endpoint: {uploadDebug.endpoint}</p>
+                          {!uploadDebug.tokenPresent ? (
+                            <p>Log in again, then retry the upload.</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   {/* Buttons */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
                     <button
+                      type="button"
+                      onClick={handleNotNow}
+                      className="flex-1 px-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50"
+                    >
+                      Not yet
+                    </button>
+                    <button
+                      type="button"
                       onClick={handleDiscard}
                       className="flex-1 px-6 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200"
                     >

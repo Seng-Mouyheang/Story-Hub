@@ -1,8 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-
 import {
   Bookmark,
   Share2,
@@ -10,17 +9,54 @@ import {
   Heart,
   Eye,
   ChevronRight,
+  User,
 } from "lucide-react";
+import { followUser, unfollowUser } from "../api/profile";
+import {
+  getExploreRecommendedStories,
+  getExplorePopularStories,
+  getExploreAuthors,
+  getExplorePublishedGenres,
+} from "../api/explore";
 
-/* -------------------- Author Row -------------------- */
-const AuthorRow = ({ name, role }) => (
+const formatCompactNumber = (value) =>
+  new Intl.NumberFormat("en", {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(Number(value) || 0);
+
+const mapStoryCard = (story) => ({
+  id: story?._id || story?.storyId || story?.id || story?.title,
+  title: story?.title || "Untitled story",
+  tags:
+    Array.isArray(story?.genres) && story.genres.length > 0
+      ? story.genres
+      : Array.isArray(story?.tags) && story.tags.length > 0
+        ? story.tags
+        : ["Story"],
+  excerpt:
+    story?.summary || story?.content?.slice(0, 140) || "No summary available.",
+  likes: formatCompactNumber(story?.likesCount),
+  views: formatCompactNumber(story?.views),
+  author: story?.authorDisplayName || story?.author?.displayName || "Unknown",
+});
+
+const AuthorRow = ({
+  name,
+  role,
+  avatar,
+  isFollowing,
+  isBusy,
+  onToggleFollow,
+}) => (
   <div className="flex items-center justify-between gap-3 py-3">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden">
-        <img
-          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
-          alt={name}
-        />
+      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center shrink-0">
+        {avatar ? (
+          <img src={avatar} alt={name} className="w-full h-full object-cover" />
+        ) : (
+          <User className="w-4 h-4 text-slate-400" />
+        )}
       </div>
 
       <div className="min-w-0">
@@ -31,54 +67,202 @@ const AuthorRow = ({ name, role }) => (
       </div>
     </div>
 
-    <button className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
-      Follow
+    <button
+      type="button"
+      onClick={onToggleFollow}
+      disabled={isBusy}
+      className={`text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+        isFollowing
+          ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+          : "bg-rose-500 hover:bg-rose-600 text-white"
+      } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+    >
+      {isFollowing ? "Following" : "Follow"}
     </button>
   </div>
 );
 
 export default function Explore() {
-  const topAuthors = [
-    { name: "Hannah Rose", role: "Top Mystery Writer" },
-    { name: "Emily Foster", role: "Top Lifestyle Author" },
-    { name: "David Chen", role: "Top Tech Writer" },
-    { name: "Lisa Park", role: "Top Romance Author" },
-  ];
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [genreFilters, setGenreFilters] = useState(["All"]);
+  const [recommendedStories, setRecommendedStories] = useState([]);
+  const [popularStories, setPopularStories] = useState([]);
+  const [resolvedAuthors, setResolvedAuthors] = useState([]);
+  const [followStateByUserId, setFollowStateByUserId] = useState({});
+  const [busyFollowIds, setBusyFollowIds] = useState({});
+  const [genresLoading, setGenresLoading] = useState(false);
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [authorsLoading, setAuthorsLoading] = useState(false);
+  const [genresError, setGenresError] = useState("");
+  const [recommendedError, setRecommendedError] = useState("");
+  const [popularError, setPopularError] = useState("");
+  const [authorsError, setAuthorsError] = useState("");
 
-  const recommendedStories = [
-    {
-      title: "The Echoes of Midnight",
-      tags: ["Mystery", "Fantasy"],
-      excerpt:
-        "The hero is a wizard from Charlottetown who has a particular set of skills...",
-      likes: "115K",
-      views: "302K",
-    },
-    {
-      title: "The Lost Kingdom",
-      tags: ["Adventure", "Fantasy"],
-      excerpt: "A magical adventure beyond the imagination...",
-      likes: "98K",
-      views: "250K",
-    },
-  ];
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
 
-  const popularStories = [
-    {
-      title: "The Shadow Hunter",
-      tags: ["Thriller", "Action"],
-      excerpt: "The hero rises from darkness...",
-      likes: "200K",
-      views: "500K",
-    },
-    {
-      title: "Enchanted Forest",
-      tags: ["Fantasy", "Romance"],
-      excerpt: "A tale of love and magic in a mystical forest...",
-      likes: "150K",
-      views: "320K",
-    },
-  ];
+    const loadGenres = async () => {
+      setGenresLoading(true);
+      setGenresError("");
+
+      try {
+        const publishedGenres = await getExplorePublishedGenres({
+          limit: 50,
+          maxPages: 3,
+          signal: abortController.signal,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextGenres = ["All", ...publishedGenres];
+        setGenreFilters(nextGenres);
+
+        if (!nextGenres.includes(activeCategory)) {
+          setActiveCategory("All");
+        }
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) {
+          return;
+        }
+
+        setGenreFilters(["All"]);
+        setGenresError(error?.message || "Failed to load genres.");
+      } finally {
+        if (isMounted) {
+          setGenresLoading(false);
+        }
+      }
+    };
+
+    const loadExploreContent = async () => {
+      setStoriesLoading(true);
+      setAuthorsLoading(true);
+      setRecommendedError("");
+      setPopularError("");
+      setAuthorsError("");
+
+      const [recommendedResult, popularResult, authorsResult] =
+        await Promise.allSettled([
+          getExploreRecommendedStories({
+            category: activeCategory,
+            limit: 4,
+            signal: abortController.signal,
+          }),
+          getExplorePopularStories({
+            limit: 4,
+            signal: abortController.signal,
+          }),
+          getExploreAuthors({
+            category: activeCategory === "All" ? undefined : activeCategory,
+            limit: 10,
+            minLikes: 10,
+            signal: abortController.signal,
+          }),
+        ]);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (recommendedResult.status === "fulfilled") {
+        setRecommendedStories(
+          (recommendedResult.value?.data || []).map(mapStoryCard),
+        );
+      } else {
+        setRecommendedStories([]);
+        setRecommendedError(
+          recommendedResult.reason?.message ||
+            "Failed to load recommended stories.",
+        );
+      }
+
+      if (popularResult.status === "fulfilled") {
+        setPopularStories((popularResult.value?.data || []).map(mapStoryCard));
+      } else {
+        setPopularStories([]);
+        setPopularError(
+          popularResult.reason?.message || "Failed to load popular stories.",
+        );
+      }
+
+      if (authorsResult.status === "fulfilled") {
+        const resolved = (authorsResult.value?.data || []).map((author) => ({
+          userId: author?.authorId || null,
+          avatar: author?.profilePicture || "",
+          displayName: author?.displayName || author?.username || "Unknown",
+          role: `Top ${
+            authorsResult.value?.category ||
+            (activeCategory === "All" ? "Recommended" : activeCategory)
+          } Author`,
+          popularStoriesInCategory: Number(
+            author?.popularStoriesInCategory || 0,
+          ),
+          totalCategoryLikes: Number(author?.totalCategoryLikes || 0),
+        }));
+
+        setResolvedAuthors(resolved);
+        setFollowStateByUserId(
+          Object.fromEntries(resolved.map((author) => [author.userId, false])),
+        );
+      } else {
+        setResolvedAuthors([]);
+        setFollowStateByUserId({});
+        setAuthorsError(
+          authorsResult.reason?.message ||
+            "Failed to load recommended authors.",
+        );
+      }
+
+      setStoriesLoading(false);
+      setAuthorsLoading(false);
+    };
+
+    loadGenres();
+    loadExploreContent();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [activeCategory]);
+
+  const handleToggleFollow = async (author) => {
+    if (!author.userId) {
+      return;
+    }
+
+    setBusyFollowIds((prev) => ({ ...prev, [author.userId]: true }));
+
+    try {
+      const isFollowing = Boolean(followStateByUserId[author.userId]);
+
+      if (isFollowing) {
+        await unfollowUser(author.userId);
+      } else {
+        await followUser(author.userId);
+      }
+
+      setFollowStateByUserId((prev) => ({
+        ...prev,
+        [author.userId]: !isFollowing,
+      }));
+
+      if (!isFollowing) {
+        setResolvedAuthors((prev) =>
+          prev.filter(
+            (currentAuthor) => currentAuthor.userId !== author.userId,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error("Failed to toggle follow state:", error);
+    } finally {
+      setBusyFollowIds((prev) => ({ ...prev, [author.userId]: false }));
+    }
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -89,48 +273,72 @@ export default function Explore() {
 
         <main className="h-[calc(100vh-64px)] overflow-hidden">
           <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
-            {/* LEFT Content */}
             <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {/* Categories */}
               <div className="mb-8 sm:mb-10">
                 <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  <button className="h-10 bg-rose-500 text-white px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    All
-                  </button>
-                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    Most visited
-                  </button>
-                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    Fantasy
-                  </button>
-                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    Drama
-                  </button>
-                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    Romance
-                  </button>
-                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    Thriller
-                  </button>
-                  <button className="h-10 border border-slate-300 text-slate-600 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center">
-                    Action
-                  </button>
+                  {genresLoading ? (
+                    <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-slate-200 text-slate-400">
+                      Loading genres...
+                    </span>
+                  ) : null}
+
+                  {!genresLoading && genresError ? (
+                    <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-rose-200 text-rose-500">
+                      {genresError}
+                    </span>
+                  ) : null}
+
+                  {!genresLoading &&
+                    !genresError &&
+                    genreFilters.map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        onClick={() => setActiveCategory(category)}
+                        className={`h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center ${
+                          activeCategory === category
+                            ? "bg-rose-500 text-white"
+                            : "border border-slate-300 text-slate-600"
+                        }`}
+                      >
+                        {category}
+                      </button>
+                    ))}
                   <button className="hidden sm:inline-flex h-10 items-center text-slate-400 ml-2">
                     <ChevronRight className="w-6 h-6" />
                   </button>
                 </div>
               </div>
 
-              {/* Recommended Section */}
               <div className="mb-12">
                 <h3 className="font-semibold text-lg mb-6 text-slate-900">
                   Recommended for you
                 </h3>
 
+                {storiesLoading ? (
+                  <p className="mb-4 text-sm text-slate-500">
+                    Loading recommended stories...
+                  </p>
+                ) : null}
+
+                {!storiesLoading && recommendedError ? (
+                  <p className="mb-4 text-sm text-rose-500">
+                    {recommendedError}
+                  </p>
+                ) : null}
+
+                {!storiesLoading &&
+                !recommendedError &&
+                recommendedStories.length === 0 ? (
+                  <p className="mb-4 text-sm text-slate-500">
+                    No recommended stories found.
+                  </p>
+                ) : null}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {recommendedStories.map((story, i) => (
                     <div
-                      key={i}
+                      key={story.id || i}
                       className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
@@ -140,30 +348,33 @@ export default function Explore() {
                               key={idx}
                               className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-3 py-1 rounded-md uppercase"
                             >
-                              {tag}
+                              {String(tag)}
                             </span>
                           ))}
                         </div>
 
                         <div className="flex items-center gap-3 text-slate-500 shrink-0">
-                          <button>
+                          <button type="button">
                             <Bookmark className="w-5 h-5" />
                           </button>
-                          <button>
+                          <button type="button">
                             <Share2 className="w-5 h-5" />
                           </button>
                         </div>
                       </div>
 
-                      <h4 className="font-semibold text-lg sm:text-xl mb-3 text-slate-900">
+                      <h4 className="font-semibold text-lg sm:text-xl mb-2 text-slate-900">
                         {story.title}
                       </h4>
+
+                      <p className="text-[11px] font-medium text-slate-400 mb-3">
+                        By {story.author}
+                      </p>
 
                       <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
                         {story.excerpt}
                       </p>
 
-                      {/* Bottom Right Stats */}
                       <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
                         <a
                           href="#"
@@ -186,16 +397,33 @@ export default function Explore() {
                 </div>
               </div>
 
-              {/* Most Popular Section */}
               <div className="mb-12">
                 <h3 className="font-semibold text-lg mb-6 text-slate-900">
                   Most Popular
                 </h3>
 
+                {storiesLoading ? (
+                  <p className="mb-4 text-sm text-slate-500">
+                    Loading popular stories...
+                  </p>
+                ) : null}
+
+                {!storiesLoading && popularError ? (
+                  <p className="mb-4 text-sm text-rose-500">{popularError}</p>
+                ) : null}
+
+                {!storiesLoading &&
+                !popularError &&
+                popularStories.length === 0 ? (
+                  <p className="mb-4 text-sm text-slate-500">
+                    No popular stories found.
+                  </p>
+                ) : null}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   {popularStories.map((story, i) => (
                     <div
-                      key={i}
+                      key={story.id || i}
                       className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
@@ -205,30 +433,33 @@ export default function Explore() {
                               key={idx}
                               className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-3 py-1 rounded-md uppercase"
                             >
-                              {tag}
+                              {String(tag)}
                             </span>
                           ))}
                         </div>
 
                         <div className="flex items-center gap-3 text-slate-500 shrink-0">
-                          <button>
+                          <button type="button">
                             <Bookmark className="w-5 h-5" />
                           </button>
-                          <button>
+                          <button type="button">
                             <Share2 className="w-5 h-5" />
                           </button>
                         </div>
                       </div>
 
-                      <h4 className="font-semibold text-lg sm:text-xl mb-3 text-slate-900">
+                      <h4 className="font-semibold text-lg sm:text-xl mb-2 text-slate-900">
                         {story.title}
                       </h4>
+
+                      <p className="text-[11px] font-medium text-slate-400 mb-3">
+                        By {story.author}
+                      </p>
 
                       <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
                         {story.excerpt}
                       </p>
 
-                      {/* Bottom Right Stats */}
                       <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
                         <a
                           href="#"
@@ -252,7 +483,6 @@ export default function Explore() {
               </div>
             </div>
 
-            {/* Right Sidebar */}
             <aside className="hidden lg:block w-64 shrink-0 h-full">
               <div className="sticky top-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
                 <h2 className="text-lg sm:text-xl font-semibold mb-5 sm:mb-6 text-slate-900">
@@ -260,9 +490,37 @@ export default function Explore() {
                 </h2>
 
                 <div className="space-y-4 mb-8">
-                  {topAuthors.map((author, i) => (
-                    <AuthorRow key={i} {...author} />
-                  ))}
+                  {authorsLoading ? (
+                    <p className="text-xs text-slate-500">Loading authors...</p>
+                  ) : null}
+
+                  {!authorsLoading && authorsError ? (
+                    <p className="text-xs text-rose-500">{authorsError}</p>
+                  ) : null}
+
+                  {!authorsLoading &&
+                  !authorsError &&
+                  resolvedAuthors.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      No author recommendations available.
+                    </p>
+                  ) : null}
+
+                  {!authorsLoading &&
+                    !authorsError &&
+                    resolvedAuthors.map((author) => (
+                      <AuthorRow
+                        key={author.userId || author.displayName}
+                        name={author.displayName}
+                        role={author.role}
+                        avatar={author.avatar}
+                        isFollowing={Boolean(
+                          followStateByUserId[author.userId],
+                        )}
+                        isBusy={Boolean(busyFollowIds[author.userId])}
+                        onToggleFollow={() => handleToggleFollow(author)}
+                      />
+                    ))}
                 </div>
 
                 <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">

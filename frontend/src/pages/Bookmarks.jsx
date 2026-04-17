@@ -2,7 +2,13 @@ import React, { useCallback, useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Heart, MessageCircle, Bookmark, Share2 } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Share2, User } from "lucide-react";
+import {
+  getMyBookmarkedStories,
+  removeStoryBookmark,
+} from "../api/story/storyInteractionsApi";
+import { getProfileByUserId } from "../api/profile";
+import { getStoryById } from "../api/story/storyApi";
 
 const formatCount = (value) => {
   if (value >= 1000000) {
@@ -76,8 +82,16 @@ const PostCard = ({
     {/* Header */}
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-          <img src={avatar} alt="avatar" />
+        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+          {avatar ? (
+            <img
+              src={avatar}
+              alt="avatar"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <User size={20} className="text-slate-400" />
+          )}
         </div>
 
         <div className="min-w-0">
@@ -91,14 +105,6 @@ const PostCard = ({
           </span>
         </div>
       </div>
-
-      <button
-        onClick={() => onUnsave(id)}
-        className="text-rose-500 hover:text-rose-600 transition-colors"
-        aria-label="Remove bookmark"
-      >
-        <Bookmark size={20} fill="currentColor" />
-      </button>
     </div>
 
     {/* Content */}
@@ -123,10 +129,15 @@ const PostCard = ({
       </div>
 
       <div className="flex items-center gap-4">
-        <button className="text-rose-500">
+        <button
+          type="button"
+          onClick={() => onUnsave(id)}
+          className="text-rose-500 hover:text-rose-600 transition-colors"
+          aria-label="Remove bookmark"
+        >
           <Bookmark size={20} fill="currentColor" />
         </button>
-        <button className="text-slate-500 hover:text-slate-900">
+        <button className="text-slate-500 hover:text-slate-900" type="button">
           <Share2 size={20} />
         </button>
       </div>
@@ -136,7 +147,7 @@ const PostCard = ({
 
 /* -------------------- Bookmarks Page -------------------- */
 export default function Bookmarks() {
-  const [bookmarks, setBookmarks] = useState([]);
+  const [stories, setStories] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -145,54 +156,77 @@ export default function Bookmarks() {
     setIsLoading(true);
 
     try {
-      const savedIds = JSON.parse(
+      const abortController = new AbortController();
+      const savedStoryIds = JSON.parse(
         localStorage.getItem("savedStoryIds") || "[]",
       );
 
-      if (!Array.isArray(savedIds) || savedIds.length === 0) {
-        setBookmarks([]);
+      const backendResult = await getMyBookmarkedStories({
+        signal: abortController.signal,
+      });
+
+      const backendStories = Array.isArray(backendResult?.data)
+        ? backendResult.data
+        : [];
+
+      const localStories =
+        backendStories.length > 0 || !Array.isArray(savedStoryIds)
+          ? []
+          : await Promise.allSettled(
+              savedStoryIds.map((storyId) =>
+                getStoryById(storyId, abortController.signal),
+              ),
+            ).then((results) =>
+              results
+                .filter(
+                  (result) => result.status === "fulfilled" && result.value,
+                )
+                .map((result) => result.value),
+            );
+
+      const combinedStories = [...backendStories];
+      localStories.forEach((story) => {
+        const storyId = String(story._id);
+        if (
+          !combinedStories.some((existing) => String(existing._id) === storyId)
+        ) {
+          combinedStories.push(story);
+        }
+      });
+
+      if (combinedStories.length === 0) {
+        setStories([]);
         return;
       }
 
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const responses = await Promise.allSettled(
-        savedIds.map((id) =>
-          fetch(`/api/stories/${id}`, {
-            headers,
-          }),
+      const uniqueAuthorIds = [
+        ...new Set(
+          combinedStories.map((story) => story.authorId).filter(Boolean),
         ),
+      ];
+
+      const profiles = {};
+      const profileResponses = await Promise.allSettled(
+        uniqueAuthorIds.map((authorId) => getProfileByUserId(authorId)),
       );
 
-      const successfulStories = await Promise.all(
-        responses.map(async (result) => {
-          if (result.status !== "fulfilled") {
-            return null;
-          }
+      profileResponses.forEach((response, index) => {
+        if (response.status === "fulfilled" && response.value) {
+          profiles[uniqueAuthorIds[index]] = response.value;
+        }
+      });
 
-          const response = result.value;
-          if (!response.ok) {
-            return null;
-          }
-
-          const story = await response.json();
-          return story;
-        }),
-      );
-
-      const mapped = successfulStories.filter(Boolean).map((story) => {
+      const mapped = combinedStories.map((story) => {
         const authorId = normalizeId(story.authorId);
-        const authorSeed = String(
-          authorId || story.authorDisplayName || story.authorName || "author",
-        );
+        const profile = profiles[authorId];
 
         return {
           id: String(story._id),
           author:
+            profile?.displayName ||
             story.authorDisplayName ||
-            `Author ${authorSeed.slice(-4).toUpperCase()}`,
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorSeed)}`,
+            "Anonymous Author",
+          avatar: profile?.profilePicture || null,
           genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
           time: getRelativeTime(story.publishedAt || story.createdAt),
           title: story.title || "Untitled Story",
@@ -205,9 +239,12 @@ export default function Bookmarks() {
         };
       });
 
-      setBookmarks(mapped);
-    } catch {
-      setErrorMessage("Unable to load bookmarks right now.");
+      setStories(mapped);
+    } catch (error) {
+      if (error.name !== "AbortError") {
+        setErrorMessage("Unable to load bookmarks right now.");
+        console.error(error);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -217,19 +254,17 @@ export default function Bookmarks() {
     loadBookmarks();
   }, [loadBookmarks]);
 
-  const handleUnsave = useCallback((storyId) => {
+  const handleUnsave = useCallback(async (storyId) => {
     try {
-      const savedIds = JSON.parse(
+      await removeStoryBookmark(storyId);
+      const nextSavedIds = JSON.parse(
         localStorage.getItem("savedStoryIds") || "[]",
-      );
-      const nextIds = Array.isArray(savedIds)
-        ? savedIds.filter((id) => String(id) !== String(storyId))
-        : [];
-
-      localStorage.setItem("savedStoryIds", JSON.stringify(nextIds));
-      setBookmarks((prev) => prev.filter((story) => story.id !== storyId));
-    } catch {
-      setErrorMessage("Unable to update bookmarks.");
+      ).filter((id) => String(id) !== String(storyId));
+      localStorage.setItem("savedStoryIds", JSON.stringify(nextSavedIds));
+      setStories((prev) => prev.filter((story) => story.id !== storyId));
+    } catch (error) {
+      setErrorMessage("Failed to remove bookmark.");
+      console.error(error);
     }
   }, []);
 
@@ -274,7 +309,7 @@ export default function Bookmarks() {
                 </div>
               )}
 
-              {!isLoading && !errorMessage && bookmarks.length === 0 && (
+              {!isLoading && !errorMessage && stories.length === 0 && (
                 <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
                   No bookmarked stories yet.
                 </div>
@@ -282,7 +317,7 @@ export default function Bookmarks() {
 
               {!isLoading &&
                 !errorMessage &&
-                bookmarks.map((post) => (
+                stories.map((post) => (
                   <PostCard key={post.id} {...post} onUnsave={handleUnsave} />
                 ))}
             </div>

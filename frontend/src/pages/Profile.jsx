@@ -3,11 +3,113 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Share } from "lucide-react";
+import { Share, User } from "lucide-react";
+import { getProfileByUserId, getUserStats } from "../api/profile";
+import { getMyStories } from "../api/story/storyApi";
+import { getMyBookmarkedStories } from "../api/story/storyInteractionsApi";
+import {
+  getDashboardStories,
+  getDashboardConfessions,
+} from "../api/dashboard/dashboardApi";
+
+const formatCount = (value) => {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  }
+
+  return String(value);
+};
+
+const getRelativeTime = (dateString) => {
+  const sourceDate = new Date(dateString);
+
+  if (Number.isNaN(sourceDate.getTime())) {
+    return "Recently";
+  }
+
+  const diffMs = Date.now() - sourceDate.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60)
+    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
+  }
+
+  const diffYears = Math.floor(diffDays / 365);
+  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
+};
+
+const mapStoryToCard = (story, overrides = {}) => ({
+  id: String(story._id),
+  title: story.title || "Untitled Story",
+  excerpt:
+    story.summary ||
+    story.content?.slice(0, 160) ||
+    "No preview is available for this story.",
+  likes: formatCount(Number(story.likesCount || 0)),
+  saves: formatCount(Number(story.bookmarkCount || 0)),
+  date: getRelativeTime(story.publishedAt || story.createdAt),
+  genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+  sortTs: new Date(story.publishedAt || story.createdAt || 0).getTime() || 0,
+  ...overrides,
+});
+
+const StoryCard = ({ story, actionLabel, actionHref }) => (
+  <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <h3 className="text-xl font-semibold text-slate-900">{story.title}</h3>
+      <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
+        {story.genre}
+      </span>
+    </div>
+    <p className="text-sm text-slate-500 italic mb-6">{story.excerpt}</p>
+    <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6 text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">
+      <div className="flex items-center gap-1">
+        <span>{story.likes} likes</span>
+      </div>
+      <div className="flex items-center gap-1">
+        <span>{story.savesLabel || `${story.saves} Saves`}</span>
+      </div>
+      <div>{story.date}</div>
+    </div>
+    {actionHref && actionLabel ? (
+      <div className="mt-5 flex justify-end">
+        <Link
+          to={actionHref}
+          className="text-xs font-semibold text-rose-500 hover:text-rose-600"
+        >
+          {actionLabel}
+        </Link>
+      </div>
+    ) : null}
+  </div>
+);
 
 export default function Profile() {
   const [activeTab, setActiveTab] = useState("Stories");
   const [profileData, setProfileData] = useState(null);
+  const [profileStats, setProfileStats] = useState(null);
+  const [storyItems, setStoryItems] = useState([]);
+  const [savedItems, setSavedItems] = useState([]);
+  const [activityItems, setActivityItems] = useState([]);
+  const [isLoadingTabs, setIsLoadingTabs] = useState(true);
 
   const currentUser = useMemo(() => {
     try {
@@ -22,24 +124,18 @@ export default function Profile() {
       return;
     }
 
-    const token = localStorage.getItem("token");
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
     let isMounted = true;
 
     const loadProfile = async () => {
       try {
-        const response = await fetch(`/api/profile/${currentUser.id}`, {
-          headers,
-        });
+        const [payload, statsPayload] = await Promise.all([
+          getProfileByUserId(currentUser.id),
+          getUserStats(currentUser.id).catch(() => null),
+        ]);
 
-        if (!response.ok) {
-          return;
-        }
-
-        const payload = await response.json();
         if (isMounted) {
           setProfileData(payload);
+          setProfileStats(statsPayload);
         }
       } catch {
         // Keep fallback profile values from local user data.
@@ -53,17 +149,151 @@ export default function Profile() {
     };
   }, [currentUser?.id]);
 
+  useEffect(() => {
+    if (!currentUser?.id) {
+      return;
+    }
+
+    let isMounted = true;
+    const abortController = new AbortController();
+
+    const loadTabs = async () => {
+      setIsLoadingTabs(true);
+
+      try {
+        const [
+          myStoriesResult,
+          bookmarkedResult,
+          dashboardStoriesResult,
+          dashboardConfessionsResult,
+        ] = await Promise.all([
+          getMyStories({ limit: 20, signal: abortController.signal }).catch(
+            () => ({ data: [] }),
+          ),
+          getMyBookmarkedStories({
+            limit: 20,
+            signal: abortController.signal,
+          }).catch(() => ({ data: [] })),
+          getDashboardStories({
+            limit: 8,
+            page: 1,
+            sortBy: "date",
+            order: "desc",
+            status: "all",
+            visibility: "all",
+            deleted: "active",
+            signal: abortController.signal,
+          }).catch(() => ({ data: [] })),
+          getDashboardConfessions({
+            limit: 8,
+            page: 1,
+            sortBy: "date",
+            order: "desc",
+            signal: abortController.signal,
+          }).catch(() => ({ data: [] })),
+        ]);
+
+        const myStories = Array.isArray(myStoriesResult?.data)
+          ? myStoriesResult.data
+          : [];
+        const bookmarkedStories = Array.isArray(bookmarkedResult?.data)
+          ? bookmarkedResult.data
+          : [];
+        const dashboardStories = Array.isArray(dashboardStoriesResult?.data)
+          ? dashboardStoriesResult.data
+          : [];
+        const dashboardConfessions = Array.isArray(
+          dashboardConfessionsResult?.data,
+        )
+          ? dashboardConfessionsResult.data
+          : [];
+
+        const storyCards = myStories.map((story) =>
+          mapStoryToCard(story, {
+            saves: formatCount(Number(story.bookmarkCount || 0)),
+          }),
+        );
+
+        const savedCards = bookmarkedStories.map((story) =>
+          mapStoryToCard(story, {
+            saves: "1",
+            savesLabel: "Saved",
+          }),
+        );
+
+        const recentActivity = [
+          ...dashboardStories.map((story) => ({
+            id: `story-${story._id}`,
+            title: story.title || "Untitled Story",
+            excerpt:
+              story.status === "draft"
+                ? "Updated a draft story"
+                : "Updated a story",
+            likes: formatCount(Number(story.likesCount || 0)),
+            saves: formatCount(Number(story.bookmarkCount || 0)),
+            date: getRelativeTime(story.updatedAt || story.createdAt),
+            genre: story.status === "draft" ? "Draft" : "Story",
+            sortTs:
+              new Date(story.updatedAt || story.createdAt || 0).getTime() || 0,
+            actionLabel: "Edit story",
+            actionHref: `/write?storyId=${story._id}&returnTo=/profile`,
+          })),
+          ...dashboardConfessions.map((confession) => ({
+            id: `confession-${confession._id}`,
+            title: confession.title || "Untitled Confession",
+            excerpt: "Updated a confession",
+            likes: formatCount(Number(confession.likesCount || 0)),
+            saves: formatCount(Number(confession.bookmarkCount || 0)),
+            date: getRelativeTime(confession.updatedAt || confession.createdAt),
+            genre: "Confession",
+            sortTs:
+              new Date(
+                confession.updatedAt || confession.createdAt || 0,
+              ).getTime() || 0,
+            actionLabel: "View dashboard",
+            actionHref: "/dashboard",
+          })),
+        ]
+          .sort((left, right) => (right.sortTs || 0) - (left.sortTs || 0))
+          .slice(0, 8);
+
+        if (isMounted) {
+          setStoryItems(storyCards);
+          setSavedItems(savedCards);
+          setActivityItems(recentActivity);
+        }
+      } catch {
+        if (isMounted) {
+          setStoryItems([]);
+          setSavedItems([]);
+          setActivityItems([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingTabs(false);
+        }
+      }
+    };
+
+    loadTabs();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [currentUser?.id]);
+
   const userData = useMemo(() => {
     const username = currentUser?.username || "StoryHub User";
     const email = currentUser?.email || "";
-    const stableSeed = String(currentUser?.id || username);
-    const fallbackAvatar = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(stableSeed)}`;
+    const stats = profileStats?.stats || {};
 
     return {
       name: profileData?.displayName || username,
       handle: email ? `@${email.split("@")[0]}` : "@storyhub_user",
       followers: String(profileData?.followers ?? 0),
       following: String(profileData?.following ?? 0),
+      posts: String(stats.totalPosts ?? profileData?.posts ?? 0),
       bio:
         profileData?.bio ||
         "Welcome to your StoryHub profile. Start writing and sharing your stories.",
@@ -71,31 +301,26 @@ export default function Profile() {
         Array.isArray(profileData?.interest) && profileData.interest.length > 0
           ? profileData.interest
           : ["General"],
-      avatar: profileData?.profilePicture || fallbackAvatar,
+      avatar: profileData?.profilePicture || "",
       coverImage: profileData?.coverImage || "",
     };
-  }, [currentUser, profileData]);
+  }, [currentUser, profileData, profileStats]);
 
   const tabs = ["Stories", "Saved", "Activity"];
 
-  const stories = [
-    {
-      id: 1,
-      title: "Fragment Memories #1",
-      excerpt: "Continuing the saga from where the last moon fell...",
-      likes: "1.2K",
-      saves: "100",
-      date: "OCT 24, 2023",
-    },
-    {
-      id: 2,
-      title: "Fragment Memories #2",
-      excerpt: "Continuing the saga from where the last moon fell...",
-      likes: "1.2K",
-      saves: "100",
-      date: "OCT 24, 2023",
-    },
-  ];
+  const tabContent =
+    activeTab === "Stories"
+      ? storyItems
+      : activeTab === "Saved"
+        ? savedItems
+        : activityItems;
+
+  const emptyMessage =
+    activeTab === "Stories"
+      ? "You have not published any stories yet."
+      : activeTab === "Saved"
+        ? "You have not saved any stories yet."
+        : "No recent activity found yet.";
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -124,11 +349,17 @@ export default function Profile() {
                   {/* Avatar */}
                   <div className="relative -mt-12 sm:-mt-16 mb-4">
                     <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white overflow-hidden bg-white shadow-xl">
-                      <img
-                        src={userData.avatar}
-                        className="w-full h-full object-cover"
-                        alt="Profile"
-                      />
+                      {userData.avatar ? (
+                        <img
+                          src={userData.avatar}
+                          className="w-full h-full object-cover"
+                          alt="Profile"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-300">
+                          <User className="w-10 h-10 sm:w-12 sm:h-12" />
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -160,7 +391,7 @@ export default function Profile() {
                   <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">
                     <div>
                       <span className="font-semibold text-slate-900">
-                        {stories.length}
+                        {userData.posts}
                       </span>{" "}
                       <span className="text-slate-400 text-sm">Posts</span>
                     </div>
@@ -232,30 +463,24 @@ export default function Profile() {
 
                   {/* Tab Content */}
                   <div className="space-y-4">
-                    {stories.map((story) => (
-                      <div
-                        key={story.id}
-                        className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                      >
-                        <div className="mb-2">
-                          <h3 className="text-xl font-semibold text-slate-900">
-                            {story.title}
-                          </h3>
-                        </div>
-                        <p className="text-sm text-slate-500 italic mb-6">
-                          {story.excerpt}
-                        </p>
-                        <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6 text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">
-                          <div className="flex items-center gap-1">
-                            <span>{story.likes} likes</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <span>{story.saves} Saves</span>
-                          </div>
-                          <div>{story.date}</div>
-                        </div>
+                    {isLoadingTabs ? (
+                      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm text-sm text-slate-500">
+                        Loading {activeTab.toLowerCase()}...
                       </div>
-                    ))}
+                    ) : tabContent.length > 0 ? (
+                      tabContent.map((story) => (
+                        <StoryCard
+                          key={story.id}
+                          story={story}
+                          actionLabel={story.actionLabel}
+                          actionHref={story.actionHref}
+                        />
+                      ))
+                    ) : (
+                      <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm text-sm text-slate-500">
+                        {emptyMessage}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

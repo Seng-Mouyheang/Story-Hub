@@ -3,6 +3,19 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
+import { getProfileByUserId } from "../api/profile";
+import { getStories, deleteStory } from "../api/story/storyApi";
+import {
+  getStoryComments,
+  addStoryComment,
+  updateStoryComment,
+  deleteStoryComment,
+} from "../api/story/storyCommentsApi";
+import {
+  toggleStoryLike,
+  toggleStoryBookmark,
+  removeStoryBookmark,
+} from "../api/story/storyInteractionsApi";
 import {
   Heart,
   MessageCircle,
@@ -146,12 +159,17 @@ const PostCard = ({
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-          <img
-            src={
-              avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${author}`
-            }
-            alt="avatar"
-          />
+          {avatar ? (
+            <img
+              src={avatar}
+              alt="avatar"
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+              <User size={20} />
+            </div>
+          )}
         </div>
 
         <div className="min-w-0">
@@ -271,11 +289,7 @@ const PostCard = ({
       <div className="flex items-center gap-4 sm:ml-auto">
         <button
           onClick={() => onToggleSave(id)}
-          className={`transition-colors duration-200 ${
-            savedByCurrentUser
-              ? "text-slate-900"
-              : "text-slate-500 hover:text-slate-900"
-          }`}
+          className="text-rose-500 hover:text-rose-600 transition-colors duration-200"
           aria-label="Save story"
         >
           <Bookmark
@@ -409,25 +423,34 @@ export default function Home() {
       }
 
       try {
-        const token = localStorage.getItem("token");
-        const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-        const cursorParam = paginationCursor
-          ? `&cursor=${paginationCursor}`
-          : "";
-        const response = await fetch(`/api/stories?limit=10${cursorParam}`, {
+        const payload = await getStories({
+          limit: 10,
+          cursor: paginationCursor,
           signal,
-          headers,
         });
-
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`);
-        }
-
-        const payload = await response.json();
         const rawStories = Array.isArray(payload?.data) ? payload.data : [];
         const nextCursor = payload?.nextCursor || null;
         const hasMoreStories = payload?.hasMore || false;
+        const uniqueAuthorIds = [
+          ...new Set(
+            rawStories
+              .map((story) => normalizeId(story.authorId))
+              .filter(Boolean),
+          ),
+        ];
+
+        const authorProfiles = await Promise.all(
+          uniqueAuthorIds.map(async (authorId) => {
+            try {
+              const profile = await getProfileByUserId(authorId);
+              return [authorId, profile?.profilePicture || ""];
+            } catch {
+              return [authorId, ""];
+            }
+          }),
+        );
+
+        const authorAvatarMap = new Map(authorProfiles);
 
         const mappedStories = rawStories.map((story) => {
           const authorId = normalizeId(story.authorId);
@@ -455,7 +478,7 @@ export default function Home() {
             commentCount: Number(story.commentCount || 0),
             canManage: Boolean(currentUserId) && authorId === currentUserId,
             likedByCurrentUser: Boolean(story.likedByCurrentUser),
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${authorSeed}`,
+            avatar: authorAvatarMap.get(authorId) || "",
           };
         });
 
@@ -530,20 +553,7 @@ export default function Home() {
     }));
 
     try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await fetch(
-        `/api/stories/${storyId}/comments?limit=10`,
-        {
-          headers,
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
+      const payload = await getStoryComments(storyId, { limit: 10 });
       const comments = Array.isArray(payload?.comments) ? payload.comments : [];
 
       setCommentsByStory((prev) => ({
@@ -583,18 +593,7 @@ export default function Home() {
     }, 220);
 
     try {
-      const response = await fetch(`/api/stories/${storyId}/toggle-like`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const payload = await response.json();
+      const payload = await toggleStoryLike(storyId);
       setPosts((prev) =>
         prev.map((post) =>
           post.id === storyId
@@ -689,6 +688,18 @@ export default function Home() {
     }));
   }, []);
 
+  const showCommentActionFeedback = useCallback((commentId, message) => {
+    setCommentActionFeedback((prev) => ({ ...prev, [commentId]: message }));
+
+    setTimeout(() => {
+      setCommentActionFeedback((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
+    }, 1800);
+  }, []);
+
   const handleSubmitComment = useCallback(
     async (storyId) => {
       const token = localStorage.getItem("token");
@@ -712,25 +723,9 @@ export default function Home() {
       }));
 
       try {
-        const endpoint = editingCommentId
-          ? `/api/stories/comments/${editingCommentId}`
-          : `/api/stories/${storyId}/comments`;
-        const method = editingCommentId ? "PUT" : "POST";
-
-        const response = await fetch(endpoint, {
-          method,
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ content }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`);
-        }
-
         if (editingCommentId) {
+          await updateStoryComment(editingCommentId, { content });
+
           setCommentsByStory((prev) => ({
             ...prev,
             [storyId]: {
@@ -749,7 +744,7 @@ export default function Home() {
 
           showCommentActionFeedback(editingCommentId, "Comment updated");
         } else {
-          const payload = await response.json();
+          const payload = await addStoryComment(storyId, { content });
           const newComment = {
             _id: payload.commentId || `${Date.now()}`,
             userId: currentUserId,
@@ -798,20 +793,43 @@ export default function Home() {
         }));
       }
     },
-    [commentsByStory, currentUserId, currentUsername],
+    [
+      commentsByStory,
+      currentUserId,
+      currentUsername,
+      showCommentActionFeedback,
+    ],
   );
 
-  const handleToggleSave = useCallback((storyId) => {
-    setSavedStoryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(storyId)) {
-        next.delete(storyId);
-      } else {
-        next.add(storyId);
+  const handleToggleSave = useCallback(
+    async (storyId) => {
+      try {
+        const isAlreadySaved = savedStoryIds.has(storyId);
+
+        if (isAlreadySaved) {
+          await removeStoryBookmark(storyId);
+        } else {
+          await toggleStoryBookmark(storyId);
+        }
+
+        setSavedStoryIds((prev) => {
+          const next = new Set(prev);
+
+          if (next.has(storyId)) {
+            next.delete(storyId);
+          } else {
+            next.add(storyId);
+          }
+
+          localStorage.setItem("savedStoryIds", JSON.stringify([...next]));
+          return next;
+        });
+      } catch (error) {
+        console.error("Failed to toggle bookmark:", error);
       }
-      return next;
-    });
-  }, []);
+    },
+    [savedStoryIds],
+  );
 
   const handleToggleMenu = useCallback((storyId) => {
     setMenuStoryId((currentId) => (currentId === storyId ? null : storyId));
@@ -862,18 +880,7 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(`/api/stories/${storyId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to delete story.");
-      }
+      await deleteStory(storyId);
 
       setPosts((prev) => prev.filter((post) => post.id !== storyId));
       if (activeCommentStoryId === storyId) {
@@ -931,18 +938,6 @@ export default function Home() {
     setMenuCommentId((currentId) =>
       currentId === commentId ? null : commentId,
     );
-  }, []);
-
-  const showCommentActionFeedback = useCallback((commentId, message) => {
-    setCommentActionFeedback((prev) => ({ ...prev, [commentId]: message }));
-
-    setTimeout(() => {
-      setCommentActionFeedback((prev) => {
-        const next = { ...prev };
-        delete next[commentId];
-        return next;
-      });
-    }, 1800);
   }, []);
 
   const handleReportComment = useCallback(
@@ -1005,18 +1000,7 @@ export default function Home() {
     }
 
     try {
-      const response = await fetch(`/api/stories/comments/${commentId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to delete comment.");
-      }
+      await deleteStoryComment(commentId);
 
       setCommentsByStory((prev) => ({
         ...prev,
