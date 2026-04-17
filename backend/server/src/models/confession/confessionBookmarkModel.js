@@ -30,6 +30,24 @@ const resolveAuthorDisplayName = (confession, currentUserId = null) => {
   return "Anonymous";
 };
 
+const resolveAuthorProfilePicture = (confession, currentUserId = null) => {
+  const profilePicture = confession.authorProfilePicture || "";
+
+  if (!confession.isAnonymous) {
+    return profilePicture;
+  }
+
+  if (
+    currentUserId &&
+    confession.authorId &&
+    confession.authorId.toString() === currentUserId.toString()
+  ) {
+    return profilePicture;
+  }
+
+  return "";
+};
+
 const toggleConfessionBookmark = async (userId, confessionId) => {
   const db = await connectToDatabase();
   const client = getClient();
@@ -241,7 +259,7 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
               },
             },
             {
-              $project: { displayName: 1 },
+              $project: { displayName: 1, profilePicture: 1 },
             },
           ],
           as: "author",
@@ -265,6 +283,7 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
           createdAt: "$confession.createdAt",
           updatedAt: "$confession.updatedAt",
           authorDisplayName: "$author.displayName",
+          authorProfilePicture: "$author.profilePicture",
           savedByCurrentUser: { $literal: true },
           bookmarkId: "$_id",
           bookmarkCreatedAt: "$createdAt",
@@ -326,6 +345,7 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
       confession.authorId.toString(),
     ),
     authorDisplayName: resolveAuthorDisplayName(confession, userId),
+    authorProfilePicture: resolveAuthorProfilePicture(confession, userId),
   }));
 
   let nextCursor = null;
