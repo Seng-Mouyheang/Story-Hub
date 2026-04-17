@@ -4,6 +4,10 @@ export const parseResponse = async (response) =>
   response.json().catch(() => ({}));
 
 export const formatCount = (value) => {
+  if (value == null || Number.isNaN(Number(value))) {
+    return "0";
+  }
+
   if (value >= 1000000) {
     return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
   }
@@ -43,7 +47,7 @@ const RELATIVE_TIME_STEPS = [
     },
   },
   {
-    limitMinutes: 12 * 30 * 24 * 60,
+    limitMinutes: 365 * 24 * 60,
     toLabel: (minutes) => {
       const months = Math.floor(minutes / (30 * 24 * 60));
       return `${months} month${months > 1 ? "s" : ""} ago`;
@@ -100,7 +104,7 @@ export const extractTagsFromContent = (content) => {
 };
 
 export const stripTagsFromContent = (content) =>
-  content
+  (content || "")
     .replaceAll(/#\w+/g, "")
     .replaceAll(/[ \t]{2,}/g, " ")
     .replaceAll(/\n{3,}/g, "\n\n")
