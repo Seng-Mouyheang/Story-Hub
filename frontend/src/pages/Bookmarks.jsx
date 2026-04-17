@@ -2,7 +2,16 @@ import React, { useCallback, useEffect, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Heart, MessageCircle, Bookmark, Share2 } from "lucide-react";
+import {
+  Heart,
+  MessageCircle,
+  Bookmark,
+  Share2,
+  Sparkles,
+  BookOpenText,
+  MessageSquareQuote,
+} from "lucide-react";
+import ConfessionFeedCard from "./confession/ConfessionFeedCard";
 
 const formatCount = (value) => {
   if (value >= 1000000) {
@@ -136,102 +145,301 @@ const PostCard = ({
 
 /* -------------------- Bookmarks Page -------------------- */
 export default function Bookmarks() {
-  const [bookmarks, setBookmarks] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
+  const [activeType, setActiveType] = useState("stories");
+  const [storyBookmarks, setStoryBookmarks] = useState([]);
+  const [confessionBookmarks, setConfessionBookmarks] = useState([]);
+  const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
+  const [pressedLikeId, setPressedLikeId] = useState(null);
+  const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
+  const [loadingState, setLoadingState] = useState({
+    stories: true,
+    confessions: true,
+  });
+  const [errorState, setErrorState] = useState({
+    stories: "",
+    confessions: "",
+  });
 
-  const loadBookmarks = useCallback(async () => {
-    setErrorMessage("");
-    setIsLoading(true);
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem("token");
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, []);
+
+  const getBookmarkData = (payload) => {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+
+    if (Array.isArray(payload?.data)) {
+      return payload.data;
+    }
+
+    return [];
+  };
+
+  const mapStoryBookmarks = useCallback((stories) => {
+    return stories.map((story) => {
+      const authorId = normalizeId(story.authorId);
+      const authorSeed = String(
+        authorId || story.authorDisplayName || story.authorName || "author",
+      );
+
+      return {
+        id: String(story._id),
+        author:
+          story.authorDisplayName ||
+          `Author ${authorSeed.slice(-4).toUpperCase()}`,
+        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorSeed)}`,
+        genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+        time: getRelativeTime(story.publishedAt || story.createdAt),
+        title: story.title || "Untitled Story",
+        excerpt:
+          story.summary ||
+          story.content?.slice(0, 180) ||
+          "No preview is available for this story.",
+        likes: formatCount(Number(story.likesCount || 0)),
+        comments: formatCount(Number(story.commentCount || 0)),
+      };
+    });
+  }, []);
+
+  const mapConfessionBookmarks = useCallback((confessions) => {
+    return confessions.map((confession) => {
+      return {
+        id: String(confession._id),
+        _id: String(confession._id),
+        authorId: confession.authorId,
+        authorDisplayName: confession.authorDisplayName || "Anonymous",
+        authorProfilePicture: confession.authorProfilePicture || "",
+        isAnonymous: Boolean(confession.isAnonymous),
+        tags: Array.isArray(confession.tags) ? confession.tags : [],
+        content: confession.content || "",
+        createdAt: confession.createdAt,
+        isEdited: Boolean(confession.updatedAt),
+        likedByCurrentUser: Boolean(confession.likedByCurrentUser),
+        savedByCurrentUser: true,
+        likesCount: Number(confession.likesCount || 0),
+        commentCount: Number(confession.commentCount || 0),
+      };
+    });
+  }, []);
+
+  const loadStoryBookmarks = useCallback(async () => {
+    setErrorState((prev) => ({ ...prev, stories: "" }));
+    setLoadingState((prev) => ({ ...prev, stories: true }));
 
     try {
-      const savedIds = JSON.parse(
-        localStorage.getItem("savedStoryIds") || "[]",
-      );
-
-      if (!Array.isArray(savedIds) || savedIds.length === 0) {
-        setBookmarks([]);
-        return;
-      }
-
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-      const responses = await Promise.allSettled(
-        savedIds.map((id) =>
-          fetch(`/api/stories/${id}`, {
-            headers,
-          }),
-        ),
-      );
-
-      const successfulStories = await Promise.all(
-        responses.map(async (result) => {
-          if (result.status !== "fulfilled") {
-            return null;
-          }
-
-          const response = result.value;
-          if (!response.ok) {
-            return null;
-          }
-
-          const story = await response.json();
-          return story;
-        }),
-      );
-
-      const mapped = successfulStories.filter(Boolean).map((story) => {
-        const authorId = normalizeId(story.authorId);
-        const authorSeed = String(
-          authorId || story.authorDisplayName || story.authorName || "author",
-        );
-
-        return {
-          id: String(story._id),
-          author:
-            story.authorDisplayName ||
-            `Author ${authorSeed.slice(-4).toUpperCase()}`,
-          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(authorSeed)}`,
-          genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
-          time: getRelativeTime(story.publishedAt || story.createdAt),
-          title: story.title || "Untitled Story",
-          excerpt:
-            story.summary ||
-            story.content?.slice(0, 180) ||
-            "No preview is available for this story.",
-          likes: formatCount(Number(story.likesCount || 0)),
-          comments: formatCount(Number(story.commentCount || 0)),
-        };
+      const response = await fetch("/api/stories/bookmarks/me?limit=50", {
+        headers: getAuthHeaders(),
       });
 
-      setBookmarks(mapped);
+      if (!response.ok) {
+        throw new Error("Failed to load stories");
+      }
+
+      const payload = await response.json();
+      const stories = getBookmarkData(payload);
+      setStoryBookmarks(mapStoryBookmarks(stories));
     } catch {
-      setErrorMessage("Unable to load bookmarks right now.");
+      setErrorState((prev) => ({
+        ...prev,
+        stories: "Unable to load story bookmarks right now.",
+      }));
+      setStoryBookmarks([]);
     } finally {
-      setIsLoading(false);
+      setLoadingState((prev) => ({ ...prev, stories: false }));
     }
-  }, []);
+  }, [getAuthHeaders, mapStoryBookmarks]);
+
+  const loadConfessionBookmarks = useCallback(async () => {
+    setErrorState((prev) => ({ ...prev, confessions: "" }));
+    setLoadingState((prev) => ({ ...prev, confessions: true }));
+
+    try {
+      const response = await fetch("/api/confessions/bookmarks/me?limit=50", {
+        headers: getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to load confessions");
+      }
+
+      const payload = await response.json();
+      const confessions = getBookmarkData(payload);
+      setConfessionBookmarks(mapConfessionBookmarks(confessions));
+    } catch {
+      setErrorState((prev) => ({
+        ...prev,
+        confessions: "Unable to load confession bookmarks right now.",
+      }));
+      setConfessionBookmarks([]);
+    } finally {
+      setLoadingState((prev) => ({ ...prev, confessions: false }));
+    }
+  }, [getAuthHeaders, mapConfessionBookmarks]);
+
+  const loadBookmarks = useCallback(async () => {
+    await Promise.all([loadStoryBookmarks(), loadConfessionBookmarks()]);
+  }, [loadStoryBookmarks, loadConfessionBookmarks]);
 
   useEffect(() => {
     loadBookmarks();
   }, [loadBookmarks]);
 
-  const handleUnsave = useCallback((storyId) => {
-    try {
-      const savedIds = JSON.parse(
-        localStorage.getItem("savedStoryIds") || "[]",
-      );
-      const nextIds = Array.isArray(savedIds)
-        ? savedIds.filter((id) => String(id) !== String(storyId))
-        : [];
+  const handleUnsave = useCallback(
+    async (itemId) => {
+      const itemIdText = String(itemId);
 
-      localStorage.setItem("savedStoryIds", JSON.stringify(nextIds));
-      setBookmarks((prev) => prev.filter((story) => story.id !== storyId));
-    } catch {
-      setErrorMessage("Unable to update bookmarks.");
-    }
+      const previousStoryBookmarks = storyBookmarks;
+      const previousConfessionBookmarks = confessionBookmarks;
+
+      if (activeType === "stories") {
+        setStoryBookmarks((prev) =>
+          prev.filter((story) => String(story.id) !== itemIdText),
+        );
+      } else {
+        setConfessionBookmarks((prev) =>
+          prev.filter((confession) => {
+            const confessionId = String(confession.id || confession._id || "");
+            return confessionId !== itemIdText;
+          }),
+        );
+      }
+
+      try {
+        const endpoint =
+          activeType === "stories"
+            ? `/api/stories/${itemId}/bookmark`
+            : `/api/confessions/${itemId}/bookmark`;
+
+        const response = await fetch(endpoint, {
+          method: "DELETE",
+          headers: getAuthHeaders(),
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to remove bookmark");
+        }
+      } catch {
+        if (activeType === "stories") {
+          setStoryBookmarks(previousStoryBookmarks);
+        } else {
+          setConfessionBookmarks(previousConfessionBookmarks);
+        }
+
+        setErrorState((prev) => ({
+          ...prev,
+          [activeType]: "Unable to update bookmarks.",
+        }));
+      }
+    },
+    [activeType, confessionBookmarks, getAuthHeaders, storyBookmarks],
+  );
+
+  const handleToggleExpandedConfession = useCallback((confessionId) => {
+    setExpandedConfessionIds((prev) => ({
+      ...prev,
+      [confessionId]: !prev[confessionId],
+    }));
   }, []);
+
+  const handleOpenConfessionComments = useCallback((confessionId) => {
+    globalThis.location.href = `/confession#confession-${confessionId}`;
+  }, []);
+
+  const handleToggleConfessionLike = useCallback(
+    async (confessionId) => {
+      setPressedLikeId(confessionId);
+      setTimeout(() => {
+        setPressedLikeId((current) =>
+          current === confessionId ? null : current,
+        );
+      }, 170);
+
+      const previousConfessions = confessionBookmarks;
+
+      setConfessionBookmarks((prev) =>
+        prev.map((item) => {
+          if (String(item._id) !== String(confessionId)) {
+            return item;
+          }
+
+          const likedByCurrentUser = !item.likedByCurrentUser;
+          const likesCount = Math.max(
+            0,
+            Number(item.likesCount || 0) + (likedByCurrentUser ? 1 : -1),
+          );
+
+          return {
+            ...item,
+            likedByCurrentUser,
+            likesCount,
+          };
+        }),
+      );
+
+      try {
+        const response = await fetch(
+          `/api/confessions/${confessionId}/toggle-like`,
+          {
+            method: "POST",
+            headers: getAuthHeaders(),
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to toggle confession like");
+        }
+
+        const payload = await response.json();
+
+        setConfessionBookmarks((prev) =>
+          prev.map((item) => {
+            if (String(item._id) !== String(confessionId)) {
+              return item;
+            }
+
+            return {
+              ...item,
+              likedByCurrentUser: Boolean(payload.likedByCurrentUser),
+              likesCount: Number(payload.likesCount || item.likesCount || 0),
+            };
+          }),
+        );
+      } catch {
+        setConfessionBookmarks(previousConfessions);
+      }
+    },
+    [confessionBookmarks, getAuthHeaders],
+  );
+
+  const handleToggleConfessionBookmark = useCallback(
+    async (confessionId) => {
+      setPressedBookmarkId(confessionId);
+      setTimeout(() => {
+        setPressedBookmarkId((current) =>
+          current === confessionId ? null : current,
+        );
+      }, 170);
+
+      await handleUnsave(confessionId);
+    },
+    [handleUnsave],
+  );
+
+  const activeBookmarks =
+    activeType === "stories" ? storyBookmarks : confessionBookmarks;
+  const isLoading = loadingState[activeType];
+  const errorMessage = errorState[activeType];
+
+  const handleRetry = useCallback(() => {
+    if (activeType === "stories") {
+      loadStoryBookmarks();
+      return;
+    }
+
+    loadConfessionBookmarks();
+  }, [activeType, loadStoryBookmarks, loadConfessionBookmarks]);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -245,46 +453,151 @@ export default function Bookmarks() {
 
         {/* Page Content */}
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="max-w-6xl mx-auto">
+          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 flex flex-col [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div className="max-w-6xl w-full mx-auto flex-1 flex flex-col">
               <div className="mb-6 sm:mb-8">
                 <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-                  Saved Stories
+                  {activeType === "stories"
+                    ? "Saved Stories"
+                    : "Saved Confessions"}
                 </h1>
                 <p className="mt-1 text-sm text-slate-500">
-                  Your bookmarked reads in one focused view.
+                  {activeType === "stories"
+                    ? "Your bookmarked reads in one focused view."
+                    : "Your bookmarked confessions in one focused view."}
                 </p>
               </div>
 
-              {isLoading && (
-                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                  Loading bookmarks...
-                </div>
-              )}
+              <div className="mb-6 flex w-full gap-3 rounded-full bg-linear-to-r from-indigo-50 to-pink-50 p-1 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setActiveType("stories")}
+                  className={`w-full rounded-full py-2.5 text-sm font-medium transition-all duration-200 ${
+                    activeType === "stories"
+                      ? "bg-white text-indigo-700 shadow-md shadow-indigo-200/50"
+                      : "text-gray-500 hover:bg-white/60 hover:text-indigo-500"
+                  }`}
+                >
+                  📖 Stories ({storyBookmarks.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveType("confessions")}
+                  className={`w-full rounded-full py-2.5 text-sm font-medium transition-all duration-200 ${
+                    activeType === "confessions"
+                      ? "bg-white text-rose-700 shadow-md shadow-rose-200/50"
+                      : "text-gray-500 hover:bg-white/60 hover:text-rose-500"
+                  }`}
+                >
+                  💬 Confessions ({confessionBookmarks.length})
+                </button>
+              </div>
 
-              {!isLoading && errorMessage && (
-                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm">
-                  <p className="text-sm text-rose-600 mb-3">{errorMessage}</p>
-                  <button
-                    className="text-xs font-semibold text-rose-600 hover:underline"
-                    onClick={loadBookmarks}
-                  >
-                    Retry
-                  </button>
-                </div>
-              )}
+              <div className="flex-1 flex flex-col">
+                {isLoading && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
+                    Loading {activeType} bookmarks...
+                  </div>
+                )}
 
-              {!isLoading && !errorMessage && bookmarks.length === 0 && (
-                <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                  No bookmarked stories yet.
-                </div>
-              )}
+                {!isLoading && errorMessage && (
+                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm">
+                    <p className="text-sm text-rose-600 mb-3">{errorMessage}</p>
+                    <button
+                      className="text-xs font-semibold text-rose-600 hover:underline"
+                      onClick={handleRetry}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )}
 
-              {!isLoading &&
-                !errorMessage &&
-                bookmarks.map((post) => (
-                  <PostCard key={post.id} {...post} onUnsave={handleUnsave} />
-                ))}
+                {!isLoading &&
+                  !errorMessage &&
+                  activeBookmarks.length === 0 && (
+                    <div className="relative flex-1 min-h-70 overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200 bg-white shadow-sm">
+                      <div className="pointer-events-none absolute -top-20 -right-16 h-56 w-56 rounded-full bg-rose-100/80 blur-2xl" />
+                      <div className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-sky-100/80 blur-2xl" />
+
+                      <div className="relative h-full flex items-center justify-center px-6 py-10 sm:px-10">
+                        <div className="w-full max-w-xl text-center flex flex-col items-center">
+                          <div className="mb-4 inline-flex items-center justify-center">
+                            {activeType === "stories" ? (
+                              <BookOpenText
+                                size={56}
+                                className="text-rose-500"
+                              />
+                            ) : (
+                              <MessageSquareQuote
+                                size={56}
+                                className="text-rose-500"
+                              />
+                            )}
+                          </div>
+
+                          <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                            <Sparkles size={12} className="text-amber-500" />
+                            Your Collection Is Waiting
+                          </p>
+
+                          <h3 className="text-lg sm:text-xl font-semibold text-slate-900">
+                            {activeType === "stories"
+                              ? "No bookmarked stories yet"
+                              : "No bookmarked confessions yet"}
+                          </h3>
+
+                          <p className="mt-2 text-sm text-slate-500 leading-relaxed">
+                            {activeType === "stories"
+                              ? "Every story that catches your eye deserves a place to wait for you. We’ll save it right here! Neatly, waiting, and ready for your return."
+                              : "Some secrets ask to be kept. This is where they wait."}
+                          </p>
+
+                          <div className="mt-5">
+                            <a
+                              href={
+                                activeType === "stories"
+                                  ? "/home"
+                                  : "/confession"
+                              }
+                              className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+                            >
+                              {activeType === "stories"
+                                ? "Explore Stories"
+                                : "Explore Confessions"}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                {!isLoading &&
+                  !errorMessage &&
+                  (activeType === "stories"
+                    ? activeBookmarks.map((post) => (
+                        <PostCard
+                          key={post.id}
+                          {...post}
+                          onUnsave={handleUnsave}
+                        />
+                      ))
+                    : activeBookmarks.map((item, index) => (
+                        <ConfessionFeedCard
+                          key={String(item._id)}
+                          item={item}
+                          index={index}
+                          expandedConfessionIds={expandedConfessionIds}
+                          pressedLikeId={pressedLikeId}
+                          pressedBookmarkId={pressedBookmarkId}
+                          onToggleExpandedConfession={
+                            handleToggleExpandedConfession
+                          }
+                          onToggleLike={handleToggleConfessionLike}
+                          onOpenCommentModal={handleOpenConfessionComments}
+                          onToggleBookmark={handleToggleConfessionBookmark}
+                        />
+                      )))}
+              </div>
             </div>
             <SiteFooter />
           </div>
