@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -225,6 +225,7 @@ export default function Bookmarks() {
   const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
+  const timeoutRefs = useRef({});
   const [loadingState, setLoadingState] = useState({
     stories: true,
     confessions: true,
@@ -373,6 +374,15 @@ export default function Bookmarks() {
   useEffect(() => {
     loadBookmarks();
   }, [loadBookmarks]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(timeoutRefs.current).forEach((timeoutId) => {
+        clearTimeout(timeoutId);
+      });
+      timeoutRefs.current = {};
+    };
+  }, []);
 
   const handleUnsave = useCallback(
     async (itemId) => {
@@ -778,10 +788,17 @@ export default function Bookmarks() {
   const handleToggleConfessionLike = useCallback(
     async (confessionId) => {
       setPressedLikeId(confessionId);
-      setTimeout(() => {
+
+      const timeoutKey = String(confessionId);
+      if (timeoutRefs.current[timeoutKey]) {
+        clearTimeout(timeoutRefs.current[timeoutKey]);
+      }
+
+      timeoutRefs.current[timeoutKey] = setTimeout(() => {
         setPressedLikeId((current) =>
           current === confessionId ? null : current,
         );
+        delete timeoutRefs.current[timeoutKey];
       }, 170);
 
       const previousConfession = confessionBookmarks.find(
@@ -1098,7 +1115,7 @@ export default function Bookmarks() {
             </div>
 
             {activeType === "stories" && activeStoryCommentId && (
-              <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4">
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <button
                   type="button"
                   aria-label="Close comments"
