@@ -106,10 +106,8 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
             : mergeCommentsById(prev, comments),
         );
 
-        if (!preservePagination) {
-          setModalCommentsNextCursor(nextCursor);
-          setModalCommentsHasMore(hasMore);
-        }
+        setModalCommentsNextCursor(nextCursor);
+        setModalCommentsHasMore(hasMore);
       } catch (error) {
         setModalCommentsError(error.message || "Failed to load comments.");
       } finally {
@@ -168,7 +166,7 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   };
 
   const handleAddComment = async () => {
-    if (!activeCommentConfessionId) {
+    if (!activeCommentConfessionId || isSubmittingComment) {
       return;
     }
 
@@ -238,6 +236,9 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   };
 
   const handleSaveEditedComment = async () => {
+    if (isSavingEditedComment) {
+      return;
+    }
     const targetCommentId = editingCommentId;
     const cleanedContent = editCommentContent.trim();
     const token = localStorage.getItem("token");
@@ -316,7 +317,11 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   };
 
   const handleConfirmDeleteComment = async () => {
-    if (!deleteTargetCommentId || !activeCommentConfessionId) {
+    if (
+      !deleteTargetCommentId ||
+      !activeCommentConfessionId ||
+      isDeletingComment
+    ) {
       return;
     }
 
