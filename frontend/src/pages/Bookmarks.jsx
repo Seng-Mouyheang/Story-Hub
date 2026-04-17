@@ -378,8 +378,27 @@ export default function Bookmarks() {
     async (itemId) => {
       const itemIdText = String(itemId);
 
-      const previousStoryBookmarks = storyBookmarks;
-      const previousConfessionBookmarks = confessionBookmarks;
+      let removedStoryItem = null;
+      let removedStoryIndex = -1;
+      let removedConfessionItem = null;
+      let removedConfessionIndex = -1;
+
+      if (activeType === "stories") {
+        removedStoryIndex = storyBookmarks.findIndex(
+          (story) => String(story.id) === itemIdText,
+        );
+        removedStoryItem =
+          removedStoryIndex >= 0 ? storyBookmarks[removedStoryIndex] : null;
+      } else {
+        removedConfessionIndex = confessionBookmarks.findIndex((confession) => {
+          const confessionId = String(confession.id || confession._id || "");
+          return confessionId === itemIdText;
+        });
+        removedConfessionItem =
+          removedConfessionIndex >= 0
+            ? confessionBookmarks[removedConfessionIndex]
+            : null;
+      }
 
       if (activeType === "stories") {
         setStoryBookmarks((prev) =>
@@ -410,9 +429,47 @@ export default function Bookmarks() {
         }
       } catch {
         if (activeType === "stories") {
-          setStoryBookmarks(previousStoryBookmarks);
-        } else {
-          setConfessionBookmarks(previousConfessionBookmarks);
+          if (removedStoryItem) {
+            setStoryBookmarks((prev) => {
+              const exists = prev.some(
+                (story) => String(story.id) === String(removedStoryItem.id),
+              );
+              if (exists) {
+                return prev;
+              }
+
+              const next = [...prev];
+              const insertIndex = Math.min(
+                Math.max(removedStoryIndex, 0),
+                next.length,
+              );
+              next.splice(insertIndex, 0, removedStoryItem);
+              return next;
+            });
+          }
+        } else if (removedConfessionItem) {
+          setConfessionBookmarks((prev) => {
+            const removedConfessionId = String(
+              removedConfessionItem.id || removedConfessionItem._id || "",
+            );
+            const exists = prev.some((confession) => {
+              const confessionId = String(
+                confession.id || confession._id || "",
+              );
+              return confessionId === removedConfessionId;
+            });
+            if (exists) {
+              return prev;
+            }
+
+            const next = [...prev];
+            const insertIndex = Math.min(
+              Math.max(removedConfessionIndex, 0),
+              next.length,
+            );
+            next.splice(insertIndex, 0, removedConfessionItem);
+            return next;
+          });
         }
 
         setErrorState((prev) => ({
@@ -635,7 +692,9 @@ export default function Bookmarks() {
         return;
       }
 
-      const previousStoryBookmarks = storyBookmarks;
+      const previousStory = storyBookmarks.find(
+        (story) => story.id === storyId,
+      );
 
       setStoryBookmarks((prev) =>
         prev.map((story) => {
@@ -683,7 +742,20 @@ export default function Bookmarks() {
           ),
         );
       } catch {
-        setStoryBookmarks(previousStoryBookmarks);
+        if (previousStory) {
+          setStoryBookmarks((prev) =>
+            prev.map((story) =>
+              story.id === storyId
+                ? {
+                    ...story,
+                    likedByCurrentUser: previousStory.likedByCurrentUser,
+                    likesCount: previousStory.likesCount,
+                    likes: previousStory.likes,
+                  }
+                : story,
+            ),
+          );
+        }
       }
     },
     [storyBookmarks],
@@ -712,7 +784,9 @@ export default function Bookmarks() {
         );
       }, 170);
 
-      const previousConfessions = confessionBookmarks;
+      const previousConfession = confessionBookmarks.find(
+        (item) => String(item._id) === String(confessionId),
+      );
 
       setConfessionBookmarks((prev) =>
         prev.map((item) => {
@@ -763,7 +837,19 @@ export default function Bookmarks() {
           }),
         );
       } catch {
-        setConfessionBookmarks(previousConfessions);
+        if (previousConfession) {
+          setConfessionBookmarks((prev) =>
+            prev.map((item) =>
+              String(item._id) === String(confessionId)
+                ? {
+                    ...item,
+                    likedByCurrentUser: previousConfession.likedByCurrentUser,
+                    likesCount: previousConfession.likesCount,
+                  }
+                : item,
+            ),
+          );
+        }
       }
     },
     [confessionBookmarks, getAuthHeaders],

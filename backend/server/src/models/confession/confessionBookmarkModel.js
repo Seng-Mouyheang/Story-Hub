@@ -336,7 +336,12 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
   let followedAuthorIds = new Set();
   if (data.length > 0) {
     const authorIds = [
-      ...new Set(data.map((confession) => confession.authorId.toString())),
+      ...new Set(
+        data
+          .map((confession) => resolveAuthorId(confession, userId))
+          .filter(Boolean)
+          .map((authorId) => authorId.toString()),
+      ),
     ]
       .filter((id) => id !== userId)
       .map((id) => new ObjectId(id));
@@ -357,16 +362,20 @@ const getUserBookmarkedConfessions = async (userId, cursor, limit) => {
     }
   }
 
-  const finalData = data.map((confession) => ({
-    ...confession,
-    authorId: resolveAuthorId(confession, userId),
-    likedByCurrentUser: likedConfessionIds.has(confession._id.toString()),
-    followedByCurrentUser: followedAuthorIds.has(
-      confession.authorId.toString(),
-    ),
-    authorDisplayName: resolveAuthorDisplayName(confession, userId),
-    authorProfilePicture: resolveAuthorProfilePicture(confession, userId),
-  }));
+  const finalData = data.map((confession) => {
+    const resolvedAuthorId = resolveAuthorId(confession, userId);
+
+    return {
+      ...confession,
+      authorId: resolvedAuthorId,
+      likedByCurrentUser: likedConfessionIds.has(confession._id.toString()),
+      followedByCurrentUser: resolvedAuthorId
+        ? followedAuthorIds.has(resolvedAuthorId.toString())
+        : false,
+      authorDisplayName: resolveAuthorDisplayName(confession, userId),
+      authorProfilePicture: resolveAuthorProfilePicture(confession, userId),
+    };
+  });
 
   let nextCursor = null;
   if (hasMore && data.length > 0) {
