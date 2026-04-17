@@ -20,6 +20,9 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   const [isLoadingModalComments, setIsLoadingModalComments] =
     React.useState(false);
   const [modalCommentsError, setModalCommentsError] = React.useState("");
+  const [modalCommentsNextCursor, setModalCommentsNextCursor] =
+    React.useState("");
+  const [modalCommentsHasMore, setModalCommentsHasMore] = React.useState(false);
 
   const updateConfessionCommentCount = React.useCallback(
     (confessionId, by) => {
@@ -41,36 +44,73 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     [setConfessionFeed],
   );
 
-  const loadModalComments = React.useCallback(async (confessionId) => {
-    setModalCommentsError("");
-    setIsLoadingModalComments(true);
+  const loadModalComments = React.useCallback(
+    async (confessionId, cursor = "") => {
+      setModalCommentsError("");
+      setIsLoadingModalComments(true);
 
-    try {
-      const token = localStorage.getItem("token");
-      const headers = token ? { Authorization: `Bearer ${token}` } : {};
-      const response = await fetch(
-        `/api/confessions/${confessionId}/comments?limit=10`,
-        { headers },
-      );
-      const payload = await parseResponse(response);
+      try {
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const params = new URLSearchParams({ limit: "10" });
 
-      if (!response.ok) {
-        throw new Error(payload?.message || "Failed to load comments.");
+        if (cursor) {
+          params.set("cursor", cursor);
+        }
+
+        const response = await fetch(
+          `/api/confessions/${confessionId}/comments?${params.toString()}`,
+          { headers },
+        );
+        const payload = await parseResponse(response);
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Failed to load comments.");
+        }
+
+        const comments = Array.isArray(payload?.comments)
+          ? payload.comments
+          : [];
+        const nextCursor = payload?.nextCursor || "";
+        const hasMore = Boolean(payload?.hasMore);
+
+        setModalComments((prev) => [...prev, ...comments]);
+        setModalCommentsNextCursor(nextCursor);
+        setModalCommentsHasMore(hasMore);
+      } catch (error) {
+        setModalCommentsError(error.message || "Failed to load comments.");
+      } finally {
+        setIsLoadingModalComments(false);
       }
+    },
+    [],
+  );
 
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
-      setModalComments(comments);
-    } catch (error) {
-      setModalCommentsError(error.message || "Failed to load comments.");
-    } finally {
-      setIsLoadingModalComments(false);
+  const loadMoreModalComments = React.useCallback(async () => {
+    if (
+      !activeCommentConfessionId ||
+      !modalCommentsHasMore ||
+      !modalCommentsNextCursor ||
+      isLoadingModalComments
+    ) {
+      return;
     }
-  }, []);
+
+    await loadModalComments(activeCommentConfessionId, modalCommentsNextCursor);
+  }, [
+    activeCommentConfessionId,
+    isLoadingModalComments,
+    loadModalComments,
+    modalCommentsHasMore,
+    modalCommentsNextCursor,
+  ]);
 
   const closeCommentModal = () => {
     setActiveCommentConfessionId("");
     setCommentModalTitle("");
     setModalComments([]);
+    setModalCommentsNextCursor("");
+    setModalCommentsHasMore(false);
     setNewCommentContent("");
     setActiveCommentMenuId("");
     setEditingCommentId("");
@@ -84,6 +124,8 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     setActiveCommentConfessionId(confessionId);
     setCommentModalTitle(authorName || "Confession");
     setModalComments([]);
+    setModalCommentsNextCursor("");
+    setModalCommentsHasMore(false);
     setNewCommentContent("");
     setActiveCommentMenuId("");
     setEditingCommentId("");
@@ -132,6 +174,9 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       }
 
       setNewCommentContent("");
+      setModalComments([]);
+      setModalCommentsNextCursor("");
+      setModalCommentsHasMore(false);
       await loadModalComments(activeCommentConfessionId);
       updateConfessionCommentCount(activeCommentConfessionId, 1);
     } catch (error) {
@@ -160,10 +205,16 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     setEditCommentContent("");
   };
 
-  const handleSaveEditedComment = async (commentId) => {
+  const handleSaveEditedComment = async () => {
+    const targetCommentId = editingCommentId;
     const cleanedContent = editCommentContent.trim();
     const token = localStorage.getItem("token");
     const hasContent = cleanedContent.length > 0;
+
+    if (!targetCommentId) {
+      setModalCommentsError("No comment is selected for editing.");
+      return;
+    }
 
     if (!hasContent || !token) {
       setModalCommentsError(
@@ -178,33 +229,40 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     setModalCommentsError("");
 
     try {
-      const response = await fetch(`/api/confessions/comments/${commentId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+      const response = await fetch(
+        `/api/confessions/comments/${targetCommentId}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ content: cleanedContent }),
         },
-        body: JSON.stringify({ content: cleanedContent }),
-      });
+      );
       const payload = await parseResponse(response);
 
       if (!response.ok) {
         throw new Error(payload?.message || "Failed to edit comment.");
       }
 
+      const updatedComment = payload?.comment;
+
       setModalComments((prev) =>
         prev.map((comment) => {
           const currentId = String(comment?._id || comment?.id || "");
 
-          if (currentId !== commentId) {
+          if (currentId !== targetCommentId) {
+            return comment;
+          }
+
+          if (!updatedComment) {
             return comment;
           }
 
           return {
             ...comment,
-            content: cleanedContent,
-            isEdited: true,
-            updatedAt: new Date().toISOString(),
+            ...updatedComment,
           };
         }),
       );
@@ -257,13 +315,19 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       }
 
       const deletedId = deleteTargetCommentId;
+      const removedCount = Number(payload?.removedCount);
+      const commentCountDelta =
+        Number.isFinite(removedCount) && removedCount > 0 ? -removedCount : -1;
       setDeleteTargetCommentId("");
       setModalComments((prev) =>
         prev.filter(
           (comment) => String(comment?._id || comment?.id || "") !== deletedId,
         ),
       );
-      updateConfessionCommentCount(activeCommentConfessionId, -1);
+      updateConfessionCommentCount(
+        activeCommentConfessionId,
+        commentCountDelta,
+      );
     } catch (error) {
       setModalCommentsError(error.message || "Failed to delete comment.");
     } finally {
@@ -298,8 +362,10 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     isDeletingComment,
     isLoadingModalComments,
     modalCommentsError,
+    modalCommentsHasMore,
     closeCommentModal,
     openCommentModal,
+    loadMoreModalComments,
     handleAddComment,
     handleToggleCommentMenu,
     handleStartEditComment,
