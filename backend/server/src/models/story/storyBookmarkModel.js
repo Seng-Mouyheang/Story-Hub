@@ -203,7 +203,7 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
               },
             },
             {
-              $project: { displayName: 1 },
+              $project: { displayName: 1, profilePicture: 1 },
             },
           ],
           as: "author",
@@ -230,6 +230,7 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
           updatedAt: "$story.updatedAt",
           publishedAt: "$story.publishedAt",
           authorDisplayName: "$author.displayName",
+          authorProfilePicture: "$author.profilePicture",
           savedByCurrentUser: { $literal: true },
           bookmarkId: "$_id",
           bookmarkCreatedAt: "$createdAt",
