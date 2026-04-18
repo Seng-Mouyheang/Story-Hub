@@ -584,7 +584,7 @@ export default function Home() {
             commentCount: Number(story.commentCount || 0),
             canManage: Boolean(currentUserId) && authorId === currentUserId,
             likedByCurrentUser: Boolean(story.likedByCurrentUser),
-            followingAuthor: Boolean(story.followedByCurrentUser),
+            followingAuthor: Boolean(story.followedByCurrentUser), // ensure correct mapping
             followBusy: false,
             avatar: authorAvatarMap.get(authorId) || "",
           };
