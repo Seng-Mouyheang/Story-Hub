@@ -1,10 +1,16 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
 import { ChevronLeft, Share, User } from "lucide-react";
-import { getProfileByUserId, getUserStats } from "../api/profile";
+import {
+  getProfileByUserId,
+  getUserStats,
+  getFollowStatus,
+  followUser,
+  unfollowUser,
+} from "../api/profile";
 import { getMyStories, getStoriesByAuthor } from "../api/story/storyApi";
 import { getMyBookmarkedStories } from "../api/story/storyInteractionsApi";
 import {
@@ -108,10 +114,16 @@ export default function Profile() {
   const [activeTab, setActiveTab] = useState("Stories");
   const [profileData, setProfileData] = useState(null);
   const [profileStats, setProfileStats] = useState(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profileRefreshToken, setProfileRefreshToken] = useState(0);
+  const [isFollowingViewedUser, setIsFollowingViewedUser] = useState(false);
+  const [isLoadingFollowStatus, setIsLoadingFollowStatus] = useState(false);
+  const [isTogglingFollow, setIsTogglingFollow] = useState(false);
   const [storyItems, setStoryItems] = useState([]);
   const [savedItems, setSavedItems] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(true);
+  const lastViewedUserIdRef = useRef("");
 
   const currentUser = useMemo(() => {
     try {
@@ -126,8 +138,103 @@ export default function Profile() {
     [currentUser],
   );
 
-  const viewedUserId = routeUserId || currentUserId;
-  const isOwnProfile = !routeUserId || routeUserId === currentUserId;
+  const normalizeId = (value) => String(value || "").trim();
+  const viewedUserId = normalizeId(routeUserId || currentUserId);
+  const isOwnProfile =
+    !routeUserId || normalizeId(routeUserId) === normalizeId(currentUserId);
+
+  useEffect(() => {
+    const handleFollowUpdated = (event) => {
+      const normalizedViewedUserId = String(viewedUserId || "").trim();
+      const normalizedCurrentUserId = String(currentUserId || "").trim();
+      const followerId = String(event?.detail?.followerId || "").trim();
+      const followingId = String(event?.detail?.followingId || "").trim();
+      const isFollowing = Boolean(event?.detail?.following);
+
+      if (!normalizedViewedUserId) {
+        return;
+      }
+
+      setProfileData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+
+        let nextFollowers = Number(previous.followers || 0);
+        let nextFollowing = Number(previous.following || 0);
+
+        if (normalizedViewedUserId === followingId) {
+          nextFollowers = Math.max(0, nextFollowers + (isFollowing ? 1 : -1));
+        }
+
+        if (normalizedViewedUserId === followerId) {
+          nextFollowing = Math.max(0, nextFollowing + (isFollowing ? 1 : -1));
+        }
+
+        return {
+          ...previous,
+          followers: nextFollowers,
+          following: nextFollowing,
+        };
+      });
+
+      if (
+        normalizedViewedUserId === followerId ||
+        normalizedViewedUserId === followingId
+      ) {
+        setProfileRefreshToken((previous) => previous + 1);
+      }
+
+      if (
+        normalizedViewedUserId === followingId &&
+        normalizedCurrentUserId === followerId
+      ) {
+        setIsFollowingViewedUser(isFollowing);
+      }
+    };
+
+    window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
+
+    return () => {
+      window.removeEventListener(
+        "storyhub:follow-updated",
+        handleFollowUpdated,
+      );
+    };
+  }, [currentUserId, viewedUserId]);
+
+  useEffect(() => {
+    if (!viewedUserId || isOwnProfile) {
+      setIsFollowingViewedUser(false);
+      setIsLoadingFollowStatus(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadFollowStatus = async () => {
+      setIsLoadingFollowStatus(true);
+
+      try {
+        const payload = await getFollowStatus(viewedUserId);
+        if (isMounted) {
+          setIsFollowingViewedUser(Boolean(payload?.following));
+        }
+      } catch {
+        // Keep previous state when status refresh fails transiently.
+      } finally {
+        if (isMounted) {
+          setIsLoadingFollowStatus(false);
+        }
+      }
+    };
+
+    loadFollowStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOwnProfile, viewedUserId]);
 
   useEffect(() => {
     if (!viewedUserId) {
@@ -135,8 +242,14 @@ export default function Profile() {
     }
 
     let isMounted = true;
+    const viewedUserChanged = lastViewedUserIdRef.current !== viewedUserId;
+    lastViewedUserIdRef.current = viewedUserId;
 
     const loadProfile = async () => {
+      if (isMounted && viewedUserChanged) {
+        setIsLoadingProfile(true);
+      }
+
       try {
         const [payload, statsPayload] = await Promise.all([
           getProfileByUserId(viewedUserId),
@@ -148,7 +261,14 @@ export default function Profile() {
           setProfileStats(statsPayload);
         }
       } catch {
-        // Keep fallback profile values from local user data.
+        if (isMounted && viewedUserChanged) {
+          setProfileData(null);
+          setProfileStats(null);
+        }
+      } finally {
+        if (isMounted && viewedUserChanged) {
+          setIsLoadingProfile(false);
+        }
       }
     };
 
@@ -157,7 +277,7 @@ export default function Profile() {
     return () => {
       isMounted = false;
     };
-  }, [viewedUserId]);
+  }, [profileRefreshToken, viewedUserId]);
 
   useEffect(() => {
     if (!isOwnProfile) {
@@ -316,12 +436,19 @@ export default function Profile() {
     const username = currentUser?.username || "StoryHub User";
     const email = currentUser?.email || "";
     const stats = profileStats?.stats || {};
-    const displayName = profileData?.displayName || username;
+    const externalAuthorFallback = viewedUserId
+      ? `Author ${viewedUserId.slice(-4).toUpperCase()}`
+      : "Unknown Author";
+    const displayName =
+      profileData?.displayName ||
+      (isOwnProfile ? username : externalAuthorFallback);
     const normalizedHandle =
       profileData?.username ||
-      (email
-        ? email.split("@")[0]
-        : displayName.replace(/\s+/g, "").toLowerCase());
+      (isOwnProfile
+        ? email
+          ? email.split("@")[0]
+          : displayName.replace(/\s+/g, "").toLowerCase()
+        : viewedUserId || displayName.replace(/\s+/g, "").toLowerCase());
 
     return {
       name: displayName,
@@ -331,7 +458,9 @@ export default function Profile() {
       posts: String(stats.totalPosts ?? profileData?.posts ?? 0),
       bio:
         profileData?.bio ||
-        "Welcome to your StoryHub profile. Start writing and sharing your stories.",
+        (isOwnProfile
+          ? "Welcome to your StoryHub profile. Start writing and sharing your stories."
+          : "This user has not completed their profile yet."),
       genres:
         Array.isArray(profileData?.interest) && profileData.interest.length > 0
           ? profileData.interest
@@ -339,7 +468,7 @@ export default function Profile() {
       avatar: profileData?.profilePicture || "",
       coverImage: profileData?.coverImage || "",
     };
-  }, [currentUser, profileData, profileStats]);
+  }, [currentUser, isOwnProfile, profileData, profileStats, viewedUserId]);
 
   const tabs = isOwnProfile ? ["Stories", "Saved", "Activity"] : ["Stories"];
 
@@ -367,6 +496,62 @@ export default function Profile() {
 
     navigate("/");
   };
+
+  const handleToggleFollowViewedUser = async () => {
+    if (isOwnProfile || !viewedUserId || isTogglingFollow) {
+      return;
+    }
+
+    const previousFollowingState = isFollowingViewedUser;
+    const nextFollowingState = !previousFollowingState;
+
+    setIsTogglingFollow(true);
+    setIsFollowingViewedUser(nextFollowingState);
+
+    try {
+      const payload = previousFollowingState
+        ? await unfollowUser(viewedUserId)
+        : await followUser(viewedUserId);
+
+      const confirmedFollowing = Boolean(payload?.following);
+      setIsFollowingViewedUser(confirmedFollowing);
+
+      window.dispatchEvent(
+        new CustomEvent("storyhub:follow-updated", {
+          detail: {
+            followerId: currentUserId,
+            followingId: viewedUserId,
+            following: confirmedFollowing,
+          },
+        }),
+      );
+    } catch {
+      setIsFollowingViewedUser(previousFollowingState);
+    } finally {
+      setIsTogglingFollow(false);
+    }
+  };
+
+  const showProfileNotFound =
+    !isOwnProfile && !isLoadingProfile && !profileData;
+
+  if (showProfileNotFound) {
+    return (
+      <div className="flex h-screen bg-[#f3f4f6] text-[#111827] overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 bg-[#f3f4f6]">
+          <Navbar title="User Profile" />
+          <main className="flex-1 min-h-0">
+            <div className="h-full flex items-center justify-center px-4 text-center">
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#6b7280] tracking-tight">
+                Profile not found
+              </h1>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -462,7 +647,28 @@ export default function Profile() {
                           <Share className="w-4 h-4" />
                         </button>
                       </div>
-                    ) : null}
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleToggleFollowViewedUser}
+                        disabled={isLoadingFollowStatus || isTogglingFollow}
+                        className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors ${
+                          isFollowingViewedUser
+                            ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                            : "bg-rose-500 hover:bg-rose-600 text-white"
+                        } ${
+                          isLoadingFollowStatus || isTogglingFollow
+                            ? "opacity-60 cursor-not-allowed"
+                            : ""
+                        }`}
+                      >
+                        {isLoadingFollowStatus
+                          ? "Loading..."
+                          : isFollowingViewedUser
+                            ? "Following"
+                            : "Follow"}
+                      </button>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">

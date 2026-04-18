@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -11,8 +11,9 @@ import {
   Eye,
   ChevronRight,
   User,
+  MoreHorizontal,
 } from "lucide-react";
-import { followUser, unfollowUser } from "../api/profile";
+import { followUser, unfollowUser, getFollowStatus } from "../api/profile";
 import {
   getExploreRecommendedStories,
   getExplorePopularStories,
@@ -26,10 +27,22 @@ const formatCompactNumber = (value) =>
     maximumFractionDigits: 1,
   }).format(Number(value) || 0);
 
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    if (typeof value.$oid === "string") return value.$oid.trim();
+    if (typeof value.toString === "function") return value.toString().trim();
+  }
+
+  return String(value).trim();
+};
+
 const mapStoryCard = (story) => ({
   id: story?._id || story?.storyId || story?.id || story?.title,
-  authorId:
+  authorId: normalizeId(
     story?.authorId || story?.author?._id || story?.author?.userId || null,
+  ),
   title: story?.title || "Untitled story",
   tags:
     Array.isArray(story?.genres) && story.genres.length > 0
@@ -108,6 +121,48 @@ export default function Explore() {
   const [recommendedError, setRecommendedError] = useState("");
   const [popularError, setPopularError] = useState("");
   const [authorsError, setAuthorsError] = useState("");
+
+  const currentUserId = useMemo(() => {
+    try {
+      const currentUser = JSON.parse(
+        localStorage.getItem("currentUser") || "null",
+      );
+      return normalizeId(currentUser?.id || currentUser?._id || "");
+    } catch {
+      return "";
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFollowUpdated = (event) => {
+      const followerId = normalizeId(event?.detail?.followerId || "");
+      const followingId = normalizeId(event?.detail?.followingId || "");
+      const following = Boolean(event?.detail?.following);
+
+      if (!followingId || followerId !== currentUserId) {
+        return;
+      }
+
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        [followingId]: following,
+      }));
+
+      setBusyFollowIds((previous) => ({
+        ...previous,
+        [followingId]: false,
+      }));
+    };
+
+    window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
+
+    return () => {
+      window.removeEventListener(
+        "storyhub:follow-updated",
+        handleFollowUpdated,
+      );
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -201,7 +256,7 @@ export default function Explore() {
 
       if (authorsResult.status === "fulfilled") {
         const resolved = (authorsResult.value?.data || []).map((author) => ({
-          userId: author?.authorId || null,
+          userId: normalizeId(author?.authorId || null),
           avatar: author?.profilePicture || "",
           displayName: author?.displayName || author?.username || "Unknown",
           role: `Top ${
@@ -215,16 +270,51 @@ export default function Explore() {
         }));
 
         setResolvedAuthors(resolved);
-        setFollowStateByUserId(
-          Object.fromEntries(resolved.map((author) => [author.userId, false])),
-        );
       } else {
         setResolvedAuthors([]);
-        setFollowStateByUserId({});
         setAuthorsError(
           authorsResult.reason?.message ||
             "Failed to load recommended authors.",
         );
+      }
+
+      const storyAuthorIds = [
+        ...new Set(
+          [
+            ...(recommendedResult.status === "fulfilled"
+              ? (recommendedResult.value?.data || []).map(
+                  (story) => mapStoryCard(story).authorId,
+                )
+              : []),
+            ...(popularResult.status === "fulfilled"
+              ? (popularResult.value?.data || []).map(
+                  (story) => mapStoryCard(story).authorId,
+                )
+              : []),
+          ].filter(
+            (authorId) => Boolean(authorId) && authorId !== currentUserId,
+          ),
+        ),
+      ];
+
+      if (storyAuthorIds.length > 0) {
+        const followEntries = await Promise.all(
+          storyAuthorIds.map(async (authorId) => {
+            try {
+              const statusPayload = await getFollowStatus(authorId);
+              return [authorId, Boolean(statusPayload?.following)];
+            } catch {
+              return [authorId, false];
+            }
+          }),
+        );
+
+        if (isMounted) {
+          setFollowStateByUserId((previous) => ({
+            ...previous,
+            ...Object.fromEntries(followEntries),
+          }));
+        }
       }
 
       setStoriesLoading(false);
@@ -238,10 +328,10 @@ export default function Explore() {
       isMounted = false;
       abortController.abort();
     };
-  }, [activeCategory]);
+  }, [activeCategory, currentUserId]);
 
   const handleToggleFollow = async (author) => {
-    if (!author.userId) {
+    if (!author.userId || author.userId === currentUserId) {
       return;
     }
 
@@ -249,25 +339,30 @@ export default function Explore() {
 
     try {
       const isFollowing = Boolean(followStateByUserId[author.userId]);
+      let followResult;
 
       if (isFollowing) {
-        await unfollowUser(author.userId);
+        followResult = await unfollowUser(author.userId);
       } else {
-        await followUser(author.userId);
+        followResult = await followUser(author.userId);
       }
+
+      const confirmedFollowing = Boolean(followResult?.following);
+
+      window.dispatchEvent(
+        new CustomEvent("storyhub:follow-updated", {
+          detail: {
+            followerId: currentUserId,
+            followingId: author.userId,
+            following: confirmedFollowing,
+          },
+        }),
+      );
 
       setFollowStateByUserId((prev) => ({
         ...prev,
-        [author.userId]: !isFollowing,
+        [author.userId]: confirmedFollowing,
       }));
-
-      if (!isFollowing) {
-        setResolvedAuthors((prev) =>
-          prev.filter(
-            (currentAuthor) => currentAuthor.userId !== author.userId,
-          ),
-        );
-      }
     } catch (error) {
       console.error("Failed to toggle follow state:", error);
     } finally {
@@ -364,7 +459,33 @@ export default function Explore() {
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-3 text-slate-500 shrink-0">
+                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
+                          {story.authorId &&
+                          story.authorId !== currentUserId ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleToggleFollow({ userId: story.authorId })
+                              }
+                              disabled={Boolean(busyFollowIds[story.authorId])}
+                              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+                                followStateByUserId[story.authorId]
+                                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                  : "bg-rose-500 hover:bg-rose-600 text-white"
+                              } ${
+                                busyFollowIds[story.authorId]
+                                  ? "opacity-60 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              {followStateByUserId[story.authorId]
+                                ? "Following"
+                                : "Follow"}
+                            </button>
+                          ) : null}
+                          <button type="button" aria-label="Story actions">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
                           <button type="button">
                             <Bookmark className="w-5 h-5" />
                           </button>
@@ -459,7 +580,33 @@ export default function Explore() {
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-3 text-slate-500 shrink-0">
+                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
+                          {story.authorId &&
+                          story.authorId !== currentUserId ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleToggleFollow({ userId: story.authorId })
+                              }
+                              disabled={Boolean(busyFollowIds[story.authorId])}
+                              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+                                followStateByUserId[story.authorId]
+                                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                  : "bg-rose-500 hover:bg-rose-600 text-white"
+                              } ${
+                                busyFollowIds[story.authorId]
+                                  ? "opacity-60 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              {followStateByUserId[story.authorId]
+                                ? "Following"
+                                : "Follow"}
+                            </button>
+                          ) : null}
+                          <button type="button" aria-label="Story actions">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
                           <button type="button">
                             <Bookmark className="w-5 h-5" />
                           </button>

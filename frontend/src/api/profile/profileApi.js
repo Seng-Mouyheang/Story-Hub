@@ -19,6 +19,7 @@ export async function getProfileByUserId(userId) {
   }
 
   const response = await fetch(`/api/profile/${userId}`, {
+    cache: "no-store",
     headers: getAuthHeaders(),
   });
 
