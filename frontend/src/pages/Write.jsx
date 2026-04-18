@@ -3,15 +3,62 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Edit2, Plus, X } from "lucide-react";
+import { Edit2, X } from "lucide-react";
+import GenrePicker from "../components/GenrePicker";
 import { createStory, getStoryById, updateStory } from "../api/story/storyApi";
+
+const toCanonicalGenre = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const GENRE_OPTIONS = [
+  "MYSTERY",
+  "FANTASY",
+  "ROMANCE",
+  "DRAMA",
+  "THRILLER",
+  "HORROR",
+  "SCI-FI",
+  "ADVENTURE",
+  "ACTION",
+  "COMEDY",
+  "SLICE OF LIFE",
+  "HISTORICAL",
+  "CRIME",
+  "YOUNG ADULT",
+];
+
+const normalizeGenres = (inputGenres) => {
+  if (!Array.isArray(inputGenres)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return inputGenres.reduce((accumulator, genre) => {
+    const canonicalGenre = toCanonicalGenre(genre);
+    if (!canonicalGenre) {
+      return accumulator;
+    }
+
+    const key = canonicalGenre.toLowerCase();
+    if (seen.has(key)) {
+      return accumulator;
+    }
+
+    seen.add(key);
+    accumulator.push(canonicalGenre);
+    return accumulator;
+  }, []);
+};
 
 export default function Write() {
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [genres, setGenres] = useState(["MYSTERY", "FANTASY", "ROMANCE"]);
-  const [newGenre, setNewGenre] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState("");
   const [tags, setTags] = useState("");
   const [visibility, setVisibility] = useState("public");
   const [isLoading, setIsLoading] = useState(false);
@@ -50,9 +97,11 @@ export default function Write() {
         setTitle(payload?.title || "");
         setContent(payload?.content || "");
         setGenres(
-          Array.isArray(payload?.genres) && payload.genres.length > 0
-            ? payload.genres
-            : [],
+          normalizeGenres(
+            Array.isArray(payload?.genres) && payload.genres.length > 0
+              ? payload.genres
+              : [],
+          ),
         );
         setTags(Array.isArray(payload?.tags) ? payload.tags.join(", ") : "");
         setVisibility(payload?.visibility || "public");
@@ -83,13 +132,24 @@ export default function Write() {
     setGenres(genres.filter((_, i) => i !== index));
   };
 
-  const addGenre = (e) => {
-    if ((e.key === "Enter" || e.type === "click") && newGenre.trim()) {
-      if (!genres.includes(newGenre.toUpperCase())) {
-        setGenres([...genres, newGenre.toUpperCase()]);
-      }
-      setNewGenre("");
+  const addGenre = (genreValue = selectedGenre) => {
+    const canonicalGenre = toCanonicalGenre(genreValue);
+    if (!canonicalGenre) {
+      return;
     }
+
+    const hasGenre = genres.some(
+      (genre) =>
+        String(genre || "")
+          .trim()
+          .toLowerCase() === canonicalGenre.toLowerCase(),
+    );
+
+    if (!hasGenre) {
+      setGenres((previousGenres) => [...previousGenres, canonicalGenre]);
+    }
+
+    setSelectedGenre("");
   };
 
   const parseTagsArray = () => {
@@ -97,6 +157,10 @@ export default function Write() {
       .split(",")
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0);
+  };
+
+  const getGenresForSubmit = () => {
+    return normalizeGenres(genres);
   };
 
   const submitStory = async (status) => {
@@ -127,7 +191,7 @@ export default function Write() {
         ? updateStory(editingStoryId, {
             title: title.trim(),
             content: content.trim(),
-            genres: genres.length > 0 ? genres : [],
+            genres: getGenresForSubmit(),
             tags: parseTagsArray(),
             visibility,
             status,
@@ -135,7 +199,7 @@ export default function Write() {
         : createStory({
             title: title.trim(),
             content: content.trim(),
-            genres: genres.length > 0 ? genres : [],
+            genres: getGenresForSubmit(),
             tags: parseTagsArray(),
             visibility,
             status,
@@ -184,14 +248,14 @@ export default function Write() {
         <Navbar title={isEditMode ? "Edit Story" : "Write Story"} />
 
         {/* Top Header - Visibility Dropdown */}
-        <div className="h-16 px-4 sm:px-6 lg:px-12 border-b border-slate-200 bg-white flex items-center justify-between">
+        <div className="h-16 px-4 sm:px-6 lg:px-12 border-b border-rose-100 bg-rose-50/70 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-slate-700">
+            <span className="text-sm font-medium text-rose-700">
               {isEditMode ? "Editing Story" : "Untitled 1"}
             </span>
             <Edit2
               size={14}
-              className="text-slate-400 cursor-pointer hover:text-slate-600"
+              className="text-rose-400 cursor-pointer hover:text-rose-600"
             />
           </div>
 
@@ -252,21 +316,14 @@ export default function Write() {
                   <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-6">
                     Genre
                   </h3>
-                  <div className="relative mb-4">
-                    <input
-                      type="text"
-                      placeholder="Add Genres"
-                      className="w-full pl-4 pr-10 py-3 border border-slate-300 rounded-xl text-sm outline-none focus:border-rose-300 transition-colors"
-                      value={newGenre}
-                      onChange={(e) => setNewGenre(e.target.value)}
-                      onKeyDown={addGenre}
+                  <div className="flex gap-2 mb-4">
+                    <GenrePicker
+                      id="story-genre-picker"
+                      value={selectedGenre}
+                      onChange={addGenre}
+                      options={GENRE_OPTIONS}
+                      placeholder="Select genre"
                     />
-                    <button
-                      onClick={addGenre}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"
-                    >
-                      <Plus size={20} />
-                    </button>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {genres.map((genre, index) => (

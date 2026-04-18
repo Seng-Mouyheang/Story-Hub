@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Camera, User } from "lucide-react";
+import { Camera, User, X } from "lucide-react";
+import GenrePicker from "../components/GenrePicker";
 import {
   getProfileByUserId,
   updateProfile,
@@ -11,9 +12,57 @@ import {
   uploadCoverImage,
 } from "../api/profile";
 
+const toCanonicalInterest = (value) =>
+  String(value || "")
+    .trim()
+    .toUpperCase();
+
+const GENRE_OPTIONS = [
+  "MYSTERY",
+  "FANTASY",
+  "ROMANCE",
+  "DRAMA",
+  "THRILLER",
+  "HORROR",
+  "SCI-FI",
+  "ADVENTURE",
+  "ACTION",
+  "COMEDY",
+  "SLICE OF LIFE",
+  "HISTORICAL",
+  "CRIME",
+  "YOUNG ADULT",
+];
+
+const normalizeInterests = (values) => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return values.reduce((accumulator, value) => {
+    const canonical = toCanonicalInterest(value);
+    if (!canonical) {
+      return accumulator;
+    }
+
+    const key = canonical.toLowerCase();
+    if (seen.has(key)) {
+      return accumulator;
+    }
+
+    seen.add(key);
+    accumulator.push(canonical);
+    return accumulator;
+  }, []);
+};
+
 export default function EditProfile() {
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  const [interests, setInterests] = useState([]);
+  const [selectedInterest, setSelectedInterest] = useState("");
   const [profilePicture, setProfilePicture] = useState("");
   const [coverImage, setCoverImage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -32,8 +81,13 @@ export default function EditProfile() {
     }
   }, []);
 
+  const currentUserId = useMemo(
+    () => String(currentUser?.id || currentUser?._id || "").trim(),
+    [currentUser],
+  );
+
   useEffect(() => {
-    if (!currentUser?.id) {
+    if (!currentUserId) {
       navigate("/profile", { replace: true });
       return;
     }
@@ -42,7 +96,7 @@ export default function EditProfile() {
 
     const loadProfile = async () => {
       try {
-        const payload = await getProfileByUserId(currentUser.id);
+        const payload = await getProfileByUserId(currentUserId);
 
         if (!isMounted) {
           return;
@@ -50,6 +104,7 @@ export default function EditProfile() {
 
         setName(payload?.displayName || currentUser.username || "");
         setBio(payload?.bio || "");
+        setInterests(normalizeInterests(payload?.interest || []));
         setProfilePicture(payload?.profilePicture || "");
         setCoverImage(payload?.coverImage || "");
       } catch {
@@ -65,7 +120,7 @@ export default function EditProfile() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser, navigate]);
+  }, [currentUser, currentUserId, navigate]);
 
   const formatFileSize = (bytes) => {
     if (!Number.isFinite(bytes) || bytes <= 0) {
@@ -133,6 +188,7 @@ export default function EditProfile() {
       await updateProfile({
         displayName: name.trim(),
         bio,
+        interest: normalizeInterests(interests),
         profilePicture,
         coverImage,
       });
@@ -156,6 +212,32 @@ export default function EditProfile() {
     navigate("/");
   };
 
+  const handleAddInterest = (interestValue = selectedInterest) => {
+    const canonicalInterest = toCanonicalInterest(interestValue);
+    if (!canonicalInterest) {
+      return;
+    }
+
+    const exists = interests.some(
+      (interestValue) =>
+        String(interestValue || "")
+          .trim()
+          .toLowerCase() === canonicalInterest.toLowerCase(),
+    );
+
+    if (!exists) {
+      setInterests((previous) => [...previous, canonicalInterest]);
+    }
+
+    setSelectedInterest("");
+  };
+
+  const handleRemoveInterest = (indexToRemove) => {
+    setInterests((previous) =>
+      previous.filter((_, index) => index !== indexToRemove),
+    );
+  };
+
   const previewProfileImage = profilePicture || null;
 
   return (
@@ -167,9 +249,11 @@ export default function EditProfile() {
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-3xl mx-auto">
               <div className="bg-white p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-gray-100">
-                <h3 className="font-bold text-lg mb-8">
-                  Edit Profile Information
-                </h3>
+                <div className="mb-8 rounded-xl border border-rose-100 bg-rose-50/70 px-4 py-3">
+                  <h3 className="font-bold text-lg text-rose-700">
+                    Edit Profile Information
+                  </h3>
+                </div>
                 <div className="space-y-6">
                   <div className="space-y-3">
                     <div className="h-40 rounded-3xl overflow-hidden border border-slate-200 bg-slate-100">
@@ -302,6 +386,41 @@ export default function EditProfile() {
                       onChange={(e) => setBio(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-red-100 h-32 resize-none"
                     />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="preferred-genres"
+                      className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"
+                    >
+                      Preferred Genres
+                    </label>
+
+                    <div className="flex gap-2 mb-3">
+                      <GenrePicker
+                        id="preferred-genres"
+                        value={selectedInterest}
+                        onChange={handleAddInterest}
+                        options={GENRE_OPTIONS}
+                        placeholder="Select preferred genre"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {interests.map((interestValue, index) => (
+                        <span
+                          key={`${interestValue}-${index}`}
+                          className="flex items-center gap-1 px-3 py-1 bg-rose-50 text-rose-600 text-[11px] font-semibold rounded-md uppercase tracking-tight"
+                        >
+                          {interestValue}
+                          <X
+                            size={12}
+                            className="cursor-pointer ml-1 hover:text-rose-700"
+                            onClick={() => handleRemoveInterest(index)}
+                          />
+                        </span>
+                      ))}
+                    </div>
                   </div>
 
                   {errorMessage ? (

@@ -14,6 +14,11 @@ export default function Navbar({ title }) {
     }
   }, []);
 
+  const currentUserId = useMemo(
+    () => String(currentUser?.id || currentUser?._id || "").trim(),
+    [currentUser],
+  );
+
   // Toggle Theme Function
   const toggleTheme = () => {
     setDarkMode(!darkMode);
@@ -31,7 +36,7 @@ export default function Navbar({ title }) {
   useEffect(() => {
     let isMounted = true;
 
-    if (!currentUser?.id) {
+    if (!currentUserId) {
       return;
     }
 
@@ -40,7 +45,7 @@ export default function Navbar({ title }) {
 
     const loadProfileAvatar = async () => {
       try {
-        const response = await fetch(`/api/profile/${currentUser.id}`, {
+        const response = await fetch(`/api/profile/${currentUserId}`, {
           headers,
         });
 
@@ -65,7 +70,7 @@ export default function Navbar({ title }) {
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.id]);
+  }, [currentUserId]);
 
   return (
     <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-40 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
