@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { getProfileByUserId } from "../api/profile";
+import {
+  getProfileByUserId,
+  followUser,
+  unfollowUser,
+  getFollowStatus,
+} from "../api/profile";
 import { getStories, deleteStory } from "../api/story/storyApi";
 import {
   getStoryComments,
@@ -82,7 +87,7 @@ const normalizeId = (value) => {
 };
 
 /* -------------------- Story Circle -------------------- */
-const StoryCircle = ({ name, isAdd = false, image }) => (
+const StoryCircle = ({ name, authorId, isAdd = false, image }) => (
   <div className="flex flex-col items-center gap-2 flex-shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
     <div
       className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 ${
@@ -106,9 +111,18 @@ const StoryCircle = ({ name, isAdd = false, image }) => (
       )}
     </div>
 
-    <span className="text-[11px] sm:text-xs font-medium text-slate-700 whitespace-nowrap">
-      {name}
-    </span>
+    {isAdd ? (
+      <span className="text-[11px] sm:text-xs font-medium text-slate-700 whitespace-nowrap">
+        {name}
+      </span>
+    ) : (
+      <Link
+        to={authorId ? `/profile/${authorId}` : "/profile"}
+        className="text-[11px] sm:text-xs font-medium text-slate-700 whitespace-nowrap rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+      >
+        {name}
+      </Link>
+    )}
   </div>
 );
 
@@ -116,6 +130,7 @@ const StoryCircle = ({ name, isAdd = false, image }) => (
 const PostCard = ({
   id,
   author,
+  authorId,
   genres,
   time,
   title,
@@ -137,10 +152,13 @@ const PostCard = ({
   onReportStory,
   onEditStory,
   onDeleteStory,
+  onToggleFollowAuthor,
   isMenuOpen,
   showLikeBurst,
   showLikePulse,
   showCommentCountPulse,
+  followingAuthor,
+  followBusy,
 }) => (
   <div
     onDoubleClick={() => onDoubleTapLike(id)}
@@ -158,7 +176,11 @@ const PostCard = ({
 
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+        <Link
+          to={authorId ? `/profile/${authorId}` : "/profile"}
+          className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+          aria-label={`View ${author} profile`}
+        >
           {avatar ? (
             <img
               src={avatar}
@@ -170,11 +192,16 @@ const PostCard = ({
               <User size={20} />
             </div>
           )}
-        </div>
+        </Link>
 
         <div className="min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <h3 className="font-semibold text-slate-900 truncate">{author}</h3>
+            <Link
+              to={authorId ? `/profile/${authorId}` : "/profile"}
+              className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            >
+              {author}
+            </Link>
             <span className="text-slate-400 text-xs">• {time}</span>
           </div>
 
@@ -187,7 +214,25 @@ const PostCard = ({
         </div>
       </div>
 
-      <div className="relative">
+      <div className="relative flex items-center gap-2">
+        {!canManage && authorId ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleFollowAuthor(authorId);
+            }}
+            disabled={followBusy}
+            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+              followingAuthor
+                ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                : "bg-rose-500 hover:bg-rose-600 text-white"
+            } ${followBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+          >
+            {followingAuthor ? "Following" : "Follow"}
+          </button>
+        ) : null}
+
         <button
           onClick={(event) => {
             event.stopPropagation();
@@ -314,26 +359,54 @@ const PostCard = ({
 );
 
 /* -------------------- Author Row -------------------- */
-const AuthorRow = ({ name, role }) => (
+const AuthorRow = ({
+  name,
+  role,
+  authorId,
+  avatar,
+  isFollowing,
+  isBusy,
+  onToggleFollow,
+}) => (
   <div className="flex items-center justify-between gap-3 py-3">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden">
-        <img
-          src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
-          alt={name}
-        />
-      </div>
+      <Link
+        to={authorId ? `/profile/${authorId}` : "/profile"}
+        className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden block"
+      >
+        {avatar ? (
+          <img src={avatar} alt={name} className="w-full h-full object-cover" />
+        ) : (
+          <img
+            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`}
+            alt={name}
+            className="w-full h-full object-cover"
+          />
+        )}
+      </Link>
 
       <div className="min-w-0">
-        <h4 className="font-semibold text-sm text-slate-900 truncate">
+        <Link
+          to={authorId ? `/profile/${authorId}` : "/profile"}
+          className="font-semibold text-sm text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        >
           {name}
-        </h4>
+        </Link>
         <p className="text-[10px] text-rose-500 font-medium">{role}</p>
       </div>
     </div>
 
-    <button className="bg-rose-500 hover:bg-rose-600 text-white text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap">
-      Follow
+    <button
+      type="button"
+      onClick={onToggleFollow}
+      disabled={isBusy}
+      className={`text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+        isFollowing
+          ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+          : "bg-rose-500 hover:bg-rose-600 text-white"
+      } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+    >
+      {isFollowing ? "Following" : "Follow"}
     </button>
   </div>
 );
@@ -391,6 +464,39 @@ export default function Home() {
       return "You";
     }
   }, []);
+
+  useEffect(() => {
+    const handleFollowUpdated = (event) => {
+      const followerId = normalizeId(event?.detail?.followerId || "");
+      const followingId = normalizeId(event?.detail?.followingId || "");
+      const following = Boolean(event?.detail?.following);
+
+      if (!followingId || followerId !== currentUserId) {
+        return;
+      }
+
+      setPosts((previousPosts) =>
+        previousPosts.map((post) =>
+          post.authorId === followingId
+            ? {
+                ...post,
+                followingAuthor: following,
+                followBusy: false,
+              }
+            : post,
+        ),
+      );
+    };
+
+    window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
+
+    return () => {
+      window.removeEventListener(
+        "storyhub:follow-updated",
+        handleFollowUpdated,
+      );
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     if (!activeCommentStoryId) return;
@@ -478,6 +584,8 @@ export default function Home() {
             commentCount: Number(story.commentCount || 0),
             canManage: Boolean(currentUserId) && authorId === currentUserId,
             likedByCurrentUser: Boolean(story.likedByCurrentUser),
+            followingAuthor: Boolean(story.followedByCurrentUser),
+            followBusy: false,
             avatar: authorAvatarMap.get(authorId) || "",
           };
         });
@@ -835,6 +943,96 @@ export default function Home() {
     setMenuStoryId((currentId) => (currentId === storyId ? null : storyId));
   }, []);
 
+  const handleToggleFollowAuthor = useCallback(
+    async (authorId) => {
+      if (!authorId || !currentUserId || authorId === currentUserId) {
+        return;
+      }
+
+      let nextFollowingState = false;
+      let hasMatchedAuthorPosts = false;
+      let hasResolvedNextState = false;
+
+      setPosts((previousPosts) =>
+        previousPosts.map((post) => {
+          if (post.authorId !== authorId || post.followBusy) {
+            return post;
+          }
+
+          hasMatchedAuthorPosts = true;
+
+          if (!hasResolvedNextState) {
+            nextFollowingState = !post.followingAuthor;
+            hasResolvedNextState = true;
+          }
+
+          return {
+            ...post,
+            followingAuthor: nextFollowingState,
+            followBusy: true,
+          };
+        }),
+      );
+
+      if (!hasMatchedAuthorPosts) {
+        return;
+      }
+
+      try {
+        if (nextFollowingState) {
+          await followUser(authorId);
+        } else {
+          await unfollowUser(authorId);
+        }
+
+        let confirmedFollowing = nextFollowingState;
+
+        try {
+          const statusPayload = await getFollowStatus(authorId);
+          confirmedFollowing = Boolean(statusPayload?.following);
+        } catch {
+          // Keep optimistic state if status refresh fails.
+        }
+
+        setPosts((previousPosts) =>
+          previousPosts.map((post) =>
+            post.authorId === authorId
+              ? {
+                  ...post,
+                  followingAuthor: confirmedFollowing,
+                  followBusy: false,
+                }
+              : post,
+          ),
+        );
+
+        window.dispatchEvent(
+          new CustomEvent("storyhub:follow-updated", {
+            detail: {
+              followerId: currentUserId,
+              followingId: authorId,
+              following: confirmedFollowing,
+            },
+          }),
+        );
+      } catch {
+        setPosts((previousPosts) =>
+          previousPosts.map((post) =>
+            post.authorId === authorId
+              ? {
+                  ...post,
+                  followingAuthor: !nextFollowingState,
+                  followBusy: false,
+                }
+              : post,
+          ),
+        );
+        return;
+      }
+    },
+    [currentUserId],
+  );
+
   const handleReportStory = useCallback((storyId) => {
     setMenuStoryId(null);
 
@@ -1051,6 +1249,7 @@ export default function Home() {
       seenAuthors.add(post.author);
       circles.push({
         name: post.author,
+        authorId: post.authorId,
         image: post.avatar,
       });
     });
@@ -1059,11 +1258,26 @@ export default function Home() {
   }, [posts, currentUserId]);
 
   const topAuthors = [
-    { name: "Hannah Rose", role: "Top Mystery Writer" },
-    { name: "Emily Foster", role: "Top Lifestyle Author" },
-    { name: "David Chen", role: "Top Tech Writer" },
-    { name: "Lisa Park", role: "Top Romance Author" },
-  ];
+    ...new Map(
+      posts
+        .filter(
+          (post) =>
+            post.authorId &&
+            normalizeId(post.authorId) !== normalizeId(currentUserId),
+        )
+        .map((post) => [
+          normalizeId(post.authorId),
+          {
+            authorId: normalizeId(post.authorId),
+            name: post.author,
+            role: `Top ${String(post.genres?.[0] || "General").toLowerCase()} author`,
+            avatar: post.avatar,
+            isFollowing: Boolean(post.followingAuthor),
+            isBusy: Boolean(post.followBusy),
+          },
+        ]),
+    ).values(),
+  ].slice(0, 4);
 
   const activeCommentStory = posts.find(
     (post) => post.id === activeCommentStoryId,
@@ -1151,6 +1365,7 @@ export default function Home() {
                         onReportStory={handleReportStory}
                         onEditStory={handleEditStory}
                         onDeleteStory={handleDeleteStory}
+                        onToggleFollowAuthor={handleToggleFollowAuthor}
                         isMenuOpen={menuStoryId === post.id}
                         showLikeBurst={likeBurstStoryId === post.id}
                         showLikePulse={likePulseStoryId === post.id}
@@ -1184,8 +1399,14 @@ export default function Home() {
                 </h2>
 
                 <div className="space-y-4 mb-8">
-                  {topAuthors.map((author, i) => (
-                    <AuthorRow key={i} {...author} />
+                  {topAuthors.map((author) => (
+                    <AuthorRow
+                      key={author.authorId}
+                      {...author}
+                      onToggleFollow={() =>
+                        handleToggleFollowAuthor(author.authorId)
+                      }
+                    />
                   ))}
                 </div>
 
@@ -1257,9 +1478,18 @@ export default function Home() {
                       className="rounded-xl bg-gray-50 px-3 py-2"
                     >
                       <div className="flex items-start justify-between gap-2 mb-1">
-                        <p className="text-xs font-semibold text-slate-700">
-                          {comment.authorDisplayName || "Anonymous"}
-                        </p>
+                        {commentOwnerId ? (
+                          <Link
+                            to={`/profile/${commentOwnerId}`}
+                            className="text-xs font-semibold text-slate-700 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                          >
+                            {comment.authorDisplayName || "Anonymous"}
+                          </Link>
+                        ) : (
+                          <p className="text-xs font-semibold text-slate-700">
+                            {comment.authorDisplayName || "Anonymous"}
+                          </p>
+                        )}
 
                         <div className="relative">
                           <button

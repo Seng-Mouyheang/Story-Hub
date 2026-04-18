@@ -5,6 +5,7 @@ import {
   Share2,
   MoreHorizontal,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import {
   formatCount,
@@ -76,6 +77,7 @@ export default function ConfessionFeedCard({
 }) {
   const originalAuthor = item?.authorDisplayName || "Unknown Author";
   const author = item?.isAnonymous ? "Anonymous" : originalAuthor;
+  const authorId = normalizeId(item?.authorId);
   const authorSeed = String(author || "author");
   const avatarSrc =
     !item?.isAnonymous && item?.authorProfilePicture
@@ -212,15 +214,42 @@ export default function ConfessionFeedCard({
 
       <div className="flex justify-between items-start mb-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
-            <img src={avatarSrc} alt="avatar" />
-          </div>
+          {!item?.isAnonymous && authorId ? (
+            <Link
+              to={`/profile/${authorId}`}
+              className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+              aria-label={`View ${author} profile`}
+            >
+              <img
+                src={avatarSrc}
+                alt="avatar"
+                className="w-full h-full object-cover"
+              />
+            </Link>
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+              <img
+                src={avatarSrc}
+                alt="avatar"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
 
           <div className="min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-              <h3 className="font-semibold text-slate-900 truncate">
-                {author}
-              </h3>
+              {!item?.isAnonymous && authorId ? (
+                <Link
+                  to={`/profile/${authorId}`}
+                  className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                >
+                  {author}
+                </Link>
+              ) : (
+                <h3 className="font-semibold text-slate-900 truncate">
+                  {author}
+                </h3>
+              )}
               <div className="flex items-center gap-1 text-xs text-slate-400">
                 <span>• {getRelativeTime(item?.createdAt)}</span>
                 {item?.isEdited && <span>• Edited</span>}

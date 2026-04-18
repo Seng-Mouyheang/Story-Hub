@@ -158,6 +158,26 @@ export async function getStoriesByMyInterests({
   return parseJsonResponse(response, "Failed to fetch stories by interests.");
 }
 
+export async function getStoriesByAuthor(
+  authorId,
+  { limit = 10, cursor = null, signal } = {},
+) {
+  if (!authorId) {
+    throw new Error("Author ID is required");
+  }
+
+  const cursorParam = cursor ? `&cursor=${cursor}` : "";
+  const response = await fetch(
+    `/api/stories/author/${authorId}?limit=${limit}${cursorParam}`,
+    {
+      signal,
+      headers: getAuthHeaders(),
+    },
+  );
+
+  return parseJsonResponse(response, "Failed to fetch stories by author.");
+}
+
 export async function getMyStories({ limit = 10, cursor = null, signal } = {}) {
   const cursorParam = cursor ? `&cursor=${cursor}` : "";
   const response = await fetch(`/api/stories/me?limit=${limit}${cursorParam}`, {

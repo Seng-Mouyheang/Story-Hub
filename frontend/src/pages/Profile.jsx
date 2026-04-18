@@ -1,11 +1,25 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Share, User } from "lucide-react";
-import { getProfileByUserId, getUserStats } from "../api/profile";
-import { getMyStories } from "../api/story/storyApi";
+import { ChevronLeft, Share, User } from "lucide-react";
+import {
+  getProfileByUserId,
+  getUserStats,
+  getFollowers,
+  getFollowing,
+  getFollowStatus,
+  followUser,
+  unfollowUser,
+} from "../api/profile";
+import { getMyStories, getStoriesByAuthor } from "../api/story/storyApi";
 import { getMyBookmarkedStories } from "../api/story/storyInteractionsApi";
 import {
   getDashboardStories,
@@ -103,13 +117,30 @@ const StoryCard = ({ story, actionLabel, actionHref }) => (
 );
 
 export default function Profile() {
+  const navigate = useNavigate();
+  const { userId: routeUserId } = useParams();
   const [activeTab, setActiveTab] = useState("Stories");
   const [profileData, setProfileData] = useState(null);
   const [profileStats, setProfileStats] = useState(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profileRefreshToken, setProfileRefreshToken] = useState(0);
+  const [isFollowingViewedUser, setIsFollowingViewedUser] = useState(false);
+  const [isLoadingFollowStatus, setIsLoadingFollowStatus] = useState(false);
+  const [isTogglingFollow, setIsTogglingFollow] = useState(false);
+  const [isFollowListOpen, setIsFollowListOpen] = useState(false);
+  const [activeFollowListType, setActiveFollowListType] = useState("followers");
+  const [followListItems, setFollowListItems] = useState([]);
+  const [followListCursor, setFollowListCursor] = useState(null);
+  const [followListHasMore, setFollowListHasMore] = useState(false);
+  const [isLoadingFollowList, setIsLoadingFollowList] = useState(false);
+  const [followListError, setFollowListError] = useState("");
+  const [listActionBusyByUserId, setListActionBusyByUserId] = useState({});
   const [storyItems, setStoryItems] = useState([]);
   const [savedItems, setSavedItems] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(true);
+  const lastViewedUserIdRef = useRef("");
+  const FOLLOW_LIST_PAGE_SIZE = 15;
 
   const currentUser = useMemo(() => {
     try {
@@ -119,18 +150,383 @@ export default function Profile() {
     }
   }, []);
 
+  const normalizeId = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "object") {
+      if (typeof value.$oid === "string") return value.$oid.trim();
+      if (typeof value.toString === "function") return value.toString().trim();
+    }
+
+    return String(value).trim();
+  };
+
+  const currentUserId = useMemo(
+    () => normalizeId(currentUser?.id || currentUser?._id || ""),
+    [currentUser],
+  );
+  const viewedUserId = normalizeId(routeUserId || currentUserId);
+  const isOwnProfile =
+    !routeUserId || normalizeId(routeUserId) === normalizeId(currentUserId);
+
   useEffect(() => {
-    if (!currentUser?.id) {
+    const handleFollowUpdated = (event) => {
+      const normalizedViewedUserId = String(viewedUserId || "").trim();
+      const normalizedCurrentUserId = String(currentUserId || "").trim();
+      const followerId = String(event?.detail?.followerId || "").trim();
+      const followingId = String(event?.detail?.followingId || "").trim();
+      const isFollowing = Boolean(event?.detail?.following);
+
+      if (!normalizedViewedUserId) {
+        return;
+      }
+
+      setProfileData((previous) => {
+        if (!previous) {
+          return previous;
+        }
+
+        let nextFollowers = Number(previous.followers || 0);
+        let nextFollowing = Number(previous.following || 0);
+
+        if (normalizedViewedUserId === followingId) {
+          nextFollowers = Math.max(0, nextFollowers + (isFollowing ? 1 : -1));
+        }
+
+        if (normalizedViewedUserId === followerId) {
+          nextFollowing = Math.max(0, nextFollowing + (isFollowing ? 1 : -1));
+        }
+
+        return {
+          ...previous,
+          followers: nextFollowers,
+          following: nextFollowing,
+        };
+      });
+
+      if (
+        normalizedViewedUserId === followerId ||
+        normalizedViewedUserId === followingId
+      ) {
+        setProfileRefreshToken((previous) => previous + 1);
+      }
+
+      if (
+        normalizedViewedUserId === followingId &&
+        normalizedCurrentUserId === followerId
+      ) {
+        setIsFollowingViewedUser(isFollowing);
+      }
+
+      if (normalizedCurrentUserId === followerId) {
+        setFollowListItems((previous) =>
+          previous.map((account) =>
+            String(account?.userId || "").trim() === followingId
+              ? { ...account, following: isFollowing }
+              : account,
+          ),
+        );
+      }
+    };
+
+    window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
+
+    return () => {
+      window.removeEventListener(
+        "storyhub:follow-updated",
+        handleFollowUpdated,
+      );
+    };
+  }, [currentUserId, viewedUserId]);
+
+  useEffect(() => {
+    if (!viewedUserId || isOwnProfile) {
+      setIsFollowingViewedUser(false);
+      setIsLoadingFollowStatus(false);
       return;
     }
 
     let isMounted = true;
 
+    const loadFollowStatus = async () => {
+      setIsLoadingFollowStatus(true);
+
+      try {
+        const payload = await getFollowStatus(viewedUserId);
+        if (isMounted) {
+          setIsFollowingViewedUser(Boolean(payload?.following));
+        }
+      } catch {
+        // Keep previous state when status refresh fails transiently.
+      } finally {
+        if (isMounted) {
+          setIsLoadingFollowStatus(false);
+        }
+      }
+    };
+
+    loadFollowStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOwnProfile, viewedUserId]);
+
+  const buildFollowListAccounts = useCallback(
+    async (userIds) => {
+      const normalizedCurrentUserId = normalizeId(currentUserId);
+
+      const accountRows = await Promise.all(
+        userIds.map(async (userId) => {
+          const normalizedUserId = normalizeId(userId);
+          const isSelf = normalizedUserId === normalizedCurrentUserId;
+
+          let profilePayload = null;
+          try {
+            profilePayload = await getProfileByUserId(normalizedUserId);
+          } catch {
+            // Keep fallback display values if profile metadata fetch fails.
+          }
+
+          let following = false;
+          if (!isSelf && normalizedCurrentUserId) {
+            try {
+              const statusPayload = await getFollowStatus(normalizedUserId);
+              following = Boolean(statusPayload?.following);
+            } catch {
+              // Keep default follow status on transient errors.
+            }
+          }
+
+          const fallbackName = normalizedUserId
+            ? `Author ${normalizedUserId.slice(-4).toUpperCase()}`
+            : "Unknown User";
+          const fallbackHandle =
+            normalizedUserId ||
+            fallbackName.replace(/\s+/g, "").toLowerCase() ||
+            "storyhub_user";
+
+          return {
+            userId: normalizedUserId,
+            name: profilePayload?.displayName || fallbackName,
+            handle: `@${profilePayload?.username || fallbackHandle}`,
+            avatar: profilePayload?.profilePicture || "",
+            following,
+            isSelf,
+          };
+        }),
+      );
+
+      return accountRows;
+    },
+    [currentUserId],
+  );
+
+  const loadFollowList = useCallback(
+    async ({ listType, reset = false } = {}) => {
+      if (!viewedUserId) {
+        return;
+      }
+
+      const targetListType =
+        listType === "following" ? "following" : "followers";
+      const cursor = reset ? null : followListCursor;
+      const requestList =
+        targetListType === "following" ? getFollowing : getFollowers;
+
+      setIsLoadingFollowList(true);
+      setFollowListError("");
+
+      try {
+        const payload = await requestList(viewedUserId, {
+          cursor,
+          limit: FOLLOW_LIST_PAGE_SIZE,
+        });
+
+        const rawIds =
+          targetListType === "following"
+            ? payload?.following || []
+            : payload?.followers || [];
+        const ids = Array.from(
+          new Set(rawIds.map((value) => normalizeId(value)).filter(Boolean)),
+        );
+
+        const rows = await buildFollowListAccounts(ids);
+
+        setFollowListItems((previous) => {
+          if (reset) {
+            return rows;
+          }
+
+          const seen = new Set(
+            previous.map((item) => normalizeId(item.userId)),
+          );
+          const merged = [...previous];
+
+          rows.forEach((row) => {
+            const key = normalizeId(row.userId);
+            if (!seen.has(key)) {
+              merged.push(row);
+              seen.add(key);
+            }
+          });
+
+          return merged;
+        });
+
+        setFollowListCursor(payload?.nextCursor || null);
+        setFollowListHasMore(Boolean(payload?.hasMore));
+      } catch (error) {
+        setFollowListError(
+          error?.message || "Failed to load this follow list right now.",
+        );
+
+        if (reset) {
+          setFollowListItems([]);
+          setFollowListCursor(null);
+          setFollowListHasMore(false);
+        }
+      } finally {
+        setIsLoadingFollowList(false);
+      }
+    },
+    [
+      FOLLOW_LIST_PAGE_SIZE,
+      buildFollowListAccounts,
+      followListCursor,
+      viewedUserId,
+    ],
+  );
+
+  const openFollowList = (listType) => {
+    const targetListType = listType === "following" ? "following" : "followers";
+    setActiveFollowListType(targetListType);
+    setFollowListItems([]);
+    setFollowListCursor(null);
+    setFollowListHasMore(false);
+    setFollowListError("");
+    setIsFollowListOpen(true);
+  };
+
+  const closeFollowList = () => {
+    setIsFollowListOpen(false);
+    setFollowListError("");
+  };
+
+  const handleToggleFollowFromList = async (targetUserId) => {
+    const normalizedTargetUserId = normalizeId(targetUserId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+
+    if (
+      !normalizedTargetUserId ||
+      normalizedTargetUserId === normalizedCurrentUserId ||
+      !normalizedCurrentUserId ||
+      listActionBusyByUserId[normalizedTargetUserId]
+    ) {
+      return;
+    }
+
+    const targetItem = followListItems.find(
+      (item) => normalizeId(item.userId) === normalizedTargetUserId,
+    );
+    const previousFollowingState = Boolean(targetItem?.following);
+    const nextFollowingState = !previousFollowingState;
+
+    setListActionBusyByUserId((previous) => ({
+      ...previous,
+      [normalizedTargetUserId]: true,
+    }));
+
+    setFollowListItems((previous) =>
+      previous.map((item) =>
+        normalizeId(item.userId) === normalizedTargetUserId
+          ? { ...item, following: nextFollowingState }
+          : item,
+      ),
+    );
+
+    try {
+      const payload = previousFollowingState
+        ? await unfollowUser(normalizedTargetUserId)
+        : await followUser(normalizedTargetUserId);
+
+      const confirmedFollowing =
+        typeof payload?.following === "boolean"
+          ? payload.following
+          : nextFollowingState;
+      const eventFollowerId =
+        normalizeId(payload?.followerId) || normalizedCurrentUserId;
+      const eventFollowingId =
+        normalizeId(payload?.followingId) || normalizedTargetUserId;
+
+      setFollowListItems((previous) =>
+        previous.map((item) =>
+          normalizeId(item.userId) === normalizedTargetUserId
+            ? { ...item, following: confirmedFollowing }
+            : item,
+        ),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("storyhub:follow-updated", {
+          detail: {
+            followerId: eventFollowerId,
+            followingId: eventFollowingId,
+            following: confirmedFollowing,
+          },
+        }),
+      );
+    } catch {
+      setFollowListItems((previous) =>
+        previous.map((item) =>
+          normalizeId(item.userId) === normalizedTargetUserId
+            ? { ...item, following: previousFollowingState }
+            : item,
+        ),
+      );
+    } finally {
+      setListActionBusyByUserId((previous) => ({
+        ...previous,
+        [normalizedTargetUserId]: false,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (!isFollowListOpen || !viewedUserId) {
+      return;
+    }
+
+    loadFollowList({ listType: activeFollowListType, reset: true });
+  }, [activeFollowListType, isFollowListOpen, loadFollowList, viewedUserId]);
+
+  useEffect(() => {
+    setIsFollowListOpen(false);
+    setFollowListItems([]);
+    setFollowListCursor(null);
+    setFollowListHasMore(false);
+    setFollowListError("");
+    setListActionBusyByUserId({});
+  }, [viewedUserId]);
+
+  useEffect(() => {
+    if (!viewedUserId) {
+      return;
+    }
+
+    let isMounted = true;
+    const viewedUserChanged = lastViewedUserIdRef.current !== viewedUserId;
+    lastViewedUserIdRef.current = viewedUserId;
+
     const loadProfile = async () => {
+      if (isMounted && viewedUserChanged) {
+        setIsLoadingProfile(true);
+      }
+
       try {
         const [payload, statsPayload] = await Promise.all([
-          getProfileByUserId(currentUser.id),
-          getUserStats(currentUser.id).catch(() => null),
+          getProfileByUserId(viewedUserId),
+          getUserStats(viewedUserId).catch(() => null),
         ]);
 
         if (isMounted) {
@@ -138,7 +534,14 @@ export default function Profile() {
           setProfileStats(statsPayload);
         }
       } catch {
-        // Keep fallback profile values from local user data.
+        if (isMounted && viewedUserChanged) {
+          setProfileData(null);
+          setProfileStats(null);
+        }
+      } finally {
+        if (isMounted && viewedUserChanged) {
+          setIsLoadingProfile(false);
+        }
       }
     };
 
@@ -147,10 +550,16 @@ export default function Profile() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.id]);
+  }, [profileRefreshToken, viewedUserId]);
 
   useEffect(() => {
-    if (!currentUser?.id) {
+    if (!isOwnProfile) {
+      setActiveTab("Stories");
+    }
+  }, [isOwnProfile]);
+
+  useEffect(() => {
+    if (!viewedUserId) {
       return;
     }
 
@@ -167,30 +576,43 @@ export default function Profile() {
           dashboardStoriesResult,
           dashboardConfessionsResult,
         ] = await Promise.all([
-          getMyStories({ limit: 20, signal: abortController.signal }).catch(
-            () => ({ data: [] }),
-          ),
-          getMyBookmarkedStories({
-            limit: 20,
-            signal: abortController.signal,
-          }).catch(() => ({ data: [] })),
-          getDashboardStories({
-            limit: 8,
-            page: 1,
-            sortBy: "date",
-            order: "desc",
-            status: "all",
-            visibility: "all",
-            deleted: "active",
-            signal: abortController.signal,
-          }).catch(() => ({ data: [] })),
-          getDashboardConfessions({
-            limit: 8,
-            page: 1,
-            sortBy: "date",
-            order: "desc",
-            signal: abortController.signal,
-          }).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getMyStories({ limit: 20, signal: abortController.signal })
+            : getStoriesByAuthor(viewedUserId, {
+                limit: 20,
+                signal: abortController.signal,
+              })
+          ).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getMyBookmarkedStories({
+                limit: 20,
+                signal: abortController.signal,
+              })
+            : Promise.resolve({ data: [] })
+          ).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getDashboardStories({
+                limit: 8,
+                page: 1,
+                sortBy: "date",
+                order: "desc",
+                status: "all",
+                visibility: "all",
+                deleted: "active",
+                signal: abortController.signal,
+              })
+            : Promise.resolve({ data: [] })
+          ).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getDashboardConfessions({
+                limit: 8,
+                page: 1,
+                sortBy: "date",
+                order: "desc",
+                signal: abortController.signal,
+              })
+            : Promise.resolve({ data: [] })
+          ).catch(() => ({ data: [] })),
         ]);
 
         const myStories = Array.isArray(myStoriesResult?.data)
@@ -281,22 +703,37 @@ export default function Profile() {
       isMounted = false;
       abortController.abort();
     };
-  }, [currentUser?.id]);
+  }, [isOwnProfile, viewedUserId]);
 
   const userData = useMemo(() => {
     const username = currentUser?.username || "StoryHub User";
     const email = currentUser?.email || "";
     const stats = profileStats?.stats || {};
+    const externalAuthorFallback = viewedUserId
+      ? `Author ${viewedUserId.slice(-4).toUpperCase()}`
+      : "Unknown Author";
+    const displayName =
+      profileData?.displayName ||
+      (isOwnProfile ? username : externalAuthorFallback);
+    const normalizedHandle =
+      profileData?.username ||
+      (isOwnProfile
+        ? email
+          ? email.split("@")[0]
+          : displayName.replace(/\s+/g, "").toLowerCase()
+        : viewedUserId || displayName.replace(/\s+/g, "").toLowerCase());
 
     return {
-      name: profileData?.displayName || username,
-      handle: email ? `@${email.split("@")[0]}` : "@storyhub_user",
+      name: displayName,
+      handle: `@${normalizedHandle || "storyhub_user"}`,
       followers: String(profileData?.followers ?? 0),
       following: String(profileData?.following ?? 0),
       posts: String(stats.totalPosts ?? profileData?.posts ?? 0),
       bio:
         profileData?.bio ||
-        "Welcome to your StoryHub profile. Start writing and sharing your stories.",
+        (isOwnProfile
+          ? "Welcome to your StoryHub profile. Start writing and sharing your stories."
+          : "This user has not completed their profile yet."),
       genres:
         Array.isArray(profileData?.interest) && profileData.interest.length > 0
           ? profileData.interest
@@ -304,9 +741,9 @@ export default function Profile() {
       avatar: profileData?.profilePicture || "",
       coverImage: profileData?.coverImage || "",
     };
-  }, [currentUser, profileData, profileStats]);
+  }, [currentUser, isOwnProfile, profileData, profileStats, viewedUserId]);
 
-  const tabs = ["Stories", "Saved", "Activity"];
+  const tabs = isOwnProfile ? ["Stories", "Saved", "Activity"] : ["Stories"];
 
   const tabContent =
     activeTab === "Stories"
@@ -317,10 +754,84 @@ export default function Profile() {
 
   const emptyMessage =
     activeTab === "Stories"
-      ? "You have not published any stories yet."
+      ? isOwnProfile
+        ? "You have not published any stories yet."
+        : "This user has not published any stories yet."
       : activeTab === "Saved"
         ? "You have not saved any stories yet."
         : "No recent activity found yet.";
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/");
+  };
+
+  const handleToggleFollowViewedUser = async () => {
+    if (isOwnProfile || !viewedUserId || isTogglingFollow) {
+      return;
+    }
+
+    const previousFollowingState = isFollowingViewedUser;
+    const nextFollowingState = !previousFollowingState;
+
+    setIsTogglingFollow(true);
+    setIsFollowingViewedUser(nextFollowingState);
+
+    try {
+      const payload = previousFollowingState
+        ? await unfollowUser(viewedUserId)
+        : await followUser(viewedUserId);
+
+      const confirmedFollowing =
+        typeof payload?.following === "boolean"
+          ? payload.following
+          : nextFollowingState;
+      const eventFollowerId = normalizeId(payload?.followerId) || currentUserId;
+      const eventFollowingId =
+        normalizeId(payload?.followingId) || viewedUserId;
+
+      setIsFollowingViewedUser(confirmedFollowing);
+
+      window.dispatchEvent(
+        new CustomEvent("storyhub:follow-updated", {
+          detail: {
+            followerId: eventFollowerId,
+            followingId: eventFollowingId,
+            following: confirmedFollowing,
+          },
+        }),
+      );
+    } catch {
+      setIsFollowingViewedUser(previousFollowingState);
+    } finally {
+      setIsTogglingFollow(false);
+    }
+  };
+
+  const showProfileNotFound =
+    !isOwnProfile && !isLoadingProfile && !profileData;
+
+  if (showProfileNotFound) {
+    return (
+      <div className="flex h-screen bg-[#f3f4f6] text-[#111827] overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0 bg-[#f3f4f6]">
+          <Navbar title="User Profile" />
+          <main className="flex-1 min-h-0">
+            <div className="h-full flex items-center justify-center px-4 text-center">
+              <h1 className="text-3xl sm:text-4xl font-bold text-[#6b7280] tracking-tight">
+                Profile not found
+              </h1>
+            </div>
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -331,6 +842,35 @@ export default function Profile() {
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-6xl mx-auto">
+              {!isOwnProfile ? (
+                <div className="mb-4 sm:mb-5 hidden sm:flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                    aria-label="Go back"
+                  >
+                    <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+                  <h1 className="min-w-0 text-lg sm:text-xl font-semibold text-slate-900 truncate">
+                    {userData.name}
+                  </h1>
+                </div>
+              ) : null}
+
+              {!isOwnProfile ? (
+                <div className="mb-2 sm:mb-5 sm:hidden -ml-1 -mt-1">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                    aria-label="Go back"
+                  >
+                    <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+                </div>
+              ) : null}
+
               {/* Profile Header Card */}
               <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-200 relative shadow-sm">
                 <div className="h-36 sm:h-48 bg-linear-to-r from-rose-100 to-amber-50 relative overflow-hidden">
@@ -375,17 +915,40 @@ export default function Profile() {
                         {userData.bio}
                       </p>
                     </div>
-                    <div className="flex gap-2">
-                      <Link
-                        to="/edit-profile"
-                        className="px-4 py-2 border border-slate-300 rounded-xl font-medium text-sm hover:bg-slate-100 transition-colors"
+                    {isOwnProfile ? (
+                      <div className="flex gap-2">
+                        <Link
+                          to="/edit-profile"
+                          className="px-4 py-2 border border-slate-300 rounded-xl font-medium text-sm hover:bg-slate-100 transition-colors"
+                        >
+                          Edit Profile
+                        </Link>
+                        <button className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors">
+                          <Share className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleToggleFollowViewedUser}
+                        disabled={isLoadingFollowStatus || isTogglingFollow}
+                        className={`px-4 py-2 rounded-xl font-medium text-sm transition-colors ${
+                          isFollowingViewedUser
+                            ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                            : "bg-rose-500 hover:bg-rose-600 text-white"
+                        } ${
+                          isLoadingFollowStatus || isTogglingFollow
+                            ? "opacity-60 cursor-not-allowed"
+                            : ""
+                        }`}
                       >
-                        Edit Profile
-                      </Link>
-                      <button className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors">
-                        <Share className="w-4 h-4" />
+                        {isLoadingFollowStatus
+                          ? "Loading..."
+                          : isFollowingViewedUser
+                            ? "Following"
+                            : "Follow"}
                       </button>
-                    </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">
@@ -396,16 +959,32 @@ export default function Profile() {
                       <span className="text-slate-400 text-sm">Posts</span>
                     </div>
                     <div>
-                      <span className="font-semibold text-slate-900">
-                        {userData.followers}
-                      </span>{" "}
-                      <span className="text-slate-400 text-sm">Followers</span>
+                      <button
+                        type="button"
+                        onClick={() => openFollowList("followers")}
+                        className="inline-flex items-center gap-1 text-left"
+                      >
+                        <span className="font-semibold text-slate-900 hover:text-rose-600 transition-colors">
+                          {userData.followers}
+                        </span>{" "}
+                        <span className="text-slate-400 text-sm hover:text-slate-600 transition-colors">
+                          Followers
+                        </span>
+                      </button>
                     </div>
                     <div>
-                      <span className="font-semibold text-slate-900">
-                        {userData.following}
-                      </span>{" "}
-                      <span className="text-slate-400 text-sm">Following</span>
+                      <button
+                        type="button"
+                        onClick={() => openFollowList("following")}
+                        className="inline-flex items-center gap-1 text-left"
+                      >
+                        <span className="font-semibold text-slate-900 hover:text-rose-600 transition-colors">
+                          {userData.following}
+                        </span>{" "}
+                        <span className="text-slate-400 text-sm hover:text-slate-600 transition-colors">
+                          Following
+                        </span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -484,6 +1063,125 @@ export default function Profile() {
                   </div>
                 </div>
               </div>
+
+              {isFollowListOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-6">
+                  <div
+                    className="absolute inset-0 bg-black/45"
+                    onClick={closeFollowList}
+                  />
+                  <div className="relative z-10 w-full h-full sm:h-auto sm:max-h-[84vh] sm:max-w-md bg-white sm:rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 shrink-0">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {activeFollowListType === "followers"
+                          ? "Followers"
+                          : "Following"}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={closeFollowList}
+                        className="rounded-full h-8 w-8 inline-flex items-center justify-center text-base font-semibold text-slate-500 hover:bg-slate-100"
+                        aria-label="Close"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-2 space-y-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                      {isLoadingFollowList && followListItems.length === 0 ? (
+                        <p className="text-sm text-slate-500 px-2 py-3">
+                          Loading list...
+                        </p>
+                      ) : followListError ? (
+                        <p className="text-sm text-rose-600 px-2 py-3">
+                          {followListError}
+                        </p>
+                      ) : followListItems.length === 0 ? (
+                        <p className="text-sm text-slate-500 px-2 py-3">
+                          No users found in this list yet.
+                        </p>
+                      ) : (
+                        followListItems.map((account) => {
+                          const isBusy = Boolean(
+                            listActionBusyByUserId[normalizeId(account.userId)],
+                          );
+
+                          return (
+                            <div
+                              key={account.userId}
+                              className="flex items-center justify-between gap-3 rounded-xl px-2 sm:px-1 py-2"
+                            >
+                              <Link
+                                to={`/profile/${account.userId}`}
+                                onClick={closeFollowList}
+                                className="min-w-0 flex items-center gap-3 flex-1"
+                              >
+                                <div className="h-11 w-11 rounded-full overflow-hidden bg-slate-100 shrink-0">
+                                  {account.avatar ? (
+                                    <img
+                                      src={account.avatar}
+                                      alt={account.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="h-full w-full flex items-center justify-center text-slate-300">
+                                      <User className="h-5 w-5" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-slate-900 leading-tight">
+                                    {account.name}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    {account.handle}
+                                  </p>
+                                </div>
+                              </Link>
+
+                              {account.isSelf ? null : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleToggleFollowFromList(account.userId)
+                                  }
+                                  disabled={isBusy}
+                                  className={`shrink-0 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                                    account.following
+                                      ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                      : "bg-rose-500 text-white hover:bg-rose-600"
+                                  } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  {isBusy
+                                    ? "Loading..."
+                                    : account.following
+                                      ? "Following"
+                                      : "Follow"}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+
+                      {followListHasMore ? (
+                        <div className="pt-2 px-1 pb-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              loadFollowList({ listType: activeFollowListType })
+                            }
+                            disabled={isLoadingFollowList}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isLoadingFollowList ? "Loading..." : "Load more"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <SiteFooter />
           </div>

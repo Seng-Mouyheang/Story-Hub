@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -10,12 +11,13 @@ import {
   Eye,
   ChevronRight,
   User,
+  MoreHorizontal,
 } from "lucide-react";
-import { followUser, unfollowUser } from "../api/profile";
+import { followUser, unfollowUser, getFollowStatus } from "../api/profile";
+import { getAuthorRecommendations } from "../api/recommendation";
 import {
   getExploreRecommendedStories,
   getExplorePopularStories,
-  getExploreAuthors,
   getExplorePublishedGenres,
 } from "../api/explore";
 
@@ -25,8 +27,22 @@ const formatCompactNumber = (value) =>
     maximumFractionDigits: 1,
   }).format(Number(value) || 0);
 
+const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "object") {
+    if (typeof value.$oid === "string") return value.$oid.trim();
+    if (typeof value.toString === "function") return value.toString().trim();
+  }
+
+  return String(value).trim();
+};
+
 const mapStoryCard = (story) => ({
   id: story?._id || story?.storyId || story?.id || story?.title,
+  authorId: normalizeId(
+    story?.authorId || story?.author?._id || story?.author?.userId || null,
+  ),
   title: story?.title || "Untitled story",
   tags:
     Array.isArray(story?.genres) && story.genres.length > 0
@@ -42,6 +58,7 @@ const mapStoryCard = (story) => ({
 });
 
 const AuthorRow = ({
+  userId,
   name,
   role,
   avatar,
@@ -51,18 +68,25 @@ const AuthorRow = ({
 }) => (
   <div className="flex items-center justify-between gap-3 py-3">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center shrink-0">
+      <Link
+        to={userId ? `/profile/${userId}` : "/profile"}
+        className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center shrink-0 transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        aria-label={`View ${name} profile`}
+      >
         {avatar ? (
           <img src={avatar} alt={name} className="w-full h-full object-cover" />
         ) : (
           <User className="w-4 h-4 text-slate-400" />
         )}
-      </div>
+      </Link>
 
       <div className="min-w-0">
-        <h4 className="font-semibold text-sm text-slate-900 truncate">
+        <Link
+          to={userId ? `/profile/${userId}` : "/profile"}
+          className="font-semibold text-sm text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        >
           {name}
-        </h4>
+        </Link>
         <p className="text-[10px] text-rose-500 font-medium">{role}</p>
       </div>
     </div>
@@ -83,6 +107,7 @@ const AuthorRow = ({
 );
 
 export default function Explore() {
+  const TOP_AUTHORS_COUNT = 6;
   const [activeCategory, setActiveCategory] = useState("All");
   const [genreFilters, setGenreFilters] = useState(["All"]);
   const [recommendedStories, setRecommendedStories] = useState([]);
@@ -97,6 +122,48 @@ export default function Explore() {
   const [recommendedError, setRecommendedError] = useState("");
   const [popularError, setPopularError] = useState("");
   const [authorsError, setAuthorsError] = useState("");
+
+  const currentUserId = useMemo(() => {
+    try {
+      const currentUser = JSON.parse(
+        localStorage.getItem("currentUser") || "null",
+      );
+      return normalizeId(currentUser?.id || currentUser?._id || "");
+    } catch {
+      return "";
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFollowUpdated = (event) => {
+      const followerId = normalizeId(event?.detail?.followerId || "");
+      const followingId = normalizeId(event?.detail?.followingId || "");
+      const following = Boolean(event?.detail?.following);
+
+      if (!followingId || followerId !== currentUserId) {
+        return;
+      }
+
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        [followingId]: following,
+      }));
+
+      setBusyFollowIds((previous) => ({
+        ...previous,
+        [followingId]: false,
+      }));
+    };
+
+    window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
+
+    return () => {
+      window.removeEventListener(
+        "storyhub:follow-updated",
+        handleFollowUpdated,
+      );
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -155,9 +222,8 @@ export default function Explore() {
             limit: 4,
             signal: abortController.signal,
           }),
-          getExploreAuthors({
-            category: activeCategory === "All" ? undefined : activeCategory,
-            limit: 10,
+          getAuthorRecommendations({
+            limit: TOP_AUTHORS_COUNT,
             minLikes: 10,
             signal: abortController.signal,
           }),
@@ -190,13 +256,14 @@ export default function Explore() {
 
       if (authorsResult.status === "fulfilled") {
         const resolved = (authorsResult.value?.data || []).map((author) => ({
-          userId: author?.authorId || null,
+          userId: normalizeId(author?.authorId || null),
           avatar: author?.profilePicture || "",
           displayName: author?.displayName || author?.username || "Unknown",
-          role: `Top ${
+          role: `Top ${String(
             authorsResult.value?.category ||
-            (activeCategory === "All" ? "Recommended" : activeCategory)
-          } Author`,
+              author?.primaryCategory ||
+              "recommended",
+          ).toLowerCase()} author`,
           popularStoriesInCategory: Number(
             author?.popularStoriesInCategory || 0,
           ),
@@ -204,16 +271,62 @@ export default function Explore() {
         }));
 
         setResolvedAuthors(resolved);
-        setFollowStateByUserId(
-          Object.fromEntries(resolved.map((author) => [author.userId, false])),
-        );
       } else {
         setResolvedAuthors([]);
-        setFollowStateByUserId({});
         setAuthorsError(
           authorsResult.reason?.message ||
             "Failed to load recommended authors.",
         );
+      }
+
+      const recommendedAuthorIds =
+        authorsResult.status === "fulfilled"
+          ? (authorsResult.value?.data || [])
+              .map((author) => normalizeId(author?.authorId || null))
+              .filter((authorId) => Boolean(authorId))
+          : [];
+
+      const storyAuthorIds = [
+        ...new Set(
+          [
+            ...(recommendedResult.status === "fulfilled"
+              ? (recommendedResult.value?.data || []).map(
+                  (story) => mapStoryCard(story).authorId,
+                )
+              : []),
+            ...(popularResult.status === "fulfilled"
+              ? (popularResult.value?.data || []).map(
+                  (story) => mapStoryCard(story).authorId,
+                )
+              : []),
+          ].filter(
+            (authorId) => Boolean(authorId) && authorId !== currentUserId,
+          ),
+        ),
+      ];
+
+      const authorIdsForFollowStatus = [
+        ...new Set([...recommendedAuthorIds, ...storyAuthorIds]),
+      ].filter((authorId) => authorId !== currentUserId);
+
+      if (authorIdsForFollowStatus.length > 0) {
+        const followEntries = await Promise.all(
+          authorIdsForFollowStatus.map(async (authorId) => {
+            try {
+              const statusPayload = await getFollowStatus(authorId);
+              return [authorId, Boolean(statusPayload?.following)];
+            } catch {
+              return [authorId, false];
+            }
+          }),
+        );
+
+        if (isMounted) {
+          setFollowStateByUserId((previous) => ({
+            ...previous,
+            ...Object.fromEntries(followEntries),
+          }));
+        }
       }
 
       setStoriesLoading(false);
@@ -227,40 +340,57 @@ export default function Explore() {
       isMounted = false;
       abortController.abort();
     };
-  }, [activeCategory]);
+  }, [TOP_AUTHORS_COUNT, activeCategory, currentUserId]);
 
   const handleToggleFollow = async (author) => {
-    if (!author.userId) {
+    const normalizedTargetUserId = normalizeId(author?.userId);
+
+    if (!normalizedTargetUserId || normalizedTargetUserId === currentUserId) {
       return;
     }
 
-    setBusyFollowIds((prev) => ({ ...prev, [author.userId]: true }));
+    setBusyFollowIds((prev) => ({ ...prev, [normalizedTargetUserId]: true }));
 
     try {
-      const isFollowing = Boolean(followStateByUserId[author.userId]);
+      const isFollowing = Boolean(followStateByUserId[normalizedTargetUserId]);
+      let followResult;
 
       if (isFollowing) {
-        await unfollowUser(author.userId);
+        followResult = await unfollowUser(normalizedTargetUserId);
       } else {
-        await followUser(author.userId);
+        followResult = await followUser(normalizedTargetUserId);
       }
+
+      const confirmedFollowing =
+        typeof followResult?.following === "boolean"
+          ? followResult.following
+          : !isFollowing;
+      const eventFollowerId =
+        normalizeId(followResult?.followerId) || currentUserId;
+      const eventFollowingId =
+        normalizeId(followResult?.followingId) || normalizedTargetUserId;
+
+      window.dispatchEvent(
+        new CustomEvent("storyhub:follow-updated", {
+          detail: {
+            followerId: eventFollowerId,
+            followingId: eventFollowingId,
+            following: confirmedFollowing,
+          },
+        }),
+      );
 
       setFollowStateByUserId((prev) => ({
         ...prev,
-        [author.userId]: !isFollowing,
+        [normalizedTargetUserId]: confirmedFollowing,
       }));
-
-      if (!isFollowing) {
-        setResolvedAuthors((prev) =>
-          prev.filter(
-            (currentAuthor) => currentAuthor.userId !== author.userId,
-          ),
-        );
-      }
     } catch (error) {
       console.error("Failed to toggle follow state:", error);
     } finally {
-      setBusyFollowIds((prev) => ({ ...prev, [author.userId]: false }));
+      setBusyFollowIds((prev) => ({
+        ...prev,
+        [normalizedTargetUserId]: false,
+      }));
     }
   };
 
@@ -353,7 +483,33 @@ export default function Explore() {
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-3 text-slate-500 shrink-0">
+                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
+                          {story.authorId &&
+                          story.authorId !== currentUserId ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleToggleFollow({ userId: story.authorId })
+                              }
+                              disabled={Boolean(busyFollowIds[story.authorId])}
+                              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+                                followStateByUserId[story.authorId]
+                                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                  : "bg-rose-500 hover:bg-rose-600 text-white"
+                              } ${
+                                busyFollowIds[story.authorId]
+                                  ? "opacity-60 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              {followStateByUserId[story.authorId]
+                                ? "Following"
+                                : "Follow"}
+                            </button>
+                          ) : null}
+                          <button type="button" aria-label="Story actions">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
                           <button type="button">
                             <Bookmark className="w-5 h-5" />
                           </button>
@@ -368,7 +524,17 @@ export default function Explore() {
                       </h4>
 
                       <p className="text-[11px] font-medium text-slate-400 mb-3">
-                        By {story.author}
+                        By{" "}
+                        <Link
+                          to={
+                            story.authorId
+                              ? `/profile/${story.authorId}`
+                              : "/profile"
+                          }
+                          className="text-slate-500 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                        >
+                          {story.author}
+                        </Link>
                       </p>
 
                       <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
@@ -438,7 +604,33 @@ export default function Explore() {
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-3 text-slate-500 shrink-0">
+                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
+                          {story.authorId &&
+                          story.authorId !== currentUserId ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleToggleFollow({ userId: story.authorId })
+                              }
+                              disabled={Boolean(busyFollowIds[story.authorId])}
+                              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+                                followStateByUserId[story.authorId]
+                                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                  : "bg-rose-500 hover:bg-rose-600 text-white"
+                              } ${
+                                busyFollowIds[story.authorId]
+                                  ? "opacity-60 cursor-not-allowed"
+                                  : ""
+                              }`}
+                            >
+                              {followStateByUserId[story.authorId]
+                                ? "Following"
+                                : "Follow"}
+                            </button>
+                          ) : null}
+                          <button type="button" aria-label="Story actions">
+                            <MoreHorizontal className="w-5 h-5" />
+                          </button>
                           <button type="button">
                             <Bookmark className="w-5 h-5" />
                           </button>
@@ -453,7 +645,17 @@ export default function Explore() {
                       </h4>
 
                       <p className="text-[11px] font-medium text-slate-400 mb-3">
-                        By {story.author}
+                        By{" "}
+                        <Link
+                          to={
+                            story.authorId
+                              ? `/profile/${story.authorId}`
+                              : "/profile"
+                          }
+                          className="text-slate-500 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                        >
+                          {story.author}
+                        </Link>
                       </p>
 
                       <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
@@ -508,19 +710,22 @@ export default function Explore() {
 
                   {!authorsLoading &&
                     !authorsError &&
-                    resolvedAuthors.map((author) => (
-                      <AuthorRow
-                        key={author.userId || author.displayName}
-                        name={author.displayName}
-                        role={author.role}
-                        avatar={author.avatar}
-                        isFollowing={Boolean(
-                          followStateByUserId[author.userId],
-                        )}
-                        isBusy={Boolean(busyFollowIds[author.userId])}
-                        onToggleFollow={() => handleToggleFollow(author)}
-                      />
-                    ))}
+                    resolvedAuthors
+                      .slice(0, TOP_AUTHORS_COUNT)
+                      .map((author) => (
+                        <AuthorRow
+                          key={author.userId || author.displayName}
+                          userId={author.userId}
+                          name={author.displayName}
+                          role={author.role}
+                          avatar={author.avatar}
+                          isFollowing={Boolean(
+                            followStateByUserId[author.userId],
+                          )}
+                          isBusy={Boolean(busyFollowIds[author.userId])}
+                          onToggleFollow={() => handleToggleFollow(author)}
+                        />
+                      ))}
                 </div>
 
                 <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">

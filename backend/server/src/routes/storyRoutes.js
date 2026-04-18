@@ -65,6 +65,14 @@ router.get(
   storyController.getStoriesByTitle,
 );
 
+router.get(
+  "/author/:id",
+  optionalAuthenticate,
+  validate(idParamSchema, "params"),
+  validate(cursorPaginationSchema, "query"),
+  storyController.getStoriesByAuthor,
+);
+
 // Get my stories (auth required)
 router.get(
   "/me",
