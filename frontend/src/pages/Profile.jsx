@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Share, User } from "lucide-react";
+import { ChevronLeft, Share, User } from "lucide-react";
 import { getProfileByUserId, getUserStats } from "../api/profile";
-import { getMyStories } from "../api/story/storyApi";
+import { getMyStories, getStoriesByAuthor } from "../api/story/storyApi";
 import { getMyBookmarkedStories } from "../api/story/storyInteractionsApi";
 import {
   getDashboardStories,
@@ -103,6 +103,8 @@ const StoryCard = ({ story, actionLabel, actionHref }) => (
 );
 
 export default function Profile() {
+  const navigate = useNavigate();
+  const { userId: routeUserId } = useParams();
   const [activeTab, setActiveTab] = useState("Stories");
   const [profileData, setProfileData] = useState(null);
   const [profileStats, setProfileStats] = useState(null);
@@ -119,8 +121,16 @@ export default function Profile() {
     }
   }, []);
 
+  const currentUserId = useMemo(
+    () => String(currentUser?.id || currentUser?._id || ""),
+    [currentUser],
+  );
+
+  const viewedUserId = routeUserId || currentUserId;
+  const isOwnProfile = !routeUserId || routeUserId === currentUserId;
+
   useEffect(() => {
-    if (!currentUser?.id) {
+    if (!viewedUserId) {
       return;
     }
 
@@ -129,8 +139,8 @@ export default function Profile() {
     const loadProfile = async () => {
       try {
         const [payload, statsPayload] = await Promise.all([
-          getProfileByUserId(currentUser.id),
-          getUserStats(currentUser.id).catch(() => null),
+          getProfileByUserId(viewedUserId),
+          getUserStats(viewedUserId).catch(() => null),
         ]);
 
         if (isMounted) {
@@ -147,10 +157,16 @@ export default function Profile() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.id]);
+  }, [viewedUserId]);
 
   useEffect(() => {
-    if (!currentUser?.id) {
+    if (!isOwnProfile) {
+      setActiveTab("Stories");
+    }
+  }, [isOwnProfile]);
+
+  useEffect(() => {
+    if (!viewedUserId) {
       return;
     }
 
@@ -167,30 +183,43 @@ export default function Profile() {
           dashboardStoriesResult,
           dashboardConfessionsResult,
         ] = await Promise.all([
-          getMyStories({ limit: 20, signal: abortController.signal }).catch(
-            () => ({ data: [] }),
-          ),
-          getMyBookmarkedStories({
-            limit: 20,
-            signal: abortController.signal,
-          }).catch(() => ({ data: [] })),
-          getDashboardStories({
-            limit: 8,
-            page: 1,
-            sortBy: "date",
-            order: "desc",
-            status: "all",
-            visibility: "all",
-            deleted: "active",
-            signal: abortController.signal,
-          }).catch(() => ({ data: [] })),
-          getDashboardConfessions({
-            limit: 8,
-            page: 1,
-            sortBy: "date",
-            order: "desc",
-            signal: abortController.signal,
-          }).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getMyStories({ limit: 20, signal: abortController.signal })
+            : getStoriesByAuthor(viewedUserId, {
+                limit: 20,
+                signal: abortController.signal,
+              })
+          ).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getMyBookmarkedStories({
+                limit: 20,
+                signal: abortController.signal,
+              })
+            : Promise.resolve({ data: [] })
+          ).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getDashboardStories({
+                limit: 8,
+                page: 1,
+                sortBy: "date",
+                order: "desc",
+                status: "all",
+                visibility: "all",
+                deleted: "active",
+                signal: abortController.signal,
+              })
+            : Promise.resolve({ data: [] })
+          ).catch(() => ({ data: [] })),
+          (isOwnProfile
+            ? getDashboardConfessions({
+                limit: 8,
+                page: 1,
+                sortBy: "date",
+                order: "desc",
+                signal: abortController.signal,
+              })
+            : Promise.resolve({ data: [] })
+          ).catch(() => ({ data: [] })),
         ]);
 
         const myStories = Array.isArray(myStoriesResult?.data)
@@ -281,16 +310,22 @@ export default function Profile() {
       isMounted = false;
       abortController.abort();
     };
-  }, [currentUser?.id]);
+  }, [isOwnProfile, viewedUserId]);
 
   const userData = useMemo(() => {
     const username = currentUser?.username || "StoryHub User";
     const email = currentUser?.email || "";
     const stats = profileStats?.stats || {};
+    const displayName = profileData?.displayName || username;
+    const normalizedHandle =
+      profileData?.username ||
+      (email
+        ? email.split("@")[0]
+        : displayName.replace(/\s+/g, "").toLowerCase());
 
     return {
-      name: profileData?.displayName || username,
-      handle: email ? `@${email.split("@")[0]}` : "@storyhub_user",
+      name: displayName,
+      handle: `@${normalizedHandle || "storyhub_user"}`,
       followers: String(profileData?.followers ?? 0),
       following: String(profileData?.following ?? 0),
       posts: String(stats.totalPosts ?? profileData?.posts ?? 0),
@@ -306,7 +341,7 @@ export default function Profile() {
     };
   }, [currentUser, profileData, profileStats]);
 
-  const tabs = ["Stories", "Saved", "Activity"];
+  const tabs = isOwnProfile ? ["Stories", "Saved", "Activity"] : ["Stories"];
 
   const tabContent =
     activeTab === "Stories"
@@ -317,10 +352,21 @@ export default function Profile() {
 
   const emptyMessage =
     activeTab === "Stories"
-      ? "You have not published any stories yet."
+      ? isOwnProfile
+        ? "You have not published any stories yet."
+        : "This user has not published any stories yet."
       : activeTab === "Saved"
         ? "You have not saved any stories yet."
         : "No recent activity found yet.";
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/");
+  };
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -331,6 +377,35 @@ export default function Profile() {
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-6xl mx-auto">
+              {!isOwnProfile ? (
+                <div className="mb-4 sm:mb-5 hidden sm:flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                    aria-label="Go back"
+                  >
+                    <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+                  <h1 className="min-w-0 text-lg sm:text-xl font-semibold text-slate-900 truncate">
+                    {userData.name}
+                  </h1>
+                </div>
+              ) : null}
+
+              {!isOwnProfile ? (
+                <div className="mb-2 sm:mb-5 sm:hidden -ml-1 -mt-1">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                    aria-label="Go back"
+                  >
+                    <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+                </div>
+              ) : null}
+
               {/* Profile Header Card */}
               <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-200 relative shadow-sm">
                 <div className="h-36 sm:h-48 bg-linear-to-r from-rose-100 to-amber-50 relative overflow-hidden">
@@ -375,17 +450,19 @@ export default function Profile() {
                         {userData.bio}
                       </p>
                     </div>
-                    <div className="flex gap-2">
-                      <Link
-                        to="/edit-profile"
-                        className="px-4 py-2 border border-slate-300 rounded-xl font-medium text-sm hover:bg-slate-100 transition-colors"
-                      >
-                        Edit Profile
-                      </Link>
-                      <button className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors">
-                        <Share className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {isOwnProfile ? (
+                      <div className="flex gap-2">
+                        <Link
+                          to="/edit-profile"
+                          className="px-4 py-2 border border-slate-300 rounded-xl font-medium text-sm hover:bg-slate-100 transition-colors"
+                        >
+                          Edit Profile
+                        </Link>
+                        <button className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors">
+                          <Share className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">

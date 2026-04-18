@@ -145,6 +145,25 @@ const getStoriesByTitle = async (req, res) => {
   }
 };
 
+const getStoriesByAuthor = async (req, res) => {
+  try {
+    const { cursor } = req.query;
+    const limit = Number.parseInt(req.query.limit, 10) || 10;
+
+    const result = await storyModel.getPublishedStoriesByAuthor(
+      req.params.id,
+      cursor,
+      limit,
+      req.user?.userId,
+    );
+
+    res.json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch stories by author" });
+  }
+};
+
 const getStory = async (req, res) => {
   try {
     const story = await storyModel.getStoryById(
@@ -271,6 +290,7 @@ module.exports = {
   getStoriesByCategories,
   getStoriesByMyInterests,
   getStoriesByTitle,
+  getStoriesByAuthor,
   getStory,
   updateStory,
   deleteStory,

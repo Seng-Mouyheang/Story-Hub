@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -68,6 +69,7 @@ const normalizeId = (value) => {
 const PostCard = ({
   id,
   author,
+  authorId,
   avatar,
   genre,
   time,
@@ -80,7 +82,11 @@ const PostCard = ({
   <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md">
     <div className="flex justify-between items-start mb-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
+        <Link
+          to={authorId ? `/profile/${authorId}` : "/profile"}
+          className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0 transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+          aria-label={`View ${author} profile`}
+        >
           {avatar ? (
             <img
               src={avatar}
@@ -90,11 +96,16 @@ const PostCard = ({
           ) : (
             <User size={20} className="text-slate-400" />
           )}
-        </div>
+        </Link>
 
         <div className="min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <h3 className="font-semibold text-slate-900 truncate">{author}</h3>
+            <Link
+              to={authorId ? `/profile/${authorId}` : "/profile"}
+              className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            >
+              {author}
+            </Link>
             <span className="text-slate-400 text-xs">• {time}</span>
           </div>
 
@@ -197,7 +208,9 @@ export default function Bookmarks() {
 
       const uniqueAuthorIds = [
         ...new Set(
-          combinedStories.map((story) => normalizeId(story.authorId)).filter(Boolean),
+          combinedStories
+            .map((story) => normalizeId(story.authorId))
+            .filter(Boolean),
         ),
       ];
 
@@ -218,6 +231,7 @@ export default function Bookmarks() {
 
         return {
           id: String(story._id),
+          authorId,
           author:
             profile?.displayName ||
             story.authorDisplayName ||

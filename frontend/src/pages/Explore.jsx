@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -27,6 +28,8 @@ const formatCompactNumber = (value) =>
 
 const mapStoryCard = (story) => ({
   id: story?._id || story?.storyId || story?.id || story?.title,
+  authorId:
+    story?.authorId || story?.author?._id || story?.author?.userId || null,
   title: story?.title || "Untitled story",
   tags:
     Array.isArray(story?.genres) && story.genres.length > 0
@@ -42,6 +45,7 @@ const mapStoryCard = (story) => ({
 });
 
 const AuthorRow = ({
+  userId,
   name,
   role,
   avatar,
@@ -51,18 +55,25 @@ const AuthorRow = ({
 }) => (
   <div className="flex items-center justify-between gap-3 py-3">
     <div className="flex items-center gap-3 min-w-0">
-      <div className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center shrink-0">
+      <Link
+        to={userId ? `/profile/${userId}` : "/profile"}
+        className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center shrink-0 transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        aria-label={`View ${name} profile`}
+      >
         {avatar ? (
           <img src={avatar} alt={name} className="w-full h-full object-cover" />
         ) : (
           <User className="w-4 h-4 text-slate-400" />
         )}
-      </div>
+      </Link>
 
       <div className="min-w-0">
-        <h4 className="font-semibold text-sm text-slate-900 truncate">
+        <Link
+          to={userId ? `/profile/${userId}` : "/profile"}
+          className="font-semibold text-sm text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+        >
           {name}
-        </h4>
+        </Link>
         <p className="text-[10px] text-rose-500 font-medium">{role}</p>
       </div>
     </div>
@@ -368,7 +379,17 @@ export default function Explore() {
                       </h4>
 
                       <p className="text-[11px] font-medium text-slate-400 mb-3">
-                        By {story.author}
+                        By{" "}
+                        <Link
+                          to={
+                            story.authorId
+                              ? `/profile/${story.authorId}`
+                              : "/profile"
+                          }
+                          className="text-slate-500 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                        >
+                          {story.author}
+                        </Link>
                       </p>
 
                       <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
@@ -453,7 +474,17 @@ export default function Explore() {
                       </h4>
 
                       <p className="text-[11px] font-medium text-slate-400 mb-3">
-                        By {story.author}
+                        By{" "}
+                        <Link
+                          to={
+                            story.authorId
+                              ? `/profile/${story.authorId}`
+                              : "/profile"
+                          }
+                          className="text-slate-500 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                        >
+                          {story.author}
+                        </Link>
                       </p>
 
                       <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
@@ -511,6 +542,7 @@ export default function Explore() {
                     resolvedAuthors.map((author) => (
                       <AuthorRow
                         key={author.userId || author.displayName}
+                        userId={author.userId}
                         name={author.displayName}
                         role={author.role}
                         avatar={author.avatar}

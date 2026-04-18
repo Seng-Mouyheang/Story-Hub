@@ -347,6 +347,41 @@ const getPublishedStoriesByTitle = async (
   return enrichStoriesWithUserData(db, stories, limit, currentUserId);
 };
 
+const getPublishedStoriesByAuthor = async (
+  authorId,
+  cursor,
+  limit,
+  currentUserId,
+) => {
+  const db = await connectToDatabase();
+  const collection = await getCollection();
+
+  const matchStage = {
+    authorId: new ObjectId(authorId),
+    status: "published",
+    visibility: "public",
+    deletedAt: null,
+  };
+
+  if (cursor) {
+    const [publishedAtStr, id] = cursor.split("_");
+    matchStage.$or = [
+      {
+        publishedAt: { $lt: new Date(publishedAtStr) },
+      },
+      {
+        publishedAt: new Date(publishedAtStr),
+        _id: { $lt: new ObjectId(id) },
+      },
+    ];
+  }
+
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const stories = await collection.aggregate(pipeline).toArray();
+
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+};
+
 /**
  * Get stories by ID
  * @param {string} id
@@ -776,6 +811,7 @@ module.exports = {
   getPublishedStoriesByTag,
   getPublishedStoriesByCategories,
   getPublishedStoriesByTitle,
+  getPublishedStoriesByAuthor,
   getStoryById,
   updateStory,
   deleteStory,

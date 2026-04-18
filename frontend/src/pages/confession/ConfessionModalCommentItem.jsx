@@ -1,4 +1,5 @@
 import { Loader2, MoreHorizontal } from "lucide-react";
+import { Link } from "react-router-dom";
 
 import { getRelativeTime, normalizeId } from "./confessionUtils";
 
@@ -61,6 +62,7 @@ export default function ConfessionModalCommentItem({
 
   const commentId = String(comment?._id || comment?.id || "comment");
   const commentAuthor = comment?.authorDisplayName || "Anonymous";
+  const commentAuthorId = normalizeId(comment?.userId);
   const canManageComment =
     Boolean(currentUserId) && normalizeId(comment?.userId) === currentUserId;
   const commentAvatarSrc =
@@ -72,20 +74,43 @@ export default function ConfessionModalCommentItem({
   return (
     <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
       <div className="mb-2 flex items-start gap-3">
-        <div className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0">
-          <img
-            src={commentAvatarSrc}
-            alt="commenter avatar"
-            className="h-full w-full object-cover"
-          />
-        </div>
+        {commentAuthorId ? (
+          <Link
+            to={`/profile/${commentAuthorId}`}
+            className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0 block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            aria-label={`View ${commentAuthor} profile`}
+          >
+            <img
+              src={commentAvatarSrc}
+              alt="commenter avatar"
+              className="h-full w-full object-cover"
+            />
+          </Link>
+        ) : (
+          <div className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0">
+            <img
+              src={commentAvatarSrc}
+              alt="commenter avatar"
+              className="h-full w-full object-cover"
+            />
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <span className="text-xs font-semibold text-slate-700 truncate block">
-                {commentAuthor}
-              </span>
+              {commentAuthorId ? (
+                <Link
+                  to={`/profile/${commentAuthorId}`}
+                  className="text-xs font-semibold text-slate-700 truncate block rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                >
+                  {commentAuthor}
+                </Link>
+              ) : (
+                <span className="text-xs font-semibold text-slate-700 truncate block">
+                  {commentAuthor}
+                </span>
+              )}
               <span className="text-[11px] text-slate-400 shrink-0 inline-flex items-center gap-1">
                 <span>{getRelativeTime(comment?.createdAt)}</span>
                 {comment?.isEdited ? <span>• Edited</span> : null}
