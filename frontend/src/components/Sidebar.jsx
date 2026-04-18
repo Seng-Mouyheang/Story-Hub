@@ -20,7 +20,6 @@ export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (path) => (location.pathname === path ? "active-link" : "");
 
@@ -42,7 +41,7 @@ export default function Sidebar() {
       localStorage.removeItem("token");
       localStorage.removeItem("currentUser");
       localStorage.removeItem("rememberLogin");
-      setMobileOpen(false);
+      // setMobileOpen(false) removed
       navigate("/login", { replace: true });
     }
   };
@@ -91,7 +90,7 @@ export default function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
-              onClick={() => setMobileOpen(false)}
+              // onClick for setMobileOpen(false) removed
               className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-all
                 ${
                   isActive(item.path)
@@ -140,7 +139,7 @@ export default function Sidebar() {
       <div className="w-full p-3 border-t border-slate-200 space-y-2 bg-white/95">
         <Link
           to="/write"
-          onClick={() => setMobileOpen(false)}
+          // onClick for setMobileOpen(false) removed
           className="bg-rose-500 hover:bg-rose-600 text-white py-2 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors"
         >
           <FileText className="w-4 h-4" />
@@ -161,50 +160,27 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu button */}
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white/95 border border-slate-200 shadow-sm"
-        aria-label="Open navigation"
-      >
-        <Menu className="w-5 h-5 text-slate-700" />
-      </button>
-
-      {/* Mobile overlay drawer */}
-      <div
-        className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
-          mobileOpen
-            ? "opacity-100 pointer-events-auto"
-            : "opacity-0 pointer-events-none"
-        }`}
-      >
-        <button
-          type="button"
-          className="absolute inset-0 bg-black/30"
-          onClick={() => setMobileOpen(false)}
-          aria-label="Close navigation overlay"
-        />
-
-        <aside
-          className={`relative h-full w-72 max-w-[85vw] bg-white/95 border-r border-slate-200 flex flex-col transition-transform duration-300 ${
-            mobileOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-        >
-          <div className="absolute top-4 right-4">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(false)}
-              className="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-              aria-label="Close navigation"
+      {/* Mobile: Facebook-style bottom nav */}
+      <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-slate-200 flex justify-around items-center py-0.5 shadow-sm lg:hidden h-12">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`flex flex-col items-center justify-center px-1 py-0.5 text-[10px] ${
+                isActive(item.path)
+                  ? "text-rose-500"
+                  : "text-slate-500 hover:text-rose-400"
+              }`}
+              style={{ flex: 1 }}
             >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="pt-2 h-full flex flex-col">{sidebarBody}</div>
-        </aside>
-      </div>
+              <Icon className="w-5 h-5 mb-0" />
+              <span className="text-[9px] leading-none">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
 
       {/* Desktop sidebar */}
       <aside

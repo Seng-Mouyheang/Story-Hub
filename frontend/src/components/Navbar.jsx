@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Search, Sun, Moon, User } from "lucide-react";
 import { Link } from "react-router-dom";
+import SearchBar from "./SearchBar";
 
 export default function Navbar({ title }) {
   const [darkMode, setDarkMode] = useState(false);
@@ -80,16 +81,15 @@ export default function Navbar({ title }) {
       </h2>
 
       {/* Right Side */}
-      <div className="flex items-center gap-2 sm:gap-4">
-        {/* Search Bar */}
-        <div className="relative hidden sm:block">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+      <div className="flex items-center gap-0 sm:gap-2 w-auto">
+        {/* Desktop: Search Bar left of theme toggle */}
+        <div className="hidden sm:block relative w-40 sm:w-auto">
+          <SearchBar />
+        </div>
 
-          <input
-            type="text"
-            placeholder="Search..."
-            className="pl-10 pr-4 py-1.5 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-red-200 outline-none w-40 md:w-64"
-          />
+        {/* Mobile: Search Icon left of theme toggle */}
+        <div className="block sm:hidden">
+          <SearchBar />
         </div>
 
         {/* Theme Toggle Button */}
@@ -104,7 +104,7 @@ export default function Navbar({ title }) {
           )}
         </button>
 
-        {/* Profile Avatar */}
+        {/* Profile Avatar always at far right */}
         <Link
           to="/profile"
           className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden cursor-pointer transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
