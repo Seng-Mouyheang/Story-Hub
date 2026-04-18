@@ -59,6 +59,14 @@ const normalizeInterests = (values) => {
 };
 
 export default function EditProfile() {
+  // Show 'Not yet' only if needsProfileSetup is set in localStorage
+  const [showNotYet, setShowNotYet] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem("needsProfileSetup"));
+    } catch {
+      return false;
+    }
+  });
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [interests, setInterests] = useState([]);
@@ -209,6 +217,7 @@ export default function EditProfile() {
 
   const handleNotNow = () => {
     localStorage.removeItem("needsProfileSetup");
+    setShowNotYet(false);
     navigate("/");
   };
 
@@ -270,9 +279,6 @@ export default function EditProfile() {
                     <div className="flex items-center justify-between gap-4">
                       <div>
                         <h4 className="font-bold text-sm">Cover Image</h4>
-                        <p className="text-xs text-slate-400">
-                          Recommended size: 1500x500px
-                        </p>
                       </div>
                       <button
                         type="button"
@@ -326,9 +332,6 @@ export default function EditProfile() {
                       <h4 className="font-bold text-sm">
                         Profile Picture <span className="text-rose-500">*</span>
                       </h4>
-                      <p className="text-xs text-slate-400">
-                        Required. Recommended size: 400x400px
-                      </p>
                       <button
                         type="button"
                         onClick={() => profileInputRef.current?.click()}
@@ -448,24 +451,27 @@ export default function EditProfile() {
 
                   {/* Buttons */}
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4">
-                    <button
-                      type="button"
-                      onClick={handleNotNow}
-                      className="flex-1 px-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50"
-                    >
-                      Not yet
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDiscard}
-                      className="flex-1 px-6 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200"
-                    >
-                      Discard
-                    </button>
+                    {showNotYet ? (
+                      <button
+                        type="button"
+                        onClick={handleNotNow}
+                        className="flex-1 px-6 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50"
+                      >
+                        Not yet
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleDiscard}
+                        className="flex-1 px-6 py-3 bg-slate-100 text-slate-500 font-bold rounded-xl hover:bg-slate-200"
+                      >
+                        Discard
+                      </button>
+                    )}
                     <button
                       onClick={handleSave}
                       disabled={isSaving || Boolean(uploadingField)}
-                      className="flex-1 px-6 py-3 bg-red-400 text-white font-bold rounded-xl shadow-lg shadow-red-100 hover:opacity-90 disabled:opacity-60"
+                      className="flex-1 py-3 bg-rose-500 text-white text-sm font-semibold rounded-xl hover:bg-rose-600 shadow-sm shadow-rose-200 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {isSaving ? "Saving..." : "Save Changes"}
                     </button>
