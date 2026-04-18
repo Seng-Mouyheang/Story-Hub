@@ -33,28 +33,6 @@ export default function ActivityFiltersPanel({
         </select>
 
         <label
-          htmlFor="dashboard-sort-by"
-          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
-        >
-          Sort By
-        </label>
-        <select
-          id="dashboard-sort-by"
-          value={activityFilters.sortBy}
-          onChange={(event) => updateFilter("sortBy", event.target.value)}
-          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-        >
-          <option value="updated_desc">Latest</option>
-          <option value="updated_asc">Oldest</option>
-          <option value="title_asc">Title (A-Z)</option>
-          <option value="title_desc">Title (Z-A)</option>
-          <option value="likes_desc">Most Likes</option>
-          <option value="likes_asc">Least Likes</option>
-          <option value="comments_desc">Most Comments</option>
-          <option value="comments_asc">Least Comments</option>
-        </select>
-
-        <label
           htmlFor="dashboard-story-status"
           className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
         >
@@ -94,20 +72,7 @@ export default function ActivityFiltersPanel({
         </select>
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
-        <button
-          onClick={resetFilters}
-          className="text-xs font-semibold text-slate-500 hover:text-slate-700"
-        >
-          Reset
-        </button>
-        <button
-          onClick={() => setShowFilters(false)}
-          className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
-        >
-          Done
-        </button>
-      </div>
+      {/* No Done button; panel closes by toggling the filter icon or clicking outside */}
     </div>
   );
 }
