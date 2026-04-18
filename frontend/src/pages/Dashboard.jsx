@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -7,7 +7,15 @@ import { Filter, PenTool, Clock3, FileText } from "lucide-react";
 import {
   getDashboardStats,
   getDashboardStories,
+  getDashboardConfessions,
 } from "../api/dashboard/dashboardApi";
+import ActivityFiltersPanel from "../features/dashboard/ActivityFiltersPanel";
+import {
+  DEFAULT_ACTIVITY_FILTERS,
+  getSavedDashboardFilters,
+  getSortConfig,
+  getStoryQueryFilters,
+} from "../features/dashboard/dashboardUtils";
 
 const StatCard = ({ title, value, subtitle, loading = false }) => (
   <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-between min-h-[160px] shadow-sm">
@@ -111,9 +119,15 @@ const DashboardStoryCard = ({ story }) => {
 
 export default function Dashboard() {
   const [dashboardStats, setDashboardStats] = useState(null);
-  const [recentStories, setRecentStories] = useState([]);
+  const [activities, setActivities] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [activityFilters, setActivityFilters] = useState(() =>
+    getSavedDashboardFilters(),
+  );
+  const [page, setPage] = useState(1);
+  const [showFilters, setShowFilters] = useState(false);
+  const filterPanelRef = useRef(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -124,35 +138,14 @@ export default function Dashboard() {
       setErrorMessage("");
 
       try {
-        const [statsPayload, storiesPayload] = await Promise.all([
-          getDashboardStats({ signal: controller.signal }),
-          getDashboardStories({
-            status: "all",
-            visibility: "all",
-            deleted: "active",
-            sortBy: "date",
-            order: "desc",
-            page: 1,
-            limit: 5,
-            signal: controller.signal,
-          }),
-        ]);
-
-        if (!isMounted) {
-          return;
-        }
-
+        const statsPayload = await getDashboardStats({
+          signal: controller.signal,
+        });
+        if (!isMounted) return;
         setDashboardStats(statsPayload);
-        setRecentStories(
-          Array.isArray(storiesPayload?.data) ? storiesPayload.data : [],
-        );
       } catch (error) {
         if (error.name !== "AbortError" && isMounted) {
-          setErrorMessage(error.message || "Failed to load dashboard data.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
+          setErrorMessage(error.message || "Failed to load dashboard stats.");
         }
       }
     };
@@ -165,13 +158,85 @@ export default function Dashboard() {
     };
   }, []);
 
+  // Fetch activities (stories or confessions) with filters and pagination
+  useEffect(() => {
+    const controller = new AbortController();
+    let isMounted = true;
+    async function fetchActivities() {
+      setIsLoading(true);
+      setErrorMessage("");
+      try {
+        let payload;
+        const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+        if (activityFilters.contentType === "confession") {
+          payload = await getDashboardConfessions({
+            sortBy: apiSortBy,
+            order,
+            page,
+            limit: 5,
+            signal: controller.signal,
+          });
+        } else {
+          const filters = getStoryQueryFilters(activityFilters);
+          payload = await getDashboardStories({
+            ...filters,
+            sortBy: apiSortBy,
+            order,
+            page,
+            limit: 5,
+            signal: controller.signal,
+          });
+        }
+        if (!isMounted) return;
+        setActivities(Array.isArray(payload?.data) ? payload.data : []);
+      } catch (error) {
+        if (error.name !== "AbortError" && isMounted) {
+          setErrorMessage(error.message || "Failed to load dashboard data.");
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+    fetchActivities();
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [activityFilters, page]);
+
+  // Filter panel handlers
+  const updateFilter = (key, value) => {
+    setActivityFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      localStorage.setItem("dashboardActivityFilters", JSON.stringify(next));
+      return next;
+    });
+    setPage(1);
+  };
+  const resetFilters = () => {
+    setActivityFilters(DEFAULT_ACTIVITY_FILTERS);
+    setPage(1);
+  };
+
   const storyStats = useMemo(
     () => dashboardStats?.stats?.breakdown || {},
     [dashboardStats],
   );
 
-  const statCards = useMemo(
-    () => [
+  const statCards = useMemo(() => {
+    let readerLoves = 0;
+    let subtitle = "Likes on your stories";
+    if (activityFilters.contentType === "confession") {
+      readerLoves = Number(storyStats.confessionLikes || 0);
+      subtitle = "Likes on your confessions";
+    } else if (activityFilters.contentType === "story") {
+      readerLoves = Number(storyStats.storyLikes || 0);
+      subtitle = "Likes on your stories";
+    } else {
+      readerLoves = Number(dashboardStats?.stats?.totalLikes || 0);
+      subtitle = "Likes on all your posts";
+    }
+    return [
       {
         title: "Total Stories",
         value: Number(storyStats.storyCount || 0),
@@ -184,12 +249,11 @@ export default function Dashboard() {
       },
       {
         title: "Total Reader Loves",
-        value: Number(storyStats.storyLikes || 0),
-        subtitle: "Likes on your stories",
+        value: readerLoves,
+        subtitle,
       },
-    ],
-    [storyStats],
-  );
+    ];
+  }, [storyStats, dashboardStats, activityFilters.contentType]);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -200,17 +264,36 @@ export default function Dashboard() {
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-6xl mx-auto">
               <header className="mb-8 sm:mb-10 flex items-start justify-between gap-4">
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
-                    Writing Analytics
-                  </h1>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Track your publishing progress and engagement at a glance.
-                  </p>
+                <div className="flex items-start justify-between gap-4 w-full">
+                  <div>
+                    <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">
+                      Writing Analytics
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Track your publishing progress and engagement at a glance.
+                    </p>
+                  </div>
+                  <div className="relative flex items-center">
+                    <button
+                      className="hidden sm:inline-flex p-2 hover:bg-slate-100 rounded-full transition-colors group"
+                      onClick={() => setShowFilters((v) => !v)}
+                      ref={filterPanelRef}
+                    >
+                      <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
+                    </button>
+                    {showFilters && (
+                      <div className="absolute right-0 top-full mt-2 z-30 w-80 max-w-full shadow-xl">
+                        <ActivityFiltersPanel
+                          activityFilters={activityFilters}
+                          updateFilter={updateFilter}
+                          resetFilters={resetFilters}
+                          setShowFilters={setShowFilters}
+                          filterPanelRef={filterPanelRef}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <button className="hidden sm:inline-flex p-2 hover:bg-slate-100 rounded-full transition-colors group">
-                  <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
-                </button>
               </header>
 
               {errorMessage && (
@@ -235,15 +318,14 @@ export default function Dashboard() {
                 <div className="px-4 sm:px-8 py-5 border-b border-slate-100 flex justify-between items-center">
                   <div>
                     <h3 className="text-lg font-semibold text-slate-700">
-                      Your Recent Stories
+                      {activityFilters.contentType === "confession"
+                        ? "Your Recent Confessions"
+                        : "Your Recent Stories"}
                     </h3>
                     <p className="text-xs text-slate-400 mt-1">
                       Latest items from your dashboard feed.
                     </p>
                   </div>
-                  <button className="p-2 hover:bg-slate-100 rounded-full transition-colors group">
-                    <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
-                  </button>
                 </div>
 
                 <div className="flex-1 p-4 sm:p-8">
@@ -256,22 +338,22 @@ export default function Dashboard() {
                         />
                       ))}
                     </div>
-                  ) : recentStories.length > 0 ? (
-                    <div className="space-y-4">
-                      {recentStories.map((story) => (
+                  ) : activities.length > 0 ? (
+                    <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                      {activities.map((item) => (
                         <DashboardStoryCard
-                          key={story._id || story.id}
+                          key={item._id || item.id}
                           story={{
-                            id: String(story._id || story.id),
-                            title: story.title,
-                            summary: story.summary,
-                            content: story.content,
-                            status: story.status,
-                            visibility: story.visibility,
-                            updatedAt: story.updatedAt,
-                            createdAt: story.createdAt,
-                            wordCount: story.wordCount,
-                            likesCount: story.likesCount,
+                            id: String(item._id || item.id),
+                            title: item.title,
+                            summary: item.summary,
+                            content: item.content,
+                            status: item.status,
+                            visibility: item.visibility,
+                            updatedAt: item.updatedAt,
+                            createdAt: item.createdAt,
+                            wordCount: item.wordCount,
+                            likesCount: item.likesCount,
                           }}
                         />
                       ))}
@@ -285,8 +367,9 @@ export default function Dashboard() {
                         />
                       </div>
                       <p className="text-slate-500 text-sm md:text-base font-medium max-w-md">
-                        You haven't written any stories yet. Start your first
-                        post to see dashboard activity here.
+                        {activityFilters.contentType === "confession"
+                          ? "You haven't written any confessions yet. Start your first confession to see dashboard activity here."
+                          : "You haven't written any stories yet. Start your first post to see dashboard activity here."}
                       </p>
                     </div>
                   )}
