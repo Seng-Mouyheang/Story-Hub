@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -7,6 +13,8 @@ import { ChevronLeft, Share, User } from "lucide-react";
 import {
   getProfileByUserId,
   getUserStats,
+  getFollowers,
+  getFollowing,
   getFollowStatus,
   followUser,
   unfollowUser,
@@ -119,11 +127,20 @@ export default function Profile() {
   const [isFollowingViewedUser, setIsFollowingViewedUser] = useState(false);
   const [isLoadingFollowStatus, setIsLoadingFollowStatus] = useState(false);
   const [isTogglingFollow, setIsTogglingFollow] = useState(false);
+  const [isFollowListOpen, setIsFollowListOpen] = useState(false);
+  const [activeFollowListType, setActiveFollowListType] = useState("followers");
+  const [followListItems, setFollowListItems] = useState([]);
+  const [followListCursor, setFollowListCursor] = useState(null);
+  const [followListHasMore, setFollowListHasMore] = useState(false);
+  const [isLoadingFollowList, setIsLoadingFollowList] = useState(false);
+  const [followListError, setFollowListError] = useState("");
+  const [listActionBusyByUserId, setListActionBusyByUserId] = useState({});
   const [storyItems, setStoryItems] = useState([]);
   const [savedItems, setSavedItems] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(true);
   const lastViewedUserIdRef = useRef("");
+  const FOLLOW_LIST_PAGE_SIZE = 15;
 
   const currentUser = useMemo(() => {
     try {
@@ -133,12 +150,21 @@ export default function Profile() {
     }
   }, []);
 
+  const normalizeId = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "object") {
+      if (typeof value.$oid === "string") return value.$oid.trim();
+      if (typeof value.toString === "function") return value.toString().trim();
+    }
+
+    return String(value).trim();
+  };
+
   const currentUserId = useMemo(
-    () => String(currentUser?.id || currentUser?._id || ""),
+    () => normalizeId(currentUser?.id || currentUser?._id || ""),
     [currentUser],
   );
-
-  const normalizeId = (value) => String(value || "").trim();
   const viewedUserId = normalizeId(routeUserId || currentUserId);
   const isOwnProfile =
     !routeUserId || normalizeId(routeUserId) === normalizeId(currentUserId);
@@ -191,6 +217,16 @@ export default function Profile() {
       ) {
         setIsFollowingViewedUser(isFollowing);
       }
+
+      if (normalizedCurrentUserId === followerId) {
+        setFollowListItems((previous) =>
+          previous.map((account) =>
+            String(account?.userId || "").trim() === followingId
+              ? { ...account, following: isFollowing }
+              : account,
+          ),
+        );
+      }
     };
 
     window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
@@ -235,6 +271,243 @@ export default function Profile() {
       isMounted = false;
     };
   }, [isOwnProfile, viewedUserId]);
+
+  const buildFollowListAccounts = useCallback(
+    async (userIds) => {
+      const normalizedCurrentUserId = normalizeId(currentUserId);
+
+      const accountRows = await Promise.all(
+        userIds.map(async (userId) => {
+          const normalizedUserId = normalizeId(userId);
+          const isSelf = normalizedUserId === normalizedCurrentUserId;
+
+          let profilePayload = null;
+          try {
+            profilePayload = await getProfileByUserId(normalizedUserId);
+          } catch {
+            // Keep fallback display values if profile metadata fetch fails.
+          }
+
+          let following = false;
+          if (!isSelf && normalizedCurrentUserId) {
+            try {
+              const statusPayload = await getFollowStatus(normalizedUserId);
+              following = Boolean(statusPayload?.following);
+            } catch {
+              // Keep default follow status on transient errors.
+            }
+          }
+
+          const fallbackName = normalizedUserId
+            ? `Author ${normalizedUserId.slice(-4).toUpperCase()}`
+            : "Unknown User";
+          const fallbackHandle =
+            normalizedUserId ||
+            fallbackName.replace(/\s+/g, "").toLowerCase() ||
+            "storyhub_user";
+
+          return {
+            userId: normalizedUserId,
+            name: profilePayload?.displayName || fallbackName,
+            handle: `@${profilePayload?.username || fallbackHandle}`,
+            avatar: profilePayload?.profilePicture || "",
+            following,
+            isSelf,
+          };
+        }),
+      );
+
+      return accountRows;
+    },
+    [currentUserId],
+  );
+
+  const loadFollowList = useCallback(
+    async ({ listType, reset = false } = {}) => {
+      if (!viewedUserId) {
+        return;
+      }
+
+      const targetListType =
+        listType === "following" ? "following" : "followers";
+      const cursor = reset ? null : followListCursor;
+      const requestList =
+        targetListType === "following" ? getFollowing : getFollowers;
+
+      setIsLoadingFollowList(true);
+      setFollowListError("");
+
+      try {
+        const payload = await requestList(viewedUserId, {
+          cursor,
+          limit: FOLLOW_LIST_PAGE_SIZE,
+        });
+
+        const rawIds =
+          targetListType === "following"
+            ? payload?.following || []
+            : payload?.followers || [];
+        const ids = Array.from(
+          new Set(rawIds.map((value) => normalizeId(value)).filter(Boolean)),
+        );
+
+        const rows = await buildFollowListAccounts(ids);
+
+        setFollowListItems((previous) => {
+          if (reset) {
+            return rows;
+          }
+
+          const seen = new Set(
+            previous.map((item) => normalizeId(item.userId)),
+          );
+          const merged = [...previous];
+
+          rows.forEach((row) => {
+            const key = normalizeId(row.userId);
+            if (!seen.has(key)) {
+              merged.push(row);
+              seen.add(key);
+            }
+          });
+
+          return merged;
+        });
+
+        setFollowListCursor(payload?.nextCursor || null);
+        setFollowListHasMore(Boolean(payload?.hasMore));
+      } catch (error) {
+        setFollowListError(
+          error?.message || "Failed to load this follow list right now.",
+        );
+
+        if (reset) {
+          setFollowListItems([]);
+          setFollowListCursor(null);
+          setFollowListHasMore(false);
+        }
+      } finally {
+        setIsLoadingFollowList(false);
+      }
+    },
+    [
+      FOLLOW_LIST_PAGE_SIZE,
+      buildFollowListAccounts,
+      followListCursor,
+      viewedUserId,
+    ],
+  );
+
+  const openFollowList = (listType) => {
+    const targetListType = listType === "following" ? "following" : "followers";
+    setActiveFollowListType(targetListType);
+    setFollowListItems([]);
+    setFollowListCursor(null);
+    setFollowListHasMore(false);
+    setFollowListError("");
+    setIsFollowListOpen(true);
+  };
+
+  const closeFollowList = () => {
+    setIsFollowListOpen(false);
+    setFollowListError("");
+  };
+
+  const handleToggleFollowFromList = async (targetUserId) => {
+    const normalizedTargetUserId = normalizeId(targetUserId);
+    const normalizedCurrentUserId = normalizeId(currentUserId);
+
+    if (
+      !normalizedTargetUserId ||
+      normalizedTargetUserId === normalizedCurrentUserId ||
+      !normalizedCurrentUserId ||
+      listActionBusyByUserId[normalizedTargetUserId]
+    ) {
+      return;
+    }
+
+    const targetItem = followListItems.find(
+      (item) => normalizeId(item.userId) === normalizedTargetUserId,
+    );
+    const previousFollowingState = Boolean(targetItem?.following);
+    const nextFollowingState = !previousFollowingState;
+
+    setListActionBusyByUserId((previous) => ({
+      ...previous,
+      [normalizedTargetUserId]: true,
+    }));
+
+    setFollowListItems((previous) =>
+      previous.map((item) =>
+        normalizeId(item.userId) === normalizedTargetUserId
+          ? { ...item, following: nextFollowingState }
+          : item,
+      ),
+    );
+
+    try {
+      const payload = previousFollowingState
+        ? await unfollowUser(normalizedTargetUserId)
+        : await followUser(normalizedTargetUserId);
+
+      const confirmedFollowing =
+        typeof payload?.following === "boolean"
+          ? payload.following
+          : nextFollowingState;
+      const eventFollowerId =
+        normalizeId(payload?.followerId) || normalizedCurrentUserId;
+      const eventFollowingId =
+        normalizeId(payload?.followingId) || normalizedTargetUserId;
+
+      setFollowListItems((previous) =>
+        previous.map((item) =>
+          normalizeId(item.userId) === normalizedTargetUserId
+            ? { ...item, following: confirmedFollowing }
+            : item,
+        ),
+      );
+
+      window.dispatchEvent(
+        new CustomEvent("storyhub:follow-updated", {
+          detail: {
+            followerId: eventFollowerId,
+            followingId: eventFollowingId,
+            following: confirmedFollowing,
+          },
+        }),
+      );
+    } catch {
+      setFollowListItems((previous) =>
+        previous.map((item) =>
+          normalizeId(item.userId) === normalizedTargetUserId
+            ? { ...item, following: previousFollowingState }
+            : item,
+        ),
+      );
+    } finally {
+      setListActionBusyByUserId((previous) => ({
+        ...previous,
+        [normalizedTargetUserId]: false,
+      }));
+    }
+  };
+
+  useEffect(() => {
+    if (!isFollowListOpen || !viewedUserId) {
+      return;
+    }
+
+    loadFollowList({ listType: activeFollowListType, reset: true });
+  }, [activeFollowListType, isFollowListOpen, loadFollowList, viewedUserId]);
+
+  useEffect(() => {
+    setIsFollowListOpen(false);
+    setFollowListItems([]);
+    setFollowListCursor(null);
+    setFollowListHasMore(false);
+    setFollowListError("");
+    setListActionBusyByUserId({});
+  }, [viewedUserId]);
 
   useEffect(() => {
     if (!viewedUserId) {
@@ -513,14 +786,21 @@ export default function Profile() {
         ? await unfollowUser(viewedUserId)
         : await followUser(viewedUserId);
 
-      const confirmedFollowing = Boolean(payload?.following);
+      const confirmedFollowing =
+        typeof payload?.following === "boolean"
+          ? payload.following
+          : nextFollowingState;
+      const eventFollowerId = normalizeId(payload?.followerId) || currentUserId;
+      const eventFollowingId =
+        normalizeId(payload?.followingId) || viewedUserId;
+
       setIsFollowingViewedUser(confirmedFollowing);
 
       window.dispatchEvent(
         new CustomEvent("storyhub:follow-updated", {
           detail: {
-            followerId: currentUserId,
-            followingId: viewedUserId,
+            followerId: eventFollowerId,
+            followingId: eventFollowingId,
             following: confirmedFollowing,
           },
         }),
@@ -679,16 +959,32 @@ export default function Profile() {
                       <span className="text-slate-400 text-sm">Posts</span>
                     </div>
                     <div>
-                      <span className="font-semibold text-slate-900">
-                        {userData.followers}
-                      </span>{" "}
-                      <span className="text-slate-400 text-sm">Followers</span>
+                      <button
+                        type="button"
+                        onClick={() => openFollowList("followers")}
+                        className="inline-flex items-center gap-1 text-left"
+                      >
+                        <span className="font-semibold text-slate-900 hover:text-rose-600 transition-colors">
+                          {userData.followers}
+                        </span>{" "}
+                        <span className="text-slate-400 text-sm hover:text-slate-600 transition-colors">
+                          Followers
+                        </span>
+                      </button>
                     </div>
                     <div>
-                      <span className="font-semibold text-slate-900">
-                        {userData.following}
-                      </span>{" "}
-                      <span className="text-slate-400 text-sm">Following</span>
+                      <button
+                        type="button"
+                        onClick={() => openFollowList("following")}
+                        className="inline-flex items-center gap-1 text-left"
+                      >
+                        <span className="font-semibold text-slate-900 hover:text-rose-600 transition-colors">
+                          {userData.following}
+                        </span>{" "}
+                        <span className="text-slate-400 text-sm hover:text-slate-600 transition-colors">
+                          Following
+                        </span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -767,6 +1063,125 @@ export default function Profile() {
                   </div>
                 </div>
               </div>
+
+              {isFollowListOpen ? (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-6">
+                  <div
+                    className="absolute inset-0 bg-black/45"
+                    onClick={closeFollowList}
+                  />
+                  <div className="relative z-10 w-full h-full sm:h-auto sm:max-h-[84vh] sm:max-w-md bg-white sm:rounded-2xl border border-slate-200 shadow-2xl overflow-hidden flex flex-col">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 shrink-0">
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {activeFollowListType === "followers"
+                          ? "Followers"
+                          : "Following"}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={closeFollowList}
+                        className="rounded-full h-8 w-8 inline-flex items-center justify-center text-base font-semibold text-slate-500 hover:bg-slate-100"
+                        aria-label="Close"
+                      >
+                        ×
+                      </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-2 space-y-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                      {isLoadingFollowList && followListItems.length === 0 ? (
+                        <p className="text-sm text-slate-500 px-2 py-3">
+                          Loading list...
+                        </p>
+                      ) : followListError ? (
+                        <p className="text-sm text-rose-600 px-2 py-3">
+                          {followListError}
+                        </p>
+                      ) : followListItems.length === 0 ? (
+                        <p className="text-sm text-slate-500 px-2 py-3">
+                          No users found in this list yet.
+                        </p>
+                      ) : (
+                        followListItems.map((account) => {
+                          const isBusy = Boolean(
+                            listActionBusyByUserId[normalizeId(account.userId)],
+                          );
+
+                          return (
+                            <div
+                              key={account.userId}
+                              className="flex items-center justify-between gap-3 rounded-xl px-2 sm:px-1 py-2"
+                            >
+                              <Link
+                                to={`/profile/${account.userId}`}
+                                onClick={closeFollowList}
+                                className="min-w-0 flex items-center gap-3 flex-1"
+                              >
+                                <div className="h-11 w-11 rounded-full overflow-hidden bg-slate-100 shrink-0">
+                                  {account.avatar ? (
+                                    <img
+                                      src={account.avatar}
+                                      alt={account.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="h-full w-full flex items-center justify-center text-slate-300">
+                                      <User className="h-5 w-5" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-slate-900 leading-tight">
+                                    {account.name}
+                                  </p>
+                                  <p className="truncate text-xs text-slate-500">
+                                    {account.handle}
+                                  </p>
+                                </div>
+                              </Link>
+
+                              {account.isSelf ? null : (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleToggleFollowFromList(account.userId)
+                                  }
+                                  disabled={isBusy}
+                                  className={`shrink-0 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+                                    account.following
+                                      ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                                      : "bg-rose-500 text-white hover:bg-rose-600"
+                                  } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  {isBusy
+                                    ? "Loading..."
+                                    : account.following
+                                      ? "Following"
+                                      : "Follow"}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+
+                      {followListHasMore ? (
+                        <div className="pt-2 px-1 pb-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              loadFollowList({ listType: activeFollowListType })
+                            }
+                            disabled={isLoadingFollowList}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isLoadingFollowList ? "Loading..." : "Load more"}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <SiteFooter />
           </div>

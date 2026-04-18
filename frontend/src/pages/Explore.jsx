@@ -14,10 +14,10 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { followUser, unfollowUser, getFollowStatus } from "../api/profile";
+import { getAuthorRecommendations } from "../api/recommendation";
 import {
   getExploreRecommendedStories,
   getExplorePopularStories,
-  getExploreAuthors,
   getExplorePublishedGenres,
 } from "../api/explore";
 
@@ -107,6 +107,7 @@ const AuthorRow = ({
 );
 
 export default function Explore() {
+  const TOP_AUTHORS_COUNT = 6;
   const [activeCategory, setActiveCategory] = useState("All");
   const [genreFilters, setGenreFilters] = useState(["All"]);
   const [recommendedStories, setRecommendedStories] = useState([]);
@@ -221,9 +222,8 @@ export default function Explore() {
             limit: 4,
             signal: abortController.signal,
           }),
-          getExploreAuthors({
-            category: activeCategory === "All" ? undefined : activeCategory,
-            limit: 10,
+          getAuthorRecommendations({
+            limit: TOP_AUTHORS_COUNT,
             minLikes: 10,
             signal: abortController.signal,
           }),
@@ -259,10 +259,11 @@ export default function Explore() {
           userId: normalizeId(author?.authorId || null),
           avatar: author?.profilePicture || "",
           displayName: author?.displayName || author?.username || "Unknown",
-          role: `Top ${
+          role: `Top ${String(
             authorsResult.value?.category ||
-            (activeCategory === "All" ? "Recommended" : activeCategory)
-          } Author`,
+              author?.primaryCategory ||
+              "recommended",
+          ).toLowerCase()} author`,
           popularStoriesInCategory: Number(
             author?.popularStoriesInCategory || 0,
           ),
@@ -277,6 +278,13 @@ export default function Explore() {
             "Failed to load recommended authors.",
         );
       }
+
+      const recommendedAuthorIds =
+        authorsResult.status === "fulfilled"
+          ? (authorsResult.value?.data || [])
+              .map((author) => normalizeId(author?.authorId || null))
+              .filter((authorId) => Boolean(authorId))
+          : [];
 
       const storyAuthorIds = [
         ...new Set(
@@ -297,9 +305,13 @@ export default function Explore() {
         ),
       ];
 
-      if (storyAuthorIds.length > 0) {
+      const authorIdsForFollowStatus = [
+        ...new Set([...recommendedAuthorIds, ...storyAuthorIds]),
+      ].filter((authorId) => authorId !== currentUserId);
+
+      if (authorIdsForFollowStatus.length > 0) {
         const followEntries = await Promise.all(
-          storyAuthorIds.map(async (authorId) => {
+          authorIdsForFollowStatus.map(async (authorId) => {
             try {
               const statusPayload = await getFollowStatus(authorId);
               return [authorId, Boolean(statusPayload?.following)];
@@ -328,32 +340,41 @@ export default function Explore() {
       isMounted = false;
       abortController.abort();
     };
-  }, [activeCategory, currentUserId]);
+  }, [TOP_AUTHORS_COUNT, activeCategory, currentUserId]);
 
   const handleToggleFollow = async (author) => {
-    if (!author.userId || author.userId === currentUserId) {
+    const normalizedTargetUserId = normalizeId(author?.userId);
+
+    if (!normalizedTargetUserId || normalizedTargetUserId === currentUserId) {
       return;
     }
 
-    setBusyFollowIds((prev) => ({ ...prev, [author.userId]: true }));
+    setBusyFollowIds((prev) => ({ ...prev, [normalizedTargetUserId]: true }));
 
     try {
-      const isFollowing = Boolean(followStateByUserId[author.userId]);
+      const isFollowing = Boolean(followStateByUserId[normalizedTargetUserId]);
       let followResult;
 
       if (isFollowing) {
-        followResult = await unfollowUser(author.userId);
+        followResult = await unfollowUser(normalizedTargetUserId);
       } else {
-        followResult = await followUser(author.userId);
+        followResult = await followUser(normalizedTargetUserId);
       }
 
-      const confirmedFollowing = Boolean(followResult?.following);
+      const confirmedFollowing =
+        typeof followResult?.following === "boolean"
+          ? followResult.following
+          : !isFollowing;
+      const eventFollowerId =
+        normalizeId(followResult?.followerId) || currentUserId;
+      const eventFollowingId =
+        normalizeId(followResult?.followingId) || normalizedTargetUserId;
 
       window.dispatchEvent(
         new CustomEvent("storyhub:follow-updated", {
           detail: {
-            followerId: currentUserId,
-            followingId: author.userId,
+            followerId: eventFollowerId,
+            followingId: eventFollowingId,
             following: confirmedFollowing,
           },
         }),
@@ -361,12 +382,15 @@ export default function Explore() {
 
       setFollowStateByUserId((prev) => ({
         ...prev,
-        [author.userId]: confirmedFollowing,
+        [normalizedTargetUserId]: confirmedFollowing,
       }));
     } catch (error) {
       console.error("Failed to toggle follow state:", error);
     } finally {
-      setBusyFollowIds((prev) => ({ ...prev, [author.userId]: false }));
+      setBusyFollowIds((prev) => ({
+        ...prev,
+        [normalizedTargetUserId]: false,
+      }));
     }
   };
 
@@ -686,20 +710,22 @@ export default function Explore() {
 
                   {!authorsLoading &&
                     !authorsError &&
-                    resolvedAuthors.map((author) => (
-                      <AuthorRow
-                        key={author.userId || author.displayName}
-                        userId={author.userId}
-                        name={author.displayName}
-                        role={author.role}
-                        avatar={author.avatar}
-                        isFollowing={Boolean(
-                          followStateByUserId[author.userId],
-                        )}
-                        isBusy={Boolean(busyFollowIds[author.userId])}
-                        onToggleFollow={() => handleToggleFollow(author)}
-                      />
-                    ))}
+                    resolvedAuthors
+                      .slice(0, TOP_AUTHORS_COUNT)
+                      .map((author) => (
+                        <AuthorRow
+                          key={author.userId || author.displayName}
+                          userId={author.userId}
+                          name={author.displayName}
+                          role={author.role}
+                          avatar={author.avatar}
+                          isFollowing={Boolean(
+                            followStateByUserId[author.userId],
+                          )}
+                          isBusy={Boolean(busyFollowIds[author.userId])}
+                          onToggleFollow={() => handleToggleFollow(author)}
+                        />
+                      ))}
                 </div>
 
                 <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">
