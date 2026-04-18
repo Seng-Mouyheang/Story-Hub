@@ -80,7 +80,10 @@ const mapStoryToCard = (story, overrides = {}) => ({
   likes: formatCount(Number(story.likesCount || 0)),
   saves: formatCount(Number(story.bookmarkCount || 0)),
   date: getRelativeTime(story.publishedAt || story.createdAt),
-  genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
+  genres:
+    Array.isArray(story.genres) && story.genres.length > 0
+      ? story.genres.map((g) => String(g).toUpperCase())
+      : ["GENERAL"],
   sortTs: new Date(story.publishedAt || story.createdAt || 0).getTime() || 0,
   ...overrides,
 });
@@ -89,9 +92,18 @@ const StoryCard = ({ story, actionLabel, actionHref }) => (
   <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
     <div className="mb-2 flex items-center justify-between gap-3">
       <h3 className="text-xl font-semibold text-slate-900">{story.title}</h3>
-      <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
-        {story.genre}
-      </span>
+      <div className="flex flex-wrap gap-1">
+        {Array.isArray(story.genres)
+          ? story.genres.map((genre, idx) => (
+              <span
+                key={genre + idx}
+                className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider bg-rose-50 px-2 py-0.5 rounded"
+              >
+                {genre}
+              </span>
+            ))
+          : null}
+      </div>
     </div>
     <p className="text-sm text-slate-500 italic mb-6">{story.excerpt}</p>
     <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6 text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">

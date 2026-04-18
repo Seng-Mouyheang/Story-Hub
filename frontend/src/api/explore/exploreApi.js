@@ -7,14 +7,19 @@ import { getAuthorRecommendations } from "../recommendation";
 
 const normalizeCategory = (category) => String(category || "").trim();
 
+const toCanonicalCategory = (category) =>
+  String(category || "")
+    .trim()
+    .toUpperCase();
+
 const collectGenresFromStories = (stories, genreSet) => {
   (Array.isArray(stories) ? stories : []).forEach((story) => {
     const genres = Array.isArray(story?.genres) ? story.genres : [];
 
     genres.forEach((genre) => {
-      const normalizedGenre = String(genre || "").trim();
-      if (normalizedGenre) {
-        genreSet.add(normalizedGenre);
+      const canonicalGenre = toCanonicalCategory(genre);
+      if (canonicalGenre) {
+        genreSet.add(canonicalGenre);
       }
     });
   });

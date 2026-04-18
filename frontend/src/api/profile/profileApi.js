@@ -29,6 +29,7 @@ export async function getProfileByUserId(userId) {
 export async function updateProfile({
   displayName,
   bio,
+  interest,
   profilePicture,
   coverImage,
 }) {
@@ -47,6 +48,7 @@ export async function updateProfile({
     body: JSON.stringify({
       displayName,
       bio,
+      interest,
       profilePicture,
       coverImage,
     }),

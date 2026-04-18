@@ -20,6 +20,13 @@ import {
   getExplorePopularStories,
   getExplorePublishedGenres,
 } from "../api/explore";
+import {
+  toggleStoryBookmark,
+  removeStoryBookmark,
+  toggleStoryLike,
+} from "../api/story/storyInteractionsApi";
+import { deleteStory } from "../api/story/storyApi";
+import { useNavigate } from "react-router-dom";
 
 const formatCompactNumber = (value) =>
   new Intl.NumberFormat("en", {
@@ -34,7 +41,6 @@ const normalizeId = (value) => {
     if (typeof value.$oid === "string") return value.$oid.trim();
     if (typeof value.toString === "function") return value.toString().trim();
   }
-
   return String(value).trim();
 };
 
@@ -52,7 +58,8 @@ const mapStoryCard = (story) => ({
         : ["Story"],
   excerpt:
     story?.summary || story?.content?.slice(0, 140) || "No summary available.",
-  likes: formatCompactNumber(story?.likesCount),
+  likes: Number(story?.likesCount) || 0,
+  likedByCurrentUser: !!story?.likedByCurrentUser,
   views: formatCompactNumber(story?.views),
   author: story?.authorDisplayName || story?.author?.displayName || "Unknown",
 });
@@ -107,6 +114,34 @@ const AuthorRow = ({
 );
 
 export default function Explore() {
+  const navigate = useNavigate();
+  const [menuStoryId, setMenuStoryId] = useState(null);
+  const [deletingStoryId, setDeletingStoryId] = useState(null);
+
+  const handleEditStory = (storyId) => {
+    setMenuStoryId(null);
+    navigate(`/write?storyId=${storyId}&returnTo=/explore`);
+  };
+
+  const handleDeleteStory = async (storyId) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this story? This action cannot be undone.",
+      )
+    )
+      return;
+    setDeletingStoryId(storyId);
+    try {
+      await deleteStory(storyId);
+      setRecommendedStories((prev) => prev.filter((s) => s.id !== storyId));
+      setPopularStories((prev) => prev.filter((s) => s.id !== storyId));
+      setMenuStoryId(null);
+    } catch {
+      alert("Failed to delete story. Please try again.");
+    } finally {
+      setDeletingStoryId(null);
+    }
+  };
   const TOP_AUTHORS_COUNT = 6;
   const [activeCategory, setActiveCategory] = useState("All");
   const [genreFilters, setGenreFilters] = useState(["All"]);
@@ -116,6 +151,35 @@ export default function Explore() {
   const [followStateByUserId, setFollowStateByUserId] = useState({});
   const [busyFollowIds, setBusyFollowIds] = useState({});
   const [genresLoading, setGenresLoading] = useState(false);
+  const [savedStoryIds, setSavedStoryIds] = useState(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("savedStoryIds") || "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const handleToggleSave = async (storyId) => {
+    try {
+      const isAlreadySaved = savedStoryIds.has(storyId);
+      if (isAlreadySaved) {
+        await removeStoryBookmark(storyId);
+      } else {
+        await toggleStoryBookmark(storyId);
+      }
+      setSavedStoryIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(storyId)) {
+          next.delete(storyId);
+        } else {
+          next.add(storyId);
+        }
+        localStorage.setItem("savedStoryIds", JSON.stringify([...next]));
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to toggle bookmark:", error);
+    }
+  };
   const [storiesLoading, setStoriesLoading] = useState(false);
   const [authorsLoading, setAuthorsLoading] = useState(false);
   const [genresError, setGenresError] = useState("");
@@ -234,8 +298,12 @@ export default function Explore() {
       }
 
       if (recommendedResult.status === "fulfilled") {
+        const allRecommended = (recommendedResult.value?.data || []).map(
+          mapStoryCard,
+        );
+        // Filter out stories authored by the current user
         setRecommendedStories(
-          (recommendedResult.value?.data || []).map(mapStoryCard),
+          allRecommended.filter((story) => story.authorId !== currentUserId),
         );
       } else {
         setRecommendedStories([]);
@@ -394,6 +462,70 @@ export default function Explore() {
     }
   };
 
+  // Like state for instant UI feedback
+  const [likedStoryIds, setLikedStoryIds] = useState(new Set());
+  const [likeCounts, setLikeCounts] = useState({});
+
+  useEffect(() => {
+    setLikedStoryIds(
+      new Set([
+        ...recommendedStories
+          .filter((s) => s.likedByCurrentUser)
+          .map((s) => s.id),
+        ...popularStories.filter((s) => s.likedByCurrentUser).map((s) => s.id),
+      ]),
+    );
+    setLikeCounts((prev) => {
+      const counts = { ...prev };
+      recommendedStories.forEach((s) => {
+        counts[s.id] = s.likes;
+      });
+      popularStories.forEach((s) => {
+        counts[s.id] = s.likes;
+      });
+      return counts;
+    });
+  }, [recommendedStories, popularStories]);
+
+  const handleToggleLike = async (storyId) => {
+    setLikedStoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(storyId)) {
+        next.delete(storyId);
+      } else {
+        next.add(storyId);
+      }
+      return next;
+    });
+    setLikeCounts((prev) => {
+      const next = { ...prev };
+      next[storyId] =
+        (next[storyId] || 0) + (likedStoryIds.has(storyId) ? -1 : 1);
+      return next;
+    });
+    try {
+      await toggleStoryLike(storyId);
+    } catch {
+      // Revert on error
+      setLikedStoryIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(storyId)) {
+          next.delete(storyId);
+        } else {
+          next.add(storyId);
+        }
+        return next;
+      });
+      setLikeCounts((prev) => {
+        const next = { ...prev };
+        next[storyId] =
+          (next[storyId] || 0) + (likedStoryIds.has(storyId) ? 1 : -1);
+        return next;
+      });
+      alert("Failed to like story. Please try again.");
+    }
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
@@ -507,11 +639,67 @@ export default function Explore() {
                                 : "Follow"}
                             </button>
                           ) : null}
-                          <button type="button" aria-label="Story actions">
-                            <MoreHorizontal className="w-5 h-5" />
-                          </button>
-                          <button type="button">
-                            <Bookmark className="w-5 h-5" />
+                          {story.authorId === currentUserId && (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                aria-label="Story actions"
+                                onClick={() =>
+                                  setMenuStoryId(
+                                    menuStoryId === story.id ? null : story.id,
+                                  )
+                                }
+                                className={
+                                  menuStoryId === story.id
+                                    ? "text-rose-500"
+                                    : "text-slate-400 hover:text-slate-600"
+                                }
+                              >
+                                <MoreHorizontal className="w-5 h-5" />
+                              </button>
+                              {menuStoryId === story.id && (
+                                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                                  <button
+                                    onClick={() => handleEditStory(story.id)}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteStory(story.id)}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                    disabled={deletingStoryId === story.id}
+                                  >
+                                    {deletingStoryId === story.id
+                                      ? "Deleting..."
+                                      : "Delete"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSave(story.id)}
+                            className={
+                              savedStoryIds.has(story.id)
+                                ? "text-rose-500"
+                                : "text-slate-500 hover:text-rose-500"
+                            }
+                            aria-label={
+                              savedStoryIds.has(story.id)
+                                ? "Unsave story"
+                                : "Save story"
+                            }
+                          >
+                            <Bookmark
+                              className="w-5 h-5"
+                              fill={
+                                savedStoryIds.has(story.id)
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
                           </button>
                           <button type="button">
                             <Share2 className="w-5 h-5" />
@@ -542,17 +730,31 @@ export default function Explore() {
                       </p>
 
                       <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
-                        <a
-                          href="#"
-                          className="text-rose-500 text-xs font-semibold flex items-center gap-1"
-                        >
-                          Read More <ArrowRightCircle className="w-4 h-4" />
-                        </a>
-
                         <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-3 h-3" /> {story.likes}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleLike(story.id)}
+                            className={
+                              likedStoryIds.has(story.id)
+                                ? "flex items-center gap-1 text-rose-500"
+                                : "flex items-center gap-1 text-slate-500 hover:text-rose-500"
+                            }
+                            aria-label={
+                              likedStoryIds.has(story.id)
+                                ? "Unlike story"
+                                : "Like story"
+                            }
+                          >
+                            <Heart
+                              className="w-3 h-3"
+                              fill={
+                                likedStoryIds.has(story.id)
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                            <span>{likeCounts[story.id] ?? story.likes}</span>
+                          </button>
                           <span className="flex items-center gap-1">
                             <Eye className="w-3 h-3" /> {story.views} views
                           </span>
@@ -628,11 +830,67 @@ export default function Explore() {
                                 : "Follow"}
                             </button>
                           ) : null}
-                          <button type="button" aria-label="Story actions">
-                            <MoreHorizontal className="w-5 h-5" />
-                          </button>
-                          <button type="button">
-                            <Bookmark className="w-5 h-5" />
+                          {story.authorId === currentUserId && (
+                            <div className="relative">
+                              <button
+                                type="button"
+                                aria-label="Story actions"
+                                onClick={() =>
+                                  setMenuStoryId(
+                                    menuStoryId === story.id ? null : story.id,
+                                  )
+                                }
+                                className={
+                                  menuStoryId === story.id
+                                    ? "text-rose-500"
+                                    : "text-slate-400 hover:text-slate-600"
+                                }
+                              >
+                                <MoreHorizontal className="w-5 h-5" />
+                              </button>
+                              {menuStoryId === story.id && (
+                                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                                  <button
+                                    onClick={() => handleEditStory(story.id)}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteStory(story.id)}
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                    disabled={deletingStoryId === story.id}
+                                  >
+                                    {deletingStoryId === story.id
+                                      ? "Deleting..."
+                                      : "Delete"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSave(story.id)}
+                            className={
+                              savedStoryIds.has(story.id)
+                                ? "text-rose-500"
+                                : "text-slate-500 hover:text-rose-500"
+                            }
+                            aria-label={
+                              savedStoryIds.has(story.id)
+                                ? "Unsave story"
+                                : "Save story"
+                            }
+                          >
+                            <Bookmark
+                              className="w-5 h-5"
+                              fill={
+                                savedStoryIds.has(story.id)
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
                           </button>
                           <button type="button">
                             <Share2 className="w-5 h-5" />
@@ -663,17 +921,31 @@ export default function Explore() {
                       </p>
 
                       <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
-                        <a
-                          href="#"
-                          className="text-rose-500 text-xs font-semibold flex items-center gap-1"
-                        >
-                          Read More <ArrowRightCircle className="w-4 h-4" />
-                        </a>
-
                         <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
-                          <span className="flex items-center gap-1">
-                            <Heart className="w-3 h-3" /> {story.likes}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleLike(story.id)}
+                            className={
+                              likedStoryIds.has(story.id)
+                                ? "flex items-center gap-1 text-rose-500"
+                                : "flex items-center gap-1 text-slate-500 hover:text-rose-500"
+                            }
+                            aria-label={
+                              likedStoryIds.has(story.id)
+                                ? "Unlike story"
+                                : "Like story"
+                            }
+                          >
+                            <Heart
+                              className="w-3 h-3"
+                              fill={
+                                likedStoryIds.has(story.id)
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                            <span>{likeCounts[story.id] ?? story.likes}</span>
+                          </button>
                           <span className="flex items-center gap-1">
                             <Eye className="w-3 h-3" /> {story.views} views
                           </span>

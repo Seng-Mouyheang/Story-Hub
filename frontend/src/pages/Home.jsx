@@ -288,8 +288,8 @@ const PostCard = ({
     </h2>
     <p className="text-slate-600 text-sm leading-relaxed mb-6">{excerpt}</p>
 
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4 border-t border-slate-100">
-      <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+    <div className="flex items-center gap-4 flex-wrap pt-4 border-t border-slate-100">
+      <div className="flex items-center gap-4">
         <button
           onClick={() => onToggleLike(id)}
           className={`flex items-center gap-2 transition-all duration-200 ${
@@ -311,7 +311,6 @@ const PostCard = ({
             {formatCount(likesCount)}
           </span>
         </button>
-
         <button
           onClick={() => onOpenComments(id)}
           className={`flex items-center gap-2 transition-all duration-200 ${
@@ -330,8 +329,7 @@ const PostCard = ({
           </span>
         </button>
       </div>
-
-      <div className="flex items-center gap-4 sm:ml-auto">
+      <div className="flex items-center gap-4 ml-auto">
         <button
           onClick={() => onToggleSave(id)}
           className="text-rose-500 hover:text-rose-600 transition-colors duration-200"
@@ -584,7 +582,7 @@ export default function Home() {
             commentCount: Number(story.commentCount || 0),
             canManage: Boolean(currentUserId) && authorId === currentUserId,
             likedByCurrentUser: Boolean(story.likedByCurrentUser),
-            followingAuthor: Boolean(story.followedByCurrentUser),
+            followingAuthor: Boolean(story.followedByCurrentUser), // ensure correct mapping
             followBusy: false,
             avatar: authorAvatarMap.get(authorId) || "",
           };
@@ -1346,46 +1344,47 @@ export default function Home() {
                   </div>
                 )}
 
-                {!isLoadingPosts &&
-                  !postsError &&
-                  posts.map((post) => {
-                    return (
-                      <PostCard
-                        key={post.id}
-                        {...post}
-                        savedByCurrentUser={savedStoryIds.has(post.id)}
-                        commentsActive={activeCommentStoryId === post.id}
-                        shareStatus={shareFeedback[post.id]}
-                        onToggleLike={handleToggleLike}
-                        onOpenComments={handleOpenCommentsModal}
-                        onToggleSave={handleToggleSave}
-                        onShare={handleShare}
-                        onDoubleTapLike={handleDoubleTapLike}
-                        onToggleMenu={handleToggleMenu}
-                        onReportStory={handleReportStory}
-                        onEditStory={handleEditStory}
-                        onDeleteStory={handleDeleteStory}
-                        onToggleFollowAuthor={handleToggleFollowAuthor}
-                        isMenuOpen={menuStoryId === post.id}
-                        showLikeBurst={likeBurstStoryId === post.id}
-                        showLikePulse={likePulseStoryId === post.id}
-                        showCommentCountPulse={
-                          commentCountPulseStoryId === post.id
-                        }
-                      />
-                    );
-                  })}
-
-                {isLoadingMore && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500 text-center">
-                    Loading more stories...
-                  </div>
-                )}
-
-                {!hasMore && posts.length > 0 && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-400 text-center">
-                    No more stories to load
-                  </div>
+                {!isLoadingPosts && !postsError && (
+                  <>
+                    {posts.map((post) => {
+                      return (
+                        <div key={post.id} className="w-full max-w-full">
+                          <PostCard
+                            {...post}
+                            savedByCurrentUser={savedStoryIds.has(post.id)}
+                            commentsActive={activeCommentStoryId === post.id}
+                            shareStatus={shareFeedback[post.id]}
+                            onToggleLike={handleToggleLike}
+                            onOpenComments={handleOpenCommentsModal}
+                            onToggleSave={handleToggleSave}
+                            onShare={handleShare}
+                            onDoubleTapLike={handleDoubleTapLike}
+                            onToggleMenu={handleToggleMenu}
+                            onReportStory={handleReportStory}
+                            onEditStory={handleEditStory}
+                            onDeleteStory={handleDeleteStory}
+                            onToggleFollowAuthor={handleToggleFollowAuthor}
+                            isMenuOpen={menuStoryId === post.id}
+                            showLikeBurst={likeBurstStoryId === post.id}
+                            showLikePulse={likePulseStoryId === post.id}
+                            showCommentCountPulse={
+                              commentCountPulseStoryId === post.id
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                    {isLoadingMore && (
+                      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500 text-center">
+                        Loading more stories...
+                      </div>
+                    )}
+                    {!hasMore && posts.length > 0 && (
+                      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-400 text-center">
+                        No more stories to load
+                      </div>
+                    )}
+                  </>
                 )}
 
                 <div ref={endOfFeedRef} className="h-1" />
