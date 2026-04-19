@@ -14,11 +14,11 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { followUser, unfollowUser, getFollowStatus } from "../api/profile";
-import { getAuthorRecommendations } from "../api/recommendation";
 import {
   getExploreRecommendedStories,
   getExplorePopularStories,
   getExplorePublishedGenres,
+  getExploreAuthors,
 } from "../api/explore";
 import {
   toggleStoryBookmark,
@@ -286,7 +286,7 @@ export default function Explore() {
             limit: 4,
             signal: abortController.signal,
           }),
-          getAuthorRecommendations({
+          getExploreAuthors({
             limit: TOP_AUTHORS_COUNT,
             minLikes: 10,
             signal: abortController.signal,
@@ -959,11 +959,11 @@ export default function Explore() {
 
             <aside className="hidden lg:block w-64 shrink-0 h-full">
               <div className="sticky top-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-lg sm:text-xl font-semibold mb-5 sm:mb-6 text-slate-900">
+                <h2 className="text-lg sm:text-xl font-semibold mb-4 text-slate-900">
                   Top Authors
                 </h2>
 
-                <div className="space-y-4 mb-8">
+                <div className="space-y-2">
                   {authorsLoading ? (
                     <p className="text-xs text-slate-500">Loading authors...</p>
                   ) : null}
@@ -975,9 +975,23 @@ export default function Explore() {
                   {!authorsLoading &&
                   !authorsError &&
                   resolvedAuthors.length === 0 ? (
-                    <p className="text-xs text-slate-500">
-                      No author recommendations available.
-                    </p>
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-rose-50/60 px-4 py-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-rose-500 shadow-sm ring-1 ring-rose-100">
+                          <User size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">
+                            No author recommendations at the moment!
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Add more genre to your interests or like more
+                            author's stories to help them surface in the
+                            top-author list here!
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
 
                   {!authorsLoading &&
@@ -999,10 +1013,6 @@ export default function Explore() {
                         />
                       ))}
                 </div>
-
-                <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">
-                  Show more
-                </button>
               </div>
             </aside>
           </div>
