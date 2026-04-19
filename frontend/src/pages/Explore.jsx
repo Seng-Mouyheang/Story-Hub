@@ -5,13 +5,12 @@ import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
 import {
   Bookmark,
-  Share2,
-  ArrowRightCircle,
   Heart,
   Eye,
   ChevronRight,
   User,
   MoreHorizontal,
+  ChevronLeft,
 } from "lucide-react";
 import { followUser, unfollowUser, getFollowStatus } from "../api/profile";
 import {
@@ -146,6 +145,7 @@ export default function Explore() {
   const TOP_AUTHORS_COUNT = 6;
   const [activeCategory, setActiveCategory] = useState("All");
   const [genreFilters, setGenreFilters] = useState(["All"]);
+  const _genresRef = React.useRef(null);
   const [recommendedStories, setRecommendedStories] = useState([]);
   const [popularStories, setPopularStories] = useState([]);
   const [resolvedAuthors, setResolvedAuthors] = useState([]);
@@ -577,37 +577,71 @@ export default function Explore() {
           <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
             <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               <div className="mb-8 sm:mb-10">
-                <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  {genresLoading ? (
-                    <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-slate-200 text-slate-400">
-                      Loading genres...
-                    </span>
-                  ) : null}
+                <div className="flex items-center gap-2 sm:gap-3 px-1 py-1">
+                  <button
+                    type="button"
+                    aria-label="Scroll genres left"
+                    onClick={() => {
+                      if (!_genresRef.current) return;
+                      const w = _genresRef.current.clientWidth || 240;
+                      _genresRef.current.scrollBy({
+                        left: -Math.round(w * 0.7),
+                        behavior: "smooth",
+                      });
+                    }}
+                    className="inline-flex h-10 w-10 items-center justify-center text-slate-600 hover:text-slate-800"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
 
-                  {!genresLoading && genresError ? (
-                    <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-rose-200 text-rose-500">
-                      {genresError}
-                    </span>
-                  ) : null}
+                  <div
+                    ref={_genresRef}
+                    className="flex-1 flex items-center gap-2 sm:gap-3 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-1"
+                  >
+                    {genresLoading ? (
+                      <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-slate-200 text-slate-400">
+                        Loading genres...
+                      </span>
+                    ) : null}
 
-                  {!genresLoading &&
-                    !genresError &&
-                    genreFilters.map((category) => (
-                      <button
-                        key={category}
-                        type="button"
-                        onClick={() => setActiveCategory(category)}
-                        className={`h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center ${
-                          activeCategory === category
-                            ? "bg-rose-500 text-white"
-                            : "border border-slate-300 text-slate-600"
-                        }`}
-                      >
-                        {category}
-                      </button>
-                    ))}
-                  <button className="hidden sm:inline-flex h-10 items-center text-slate-400 ml-2">
-                    <ChevronRight className="w-6 h-6" />
+                    {!genresLoading && genresError ? (
+                      <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-rose-200 text-rose-500">
+                        {genresError}
+                      </span>
+                    ) : null}
+
+                    {!genresLoading &&
+                      !genresError &&
+                      genreFilters.map((category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() => setActiveCategory(category)}
+                          className={`h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center ${
+                            activeCategory === category
+                              ? "bg-rose-500 text-white"
+                              : "border border-slate-300 text-slate-600"
+                          }`}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    aria-label="Scroll genres right"
+                    onClick={() => {
+                      if (!_genresRef.current) return;
+                      const w = _genresRef.current.clientWidth || 240;
+                      _genresRef.current.scrollBy({
+                        left: Math.round(w * 0.7),
+                        behavior: "smooth",
+                      });
+                    }}
+                    className="inline-flex h-10 w-10 items-center justify-center text-slate-600 hover:text-slate-800"
+                  >
+                    <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -641,7 +675,17 @@ export default function Explore() {
                   {recommendedStories.map((story, i) => (
                     <div
                       key={story.id || i}
-                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          navigate("/", { state: { focusedPostId: story.id } });
+                        }
+                      }}
+                      onClick={() =>
+                        navigate("/", { state: { focusedPostId: story.id } })
+                      }
+                      className="cursor-pointer bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                         <div className="flex flex-wrap gap-2">
@@ -660,9 +704,10 @@ export default function Explore() {
                           story.authorId !== currentUserId ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                handleToggleFollow({ userId: story.authorId })
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleFollow({ userId: story.authorId });
+                              }}
                               disabled={Boolean(busyFollowIds[story.authorId])}
                               className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
                                 followStateByUserId[story.authorId]
@@ -684,11 +729,12 @@ export default function Explore() {
                               <button
                                 type="button"
                                 aria-label="Story actions"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setMenuStoryId(
                                     menuStoryId === story.id ? null : story.id,
-                                  )
-                                }
+                                  );
+                                }}
                                 className={
                                   menuStoryId === story.id
                                     ? "text-rose-500"
@@ -700,13 +746,19 @@ export default function Explore() {
                               {menuStoryId === story.id && (
                                 <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
                                   <button
-                                    onClick={() => handleEditStory(story.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditStory(story.id);
+                                    }}
                                     className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                                   >
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteStory(story.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteStory(story.id);
+                                    }}
                                     className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
                                     disabled={deletingStoryId === story.id}
                                   >
@@ -720,7 +772,10 @@ export default function Explore() {
                           )}
                           <button
                             type="button"
-                            onClick={() => handleToggleSave(story.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleSave(story.id);
+                            }}
                             className={
                               savedStoryIds.has(story.id)
                                 ? "text-rose-500"
@@ -740,9 +795,6 @@ export default function Explore() {
                                   : "none"
                               }
                             />
-                          </button>
-                          <button type="button">
-                            <Share2 className="w-5 h-5" />
                           </button>
                         </div>
                       </div>
@@ -773,7 +825,10 @@ export default function Explore() {
                         <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
                           <button
                             type="button"
-                            onClick={() => handleToggleLike(story.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleLike(story.id);
+                            }}
                             className={
                               likedStoryIds.has(story.id)
                                 ? "flex items-center gap-1 text-rose-500"
@@ -832,7 +887,17 @@ export default function Explore() {
                   {popularStories.map((story, i) => (
                     <div
                       key={story.id || i}
-                      className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          navigate("/", { state: { focusedPostId: story.id } });
+                        }
+                      }}
+                      onClick={() =>
+                        navigate("/", { state: { focusedPostId: story.id } })
+                      }
+                      className="cursor-pointer bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
                       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
                         <div className="flex flex-wrap gap-2">
@@ -851,9 +916,10 @@ export default function Explore() {
                           story.authorId !== currentUserId ? (
                             <button
                               type="button"
-                              onClick={() =>
-                                handleToggleFollow({ userId: story.authorId })
-                              }
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleFollow({ userId: story.authorId });
+                              }}
                               disabled={Boolean(busyFollowIds[story.authorId])}
                               className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
                                 followStateByUserId[story.authorId]
@@ -875,11 +941,12 @@ export default function Explore() {
                               <button
                                 type="button"
                                 aria-label="Story actions"
-                                onClick={() =>
+                                onClick={(e) => {
+                                  e.stopPropagation();
                                   setMenuStoryId(
                                     menuStoryId === story.id ? null : story.id,
-                                  )
-                                }
+                                  );
+                                }}
                                 className={
                                   menuStoryId === story.id
                                     ? "text-rose-500"
@@ -891,13 +958,19 @@ export default function Explore() {
                               {menuStoryId === story.id && (
                                 <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
                                   <button
-                                    onClick={() => handleEditStory(story.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleEditStory(story.id);
+                                    }}
                                     className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
                                   >
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteStory(story.id)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteStory(story.id);
+                                    }}
                                     className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
                                     disabled={deletingStoryId === story.id}
                                   >
@@ -911,7 +984,10 @@ export default function Explore() {
                           )}
                           <button
                             type="button"
-                            onClick={() => handleToggleSave(story.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleSave(story.id);
+                            }}
                             className={
                               savedStoryIds.has(story.id)
                                 ? "text-rose-500"
@@ -931,9 +1007,6 @@ export default function Explore() {
                                   : "none"
                               }
                             />
-                          </button>
-                          <button type="button">
-                            <Share2 className="w-5 h-5" />
                           </button>
                         </div>
                       </div>
@@ -964,7 +1037,10 @@ export default function Explore() {
                         <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
                           <button
                             type="button"
-                            onClick={() => handleToggleLike(story.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleLike(story.id);
+                            }}
                             className={
                               likedStoryIds.has(story.id)
                                 ? "flex items-center gap-1 text-rose-500"

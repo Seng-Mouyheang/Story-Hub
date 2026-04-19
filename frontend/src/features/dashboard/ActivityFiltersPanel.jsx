@@ -1,8 +1,6 @@
 export default function ActivityFiltersPanel({
   activityFilters,
   updateFilter,
-  resetFilters,
-  setShowFilters,
   filterPanelRef,
 }) {
   return (

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useLocation } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -311,6 +312,47 @@ export default function Confession() {
   );
 
   const [currentUserId, setCurrentUserId] = React.useState("");
+
+  const location = useLocation();
+
+  React.useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || "");
+      const editId =
+        params.get("editId") || location.state?.editingConfessionId;
+      if (editId) {
+        setEditingConfessionId(editId);
+        const existing = confessionFeed.find(
+          (c) => String(c._id || c.id) === String(editId),
+        );
+        if (existing) {
+          setEditConfessionContent(existing.content || "");
+          setEditConfessionIsAnonymous(existing.isAnonymous ?? true);
+          setEditConfessionVisibility(existing.visibility || "public");
+        } else {
+          // if not found in current feed, fetch single confession from API
+          (async () => {
+            try {
+              const res = await fetch(`/api/confessions/${editId}`);
+              const data = await parseResponse(res);
+              if (res.ok && data) {
+                const item = data;
+                setEditConfessionContent(item.content || "");
+                setEditConfessionIsAnonymous(item.isAnonymous ?? true);
+                setEditConfessionVisibility(item.visibility || "public");
+              }
+            } catch (err) {
+              // ignore fetch errors here; user can still edit after loading feed
+              console.error("Failed to load confession for editing", err);
+            }
+          })();
+        }
+      }
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   React.useEffect(() => {
     const syncCurrentUserId = () => {

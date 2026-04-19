@@ -1,12 +1,12 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Feather } from "lucide-react";
+import { Feather, Eye, EyeOff } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -40,8 +40,6 @@ export default function Login() {
       if (payload?.user) {
         localStorage.setItem("currentUser", JSON.stringify(payload.user));
       }
-
-      localStorage.setItem("rememberLogin", remember ? "true" : "false");
 
       if (localStorage.getItem("needsProfileSetup") === "true") {
         navigate("/edit-profile", { replace: true });
@@ -85,7 +83,7 @@ export default function Login() {
         <section className="flex flex-col px-4 py-6 sm:px-6 lg:px-10">
           <div className="flex flex-1 items-center justify-center">
             <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
-              <div className="mb-8">
+              <div className="mb-8 text-center">
                 <div className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 lg:hidden">
                   <Feather size={14} />
                   StoryHub
@@ -114,7 +112,7 @@ export default function Login() {
                   </label>
                   <input
                     type="email"
-                    placeholder="name@company.com"
+                    placeholder="name@gmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -123,25 +121,31 @@ export default function Login() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div>
                     <label className="block text-sm font-medium text-slate-700">
                       Password
                     </label>
-                    <a
-                      href="#"
-                      className="text-sm font-medium text-rose-500 transition hover:text-rose-600"
-                    >
-                      Forgot password?
-                    </a>
                   </div>
-                  <input
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-12 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute inset-y-0 right-3 flex items-center text-slate-500"
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 {errorMessage && (
@@ -153,18 +157,7 @@ export default function Login() {
                   </p>
                 )}
 
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    id="remember"
-                    checked={remember}
-                    onChange={(e) => setRemember(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
-                  />
-                  <label htmlFor="remember" className="text-sm text-slate-600">
-                    Remember for 30 days
-                  </label>
-                </div>
+                {/* Remember checkbox removed per request */}
 
                 <button
                   type="submit"

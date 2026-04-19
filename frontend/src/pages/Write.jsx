@@ -57,7 +57,7 @@ export default function Write() {
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [genres, setGenres] = useState(["MYSTERY", "FANTASY", "ROMANCE"]);
+  const [genres, setGenres] = useState([]);
   const [selectedGenre, setSelectedGenre] = useState("");
   const [tags, setTags] = useState("");
   const [visibility, setVisibility] = useState("public");
@@ -155,8 +155,16 @@ export default function Write() {
   const parseTagsArray = () => {
     return tags
       .split(",")
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0);
+      .map((raw) => raw.trim())
+      .filter((raw) => raw.length > 0)
+      .map((raw) => {
+        // remove leading # if present
+        const withoutHash = raw.startsWith("#") ? raw.slice(1) : raw;
+        // only take the first word (stop at whitespace)
+        const firstWord = withoutHash.split(/\s+/)[0] || "";
+        return firstWord.trim();
+      })
+      .filter((t) => t.length > 0);
   };
 
   const getGenresForSubmit = () => {

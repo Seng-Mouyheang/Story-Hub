@@ -10,7 +10,7 @@ export default function Signup() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [agreeTerms, setAgreeTerms] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
@@ -91,7 +91,7 @@ export default function Signup() {
         <section className="flex flex-col px-4 py-6 sm:px-6 lg:px-10">
           <div className="flex flex-1 items-center justify-center">
             <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
-              <div className="mb-8">
+              <div className="mb-8 text-center">
                 <div className="mb-4 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 lg:hidden">
                   <Feather size={14} />
                   StoryHub
@@ -125,7 +125,7 @@ export default function Signup() {
                   </label>
                   <input
                     type="email"
-                    placeholder="name@company.com"
+                    placeholder="name@gmail.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
@@ -183,36 +183,6 @@ export default function Signup() {
                       )}
                     </button>
                   </div>
-                </div>
-
-                <div className="flex items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    id="agreeTerms"
-                    checked={agreeTerms}
-                    onChange={(e) => setAgreeTerms(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-500 focus:ring-rose-400"
-                    required
-                  />
-                  <label
-                    htmlFor="agreeTerms"
-                    className="text-sm leading-relaxed text-slate-600"
-                  >
-                    I agree to the
-                    <a
-                      href="#"
-                      className="mx-1 font-medium text-slate-900 transition hover:text-rose-500"
-                    >
-                      Terms of Service
-                    </a>
-                    and
-                    <a
-                      href="#"
-                      className="mx-1 font-medium text-slate-900 transition hover:text-rose-500"
-                    >
-                      Privacy Policy
-                    </a>
-                  </label>
                 </div>
 
                 {errorMessage && (

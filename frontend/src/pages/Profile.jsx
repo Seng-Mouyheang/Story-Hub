@@ -88,8 +88,16 @@ const mapStoryToCard = (story, overrides = {}) => ({
   ...overrides,
 });
 
-const StoryCard = ({ story, actionLabel, actionHref }) => (
-  <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+const StoryCard = ({ story, actionLabel, actionHref, onClick }) => (
+  <div
+    role="button"
+    tabIndex={0}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" && typeof onClick === "function") onClick();
+    }}
+    onClick={onClick}
+    className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+  >
     <div className="mb-2 flex items-center justify-between gap-3">
       <h3 className="text-xl font-semibold text-slate-900">{story.title}</h3>
       <div className="flex flex-wrap gap-1">
@@ -162,7 +170,7 @@ export default function Profile() {
     }
   }, []);
 
-  const normalizeId = (value) => {
+  const normalizeId = useCallback((value) => {
     if (!value) return "";
     if (typeof value === "string") return value.trim();
     if (typeof value === "object") {
@@ -171,11 +179,25 @@ export default function Profile() {
     }
 
     return String(value).trim();
-  };
+  }, []);
+
+  const isValidUserId = useCallback(
+    (value) => {
+      const id = normalizeId(value);
+      if (!id) return false;
+      // Accept common Mongo ObjectId (24 hex chars) or UUID patterns; reject URLs/localhost strings
+      const objectIdRegex = /^[0-9a-fA-F]{24}$/;
+      const uuidRegex =
+        /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+      if (objectIdRegex.test(id) || uuidRegex.test(id)) return true;
+      return false;
+    },
+    [normalizeId],
+  );
 
   const currentUserId = useMemo(
     () => normalizeId(currentUser?.id || currentUser?._id || ""),
-    [currentUser],
+    [currentUser, normalizeId],
   );
   const viewedUserId = normalizeId(routeUserId || currentUserId);
   const isOwnProfile =
@@ -331,7 +353,7 @@ export default function Profile() {
 
       return accountRows;
     },
-    [currentUserId],
+    [currentUserId, normalizeId],
   );
 
   const loadFollowList = useCallback(
@@ -360,7 +382,11 @@ export default function Profile() {
             ? payload?.following || []
             : payload?.followers || [];
         const ids = Array.from(
-          new Set(rawIds.map((value) => normalizeId(value)).filter(Boolean)),
+          new Set(
+            rawIds
+              .map((value) => normalizeId(value))
+              .filter((v) => v && isValidUserId(v)),
+          ),
         );
 
         const rows = await buildFollowListAccounts(ids);
@@ -388,6 +414,17 @@ export default function Profile() {
 
         setFollowListCursor(payload?.nextCursor || null);
         setFollowListHasMore(Boolean(payload?.hasMore));
+
+        // Update profile counts to reflect sanitized list lengths so UI matches list
+        if (targetListType === "following") {
+          setProfileData((previous) =>
+            previous ? { ...previous, following: ids.length } : previous,
+          );
+        } else {
+          setProfileData((previous) =>
+            previous ? { ...previous, followers: ids.length } : previous,
+          );
+        }
       } catch (error) {
         setFollowListError(
           error?.message || "Failed to load this follow list right now.",
@@ -403,10 +440,11 @@ export default function Profile() {
       }
     },
     [
-      FOLLOW_LIST_PAGE_SIZE,
-      buildFollowListAccounts,
-      followListCursor,
       viewedUserId,
+      followListCursor,
+      buildFollowListAccounts,
+      normalizeId,
+      isValidUserId,
     ],
   );
 
@@ -559,10 +597,63 @@ export default function Profile() {
 
     loadProfile();
 
+    // Also sanitize follow counts by paging through follow lists and removing invalid IDs.
+    let sanitizeAbort = { aborted: false };
+    const sanitizeFollowCounts = async () => {
+      if (!viewedUserId) return;
+
+      try {
+        // Helper to page through follow lists
+        const pageFollowIds = async (listFn) => {
+          const collected = [];
+          let cursor = null;
+          while (!sanitizeAbort.aborted) {
+            const res = await listFn(viewedUserId, {
+              cursor,
+              limit: FOLLOW_LIST_PAGE_SIZE,
+            });
+            const raw = Array.isArray(res?.followers)
+              ? res.followers
+              : Array.isArray(res?.following)
+                ? res.following
+                : [];
+            collected.push(...raw.map((v) => normalizeId(v)).filter(Boolean));
+            cursor = res?.nextCursor || null;
+            if (!cursor) break;
+          }
+          return collected.filter((v) => isValidUserId(v));
+        };
+
+        // Fetch followers and following (in parallel)
+        const [followersIds, followingIds] = await Promise.all([
+          pageFollowIds(getFollowers).catch(() => []),
+          pageFollowIds(getFollowing).catch(() => []),
+        ]);
+
+        if (sanitizeAbort.aborted) return;
+
+        setProfileData((previous) =>
+          previous
+            ? {
+                ...previous,
+                followers: Number(followersIds.length || 0),
+                following: Number(followingIds.length || 0),
+              }
+            : previous,
+        );
+        // eslint-disable-next-line no-unused-vars
+      } catch (e) {
+        // ignore transient errors
+      }
+    };
+
+    sanitizeFollowCounts();
+
     return () => {
       isMounted = false;
+      sanitizeAbort.aborted = true;
     };
-  }, [profileRefreshToken, viewedUserId]);
+  }, [profileRefreshToken, viewedUserId, normalizeId, isValidUserId]);
 
   useEffect(() => {
     if (!isOwnProfile) {
@@ -1062,6 +1153,11 @@ export default function Profile() {
                           story={story}
                           actionLabel={story.actionLabel}
                           actionHref={story.actionHref}
+                          onClick={() =>
+                            navigate("/", {
+                              state: { focusedPostId: story.id },
+                            })
+                          }
                         />
                       ))
                     ) : (

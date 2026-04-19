@@ -3,12 +3,13 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Filter, PenTool, Clock3, FileText } from "lucide-react";
+import { Filter, PenTool, Clock3, FileText, Trash2 } from "lucide-react";
 import {
   getDashboardStats,
   getDashboardStories,
   getDashboardConfessions,
 } from "../api/dashboard/dashboardApi";
+import { deleteStory } from "../api/story/storyApi";
 import ActivityFiltersPanel from "../features/dashboard/ActivityFiltersPanel";
 import {
   DEFAULT_ACTIVITY_FILTERS,
@@ -61,8 +62,11 @@ const formatRelativeTime = (dateString) => {
   return date.toLocaleDateString();
 };
 
-const DashboardStoryCard = ({ story }) => {
-  const title = story?.title || "Untitled Story";
+const DashboardStoryCard = ({ story, onDelete }) => {
+  const id = story?.id || story?._id;
+  const title =
+    story?.title ||
+    (story?._type === "confession" ? "Confession" : "Untitled Story");
   const excerpt =
     story?.summary || story?.content?.slice(0, 140) || "No preview available.";
   const statusLabel = story?.status
@@ -96,12 +100,24 @@ const DashboardStoryCard = ({ story }) => {
 
         <div className="flex shrink-0 items-center gap-2">
           <Link
-            to={`/write?storyId=${story.id}&returnTo=dashboard`}
+            to={
+              story?._type === "confession"
+                ? `/confession?editId=${id}&returnTo=dashboard`
+                : `/write?storyId=${id}&returnTo=dashboard`
+            }
             className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
           >
             <FileText className="h-4 w-4" />
             Edit
           </Link>
+          <button
+            type="button"
+            onClick={() => onDelete && onDelete(story)}
+            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
         </div>
       </div>
 
@@ -158,27 +174,36 @@ export default function Dashboard() {
     };
   }, []);
 
-  // Fetch activities (stories or confessions) with filters and pagination
+  // Fetch activities (stories, confessions, or both) with filters and pagination
   useEffect(() => {
     const controller = new AbortController();
     let isMounted = true;
+
     async function fetchActivities() {
       setIsLoading(true);
       setErrorMessage("");
       try {
-        let payload;
         const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
+
         if (activityFilters.contentType === "confession") {
-          payload = await getDashboardConfessions({
+          const payload = await getDashboardConfessions({
             sortBy: apiSortBy,
             order,
             page,
             limit: 5,
             signal: controller.signal,
           });
-        } else {
+
+          if (!isMounted) return;
+          setActivities(
+            (payload?.data || []).map((c) => ({ ...c, _type: "confession" })),
+          );
+          return;
+        }
+
+        if (activityFilters.contentType === "story") {
           const filters = getStoryQueryFilters(activityFilters);
-          payload = await getDashboardStories({
+          const payload = await getDashboardStories({
             ...filters,
             sortBy: apiSortBy,
             order,
@@ -186,9 +211,57 @@ export default function Dashboard() {
             limit: 5,
             signal: controller.signal,
           });
+
+          if (!isMounted) return;
+          setActivities(
+            (payload?.data || []).map((s) => ({ ...s, _type: "story" })),
+          );
+          return;
         }
+
+        // contentType === 'all' -> fetch both and merge
+        const [storiesRes, confessionsRes] = await Promise.allSettled([
+          getDashboardStories({
+            sortBy: apiSortBy,
+            order,
+            page,
+            limit: 5,
+            signal: controller.signal,
+          }),
+          getDashboardConfessions({
+            sortBy: apiSortBy,
+            order,
+            page,
+            limit: 5,
+            signal: controller.signal,
+          }),
+        ]);
+
+        const stories =
+          storiesRes.status === "fulfilled" ? storiesRes.value?.data || [] : [];
+        const confessions =
+          confessionsRes.status === "fulfilled"
+            ? confessionsRes.value?.data || []
+            : [];
+
+        const merged = [
+          ...stories.map((s) => ({ ...s, _type: "story" })),
+          ...confessions.map((c) => ({ ...c, _type: "confession" })),
+        ];
+
+        // sort by updated or created date desc
+        merged.sort((a, b) => {
+          const aTime = new Date(
+            a.updatedAt || a.createdAt || a.created_at || 0,
+          ).getTime();
+          const bTime = new Date(
+            b.updatedAt || b.createdAt || b.created_at || 0,
+          ).getTime();
+          return bTime - aTime;
+        });
+
         if (!isMounted) return;
-        setActivities(Array.isArray(payload?.data) ? payload.data : []);
+        setActivities(merged);
       } catch (error) {
         if (error.name !== "AbortError" && isMounted) {
           setErrorMessage(error.message || "Failed to load dashboard data.");
@@ -197,12 +270,33 @@ export default function Dashboard() {
         if (isMounted) setIsLoading(false);
       }
     }
+
     fetchActivities();
+
     return () => {
       isMounted = false;
       controller.abort();
     };
   }, [activityFilters, page]);
+
+  const handleDeleteActivity = async (item) => {
+    try {
+      const id = item.id || item._id || item.storyId || item.confessionId;
+      if (item._type === "story") {
+        await deleteStory(id);
+      } else if (item._type === "confession") {
+        await fetch(`/api/confessions/${id}`, { method: "DELETE" });
+      }
+
+      setActivities((prev) =>
+        prev.filter(
+          (a) => (a.id || a._id || a.storyId || a.confessionId) !== id,
+        ),
+      );
+    } catch (err) {
+      console.error("Failed to delete activity", err);
+    }
+  };
 
   // Filter panel handlers
   const updateFilter = (key, value) => {
@@ -354,7 +448,9 @@ export default function Dashboard() {
                             createdAt: item.createdAt,
                             wordCount: item.wordCount,
                             likesCount: item.likesCount,
+                            _type: item._type,
                           }}
+                          onDelete={handleDeleteActivity}
                         />
                       ))}
                     </div>
