@@ -9,7 +9,6 @@ import {
   removeStoryBookmark,
 } from "../api/story/storyInteractionsApi";
 import { getProfileByUserId } from "../api/profile";
-import { getStoryById } from "../api/story/storyApi";
 import {
   getBookmarkedConfessions,
   removeConfessionBookmark,
@@ -348,7 +347,6 @@ export default function Bookmarks() {
       );
     } catch (error) {
       // Log error for debugging
-      // eslint-disable-next-line no-console
       console.error("Confession bookmarks load error:", error);
       setConfessionError(
         error?.message || "Unable to load bookmarked confessions right now.",
