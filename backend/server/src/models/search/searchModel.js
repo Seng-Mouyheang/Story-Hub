@@ -25,6 +25,9 @@ const escapeRegex = (value) =>
     )
     .join("");
 
+const asString = (fieldPath) => ({ $ifNull: [fieldPath, ""] });
+const asArray = (fieldPath) => ({ $ifNull: [fieldPath, []] });
+
 const buildAccountSearchPipeline = (escapedQuery, limit) => [
   {
     $match: {
@@ -73,7 +76,7 @@ const buildAccountSearchPipeline = (escapedQuery, limit) => [
             $cond: [
               {
                 $regexMatch: {
-                  input: "$user.username",
+                  input: asString("$user.username"),
                   regex: `^${escapedQuery}$`,
                   options: "i",
                 },
@@ -86,7 +89,7 @@ const buildAccountSearchPipeline = (escapedQuery, limit) => [
             $cond: [
               {
                 $regexMatch: {
-                  input: "$user.username",
+                  input: asString("$user.username"),
                   regex: `^${escapedQuery}`,
                   options: "i",
                 },
@@ -99,7 +102,7 @@ const buildAccountSearchPipeline = (escapedQuery, limit) => [
             $cond: [
               {
                 $regexMatch: {
-                  input: "$displayName",
+                  input: asString("$displayName"),
                   regex: `^${escapedQuery}$`,
                   options: "i",
                 },
@@ -112,7 +115,7 @@ const buildAccountSearchPipeline = (escapedQuery, limit) => [
             $cond: [
               {
                 $regexMatch: {
-                  input: "$displayName",
+                  input: asString("$displayName"),
                   regex: `^${escapedQuery}`,
                   options: "i",
                 },
@@ -223,7 +226,7 @@ const buildStorySearchPipeline = (escapedQuery, limit, isTagSearch) => {
               $cond: [
                 {
                   $regexMatch: {
-                    input: "$title",
+                    input: asString("$title"),
                     regex: `^${escapedQuery}$`,
                     options: "i",
                   },
@@ -236,7 +239,7 @@ const buildStorySearchPipeline = (escapedQuery, limit, isTagSearch) => {
               $cond: [
                 {
                   $regexMatch: {
-                    input: "$title",
+                    input: asString("$title"),
                     regex: `^${escapedQuery}`,
                     options: "i",
                   },
@@ -249,7 +252,7 @@ const buildStorySearchPipeline = (escapedQuery, limit, isTagSearch) => {
               $cond: [
                 {
                   $regexMatch: {
-                    input: "$summary",
+                    input: asString("$summary"),
                     regex: escapedQuery,
                     options: "i",
                   },
@@ -265,11 +268,11 @@ const buildStorySearchPipeline = (escapedQuery, limit, isTagSearch) => {
                     {
                       $size: {
                         $filter: {
-                          input: "$tags",
+                          input: asArray("$tags"),
                           as: "tag",
                           cond: {
                             $regexMatch: {
-                              input: "$$tag",
+                              input: { $ifNull: ["$$tag", ""] },
                               regex: `^${escapedQuery}$`,
                               options: "i",
                             },
@@ -404,7 +407,7 @@ const buildConfessionSearchPipeline = (escapedQuery, limit, isTagSearch) => {
               $cond: [
                 {
                   $regexMatch: {
-                    input: "$content",
+                    input: asString("$content"),
                     regex: `^${escapedQuery}`,
                     options: "i",
                   },
@@ -417,7 +420,7 @@ const buildConfessionSearchPipeline = (escapedQuery, limit, isTagSearch) => {
               $cond: [
                 {
                   $regexMatch: {
-                    input: "$content",
+                    input: asString("$content"),
                     regex: escapedQuery,
                     options: "i",
                   },
@@ -433,11 +436,11 @@ const buildConfessionSearchPipeline = (escapedQuery, limit, isTagSearch) => {
                     {
                       $size: {
                         $filter: {
-                          input: "$tags",
+                          input: asArray("$tags"),
                           as: "tag",
                           cond: {
                             $regexMatch: {
-                              input: "$$tag",
+                              input: { $ifNull: ["$$tag", ""] },
                               regex: `^${escapedQuery}$`,
                               options: "i",
                             },
@@ -501,6 +504,9 @@ const normalizeListFilter = (value) => {
 
 const searchGlobal = async (query, limit, currentUserId) => {
   const db = await connectToDatabase();
+  const parsedLimit = Number.parseInt(limit, 10);
+  const safeLimit =
+    Number.isInteger(parsedLimit) && parsedLimit > 0 ? parsedLimit : 8;
 
   const trimmedQuery = query.trim();
   if (!trimmedQuery) {
@@ -533,16 +539,16 @@ const searchGlobal = async (query, limit, currentUserId) => {
   const [accounts, stories, rawConfessions] = await Promise.all([
     db
       .collection("profiles")
-      .aggregate(buildAccountSearchPipeline(escapedQuery, limit))
+      .aggregate(buildAccountSearchPipeline(escapedQuery, safeLimit))
       .toArray(),
     db
       .collection("stories")
-      .aggregate(buildStorySearchPipeline(escapedQuery, limit, isTagSearch))
+      .aggregate(buildStorySearchPipeline(escapedQuery, safeLimit, isTagSearch))
       .toArray(),
     db
       .collection("confessions")
       .aggregate(
-        buildConfessionSearchPipeline(escapedQuery, limit, isTagSearch),
+        buildConfessionSearchPipeline(escapedQuery, safeLimit, isTagSearch),
       )
       .toArray(),
   ]);
