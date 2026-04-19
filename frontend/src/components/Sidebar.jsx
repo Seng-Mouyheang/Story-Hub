@@ -109,32 +109,6 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Trending Tags */}
-      {!isCollapsed && (
-        <div className="px-4 mt-2">
-          <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
-            Trending Tags #
-          </h3>
-
-          <div className="space-y-3">
-            {[
-              "#DailyLifeAsGenZ",
-              "#CampusStory",
-              "#StudyMood",
-              "#LateNightThoughts",
-            ].map((tag, index) => (
-              <a
-                key={index}
-                href="#"
-                className="block text-slate-600 text-sm hover:text-rose-500 transition-colors"
-              >
-                {tag}
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Bottom Buttons */}
       <div className="w-full p-3 border-t border-slate-200 space-y-2 bg-white/95">
         <Link
