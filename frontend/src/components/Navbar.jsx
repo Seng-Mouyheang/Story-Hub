@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Search, Sun, Moon, User } from "lucide-react";
+import { Sun, Moon, User } from "lucide-react";
 import { Link } from "react-router-dom";
 import SearchBar from "./SearchBar";
 
@@ -83,7 +83,7 @@ export default function Navbar({ title }) {
       {/* Right Side */}
       <div className="flex items-center gap-0 sm:gap-2 w-auto">
         {/* Desktop: Search Bar left of theme toggle */}
-        <div className="hidden sm:block relative w-40 sm:w-auto">
+        <div className="hidden sm:block relative w-52 md:w-64 lg:w-96 xl:w-136">
           <SearchBar />
         </div>
 

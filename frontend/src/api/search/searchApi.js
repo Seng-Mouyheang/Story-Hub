@@ -14,7 +14,7 @@ const parseJsonResponse = async (response, fallbackMessage) => {
 };
 
 export async function globalSearch(query, { limit = 8, signal } = {}) {
-  if (!query || !query.trim()) {
+  if (!query?.trim()) {
     return {
       query: "",
       isTagSearch: false,
