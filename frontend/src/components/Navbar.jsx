@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Sun, Moon, User } from "lucide-react";
+import { User } from "lucide-react";
 import { Link } from "react-router-dom";
 import SearchBar from "./SearchBar";
 
 export default function Navbar({ title }) {
-  const [darkMode, setDarkMode] = useState(false);
+  // const [darkMode, setDarkMode] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
 
   const currentUser = useMemo(() => {
@@ -19,20 +19,6 @@ export default function Navbar({ title }) {
     () => String(currentUser?.id || currentUser?._id || "").trim(),
     [currentUser],
   );
-
-  // Toggle Theme Function
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-  };
-
-  // Apply dark mode class to HTML
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [darkMode]);
 
   useEffect(() => {
     let isMounted = true;
@@ -91,18 +77,6 @@ export default function Navbar({ title }) {
         <div className="block sm:hidden">
           <SearchBar />
         </div>
-
-        {/* Theme Toggle Button */}
-        <button
-          onClick={toggleTheme}
-          className="p-2 text-slate-400 hover:text-slate-600 transition"
-        >
-          {darkMode ? (
-            <Sun className="w-5 h-5" />
-          ) : (
-            <Moon className="w-5 h-5" />
-          )}
-        </button>
 
         {/* Profile Avatar always at far right */}
         <Link
