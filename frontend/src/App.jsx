@@ -14,6 +14,7 @@ import Dashboard from "./pages/Dashboard";
 import Write from "./pages/Write";
 import Profile from "./pages/Profile";
 import EditProfile from "./pages/EditProfile";
+import Settings from "./pages/Settings";
 import "./App.css";
 
 const isAuthenticated = () => Boolean(localStorage.getItem("token"));
@@ -123,6 +124,14 @@ function App() {
           element={
             <ProtectedRoute>
               <EditProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
             </ProtectedRoute>
           }
         />

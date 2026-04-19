@@ -51,7 +51,7 @@ export default function Signup() {
       navigate("/login", {
         state: {
           message:
-            "Account created successfully. Please log in to set up your profile.",
+            "Account created successfully. You can optionally set up your profile after logging in.",
         },
       });
     } catch (error) {

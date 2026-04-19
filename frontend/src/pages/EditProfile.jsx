@@ -185,10 +185,7 @@ export default function EditProfile() {
   const handleSave = async () => {
     setErrorMessage("");
 
-    if (!profilePicture) {
-      setErrorMessage("Profile picture is required.");
-      return;
-    }
+    // Profile picture is optional during initial setup
 
     setIsSaving(true);
 
@@ -329,9 +326,7 @@ export default function EditProfile() {
                       </button>
                     </div>
                     <div>
-                      <h4 className="font-bold text-sm">
-                        Profile Picture <span className="text-rose-500">*</span>
-                      </h4>
+                      <h4 className="font-bold text-sm">Profile Picture</h4>
                       <button
                         type="button"
                         onClick={() => profileInputRef.current?.click()}
