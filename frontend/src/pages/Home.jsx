@@ -10,6 +10,7 @@ import {
   getFollowStatus,
 } from "../api/profile";
 import { getStories, deleteStory } from "../api/story/storyApi";
+import { getAuthorRecommendations } from "../api/recommendation";
 import {
   getStoryComments,
   addStoryComment,
@@ -418,6 +419,9 @@ export default function Home() {
   const [isLoadingPosts, setIsLoadingPosts] = useState(true);
   const [postsError, setPostsError] = useState("");
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [topAuthors, setTopAuthors] = useState([]);
+  const [topAuthorsLoading, setTopAuthorsLoading] = useState(true);
+  const [topAuthorsError, setTopAuthorsError] = useState("");
   const [savedStoryIds, setSavedStoryIds] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("savedStoryIds") || "[]");
@@ -451,6 +455,105 @@ export default function Home() {
       return "";
     }
   }, []);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    const loadTopAuthors = async () => {
+      if (!currentUserId) {
+        if (isMounted) {
+          setTopAuthors([]);
+          setTopAuthorsError("");
+          setTopAuthorsLoading(false);
+        }
+        return;
+      }
+
+      setTopAuthorsLoading(true);
+      setTopAuthorsError("");
+
+      try {
+        const payload = await getAuthorRecommendations({
+          limit: 4,
+          minLikes: 10,
+          signal: abortController.signal,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const resolvedAuthors = (
+          Array.isArray(payload?.data) ? payload.data : []
+        )
+          .map((author) => {
+            const authorId = normalizeId(author?.authorId || "");
+
+            return {
+              authorId,
+              name: author?.displayName || author?.username || "Unknown author",
+              role: `Top ${String(
+                payload?.category ||
+                  author?.authorInterests?.[0] ||
+                  "recommended",
+              ).toLowerCase()} author`,
+              avatar: author?.profilePicture || "",
+              isFollowing: false,
+              isBusy: false,
+            };
+          })
+          .filter(
+            (author) =>
+              Boolean(author.authorId) && author.authorId !== currentUserId,
+          );
+
+        const followStatusEntries = await Promise.all(
+          resolvedAuthors.map(async (author) => {
+            try {
+              const statusPayload = await getFollowStatus(author.authorId);
+              return [author.authorId, Boolean(statusPayload?.following)];
+            } catch {
+              return [author.authorId, false];
+            }
+          }),
+        );
+
+        if (!isMounted) {
+          return;
+        }
+
+        const followStatusMap = new Map(followStatusEntries);
+
+        setTopAuthors(
+          resolvedAuthors.map((author) => ({
+            ...author,
+            isFollowing: followStatusMap.get(author.authorId) || false,
+          })),
+        );
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) {
+          return;
+        }
+
+        setTopAuthors([]);
+        setTopAuthorsError(
+          error?.message || "Failed to load recommended authors.",
+        );
+      } finally {
+        if (isMounted) {
+          setTopAuthorsLoading(false);
+        }
+      }
+    };
+
+    loadTopAuthors();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [currentUserId]);
 
   const currentUsername = useMemo(() => {
     try {
@@ -960,7 +1063,7 @@ export default function Home() {
       }
 
       let nextFollowingState = false;
-      let hasMatchedAuthorPosts = false;
+      let hasMatchedAuthor = false;
       let hasResolvedNextState = false;
 
       setPosts((previousPosts) =>
@@ -969,7 +1072,7 @@ export default function Home() {
             return post;
           }
 
-          hasMatchedAuthorPosts = true;
+          hasMatchedAuthor = true;
 
           if (!hasResolvedNextState) {
             nextFollowingState = !post.followingAuthor;
@@ -984,7 +1087,28 @@ export default function Home() {
         }),
       );
 
-      if (!hasMatchedAuthorPosts) {
+      setTopAuthors((previousAuthors) =>
+        previousAuthors.map((author) => {
+          if (author.authorId !== authorId || author.isBusy) {
+            return author;
+          }
+
+          hasMatchedAuthor = true;
+
+          if (!hasResolvedNextState) {
+            nextFollowingState = !author.isFollowing;
+            hasResolvedNextState = true;
+          }
+
+          return {
+            ...author,
+            isFollowing: nextFollowingState,
+            isBusy: true,
+          };
+        }),
+      );
+
+      if (!hasMatchedAuthor) {
         return;
       }
 
@@ -1016,6 +1140,18 @@ export default function Home() {
           ),
         );
 
+        setTopAuthors((previousAuthors) =>
+          previousAuthors.map((author) =>
+            author.authorId === authorId
+              ? {
+                  ...author,
+                  isFollowing: confirmedFollowing,
+                  isBusy: false,
+                }
+              : author,
+          ),
+        );
+
         window.dispatchEvent(
           new CustomEvent("storyhub:follow-updated", {
             detail: {
@@ -1035,6 +1171,18 @@ export default function Home() {
                   followBusy: false,
                 }
               : post,
+          ),
+        );
+
+        setTopAuthors((previousAuthors) =>
+          previousAuthors.map((author) =>
+            author.authorId === authorId
+              ? {
+                  ...author,
+                  isFollowing: !nextFollowingState,
+                  isBusy: false,
+                }
+              : author,
           ),
         );
         return;
@@ -1267,28 +1415,6 @@ export default function Home() {
     return circles;
   }, [posts, currentUserId]);
 
-  const topAuthors = [
-    ...new Map(
-      posts
-        .filter(
-          (post) =>
-            post.authorId &&
-            normalizeId(post.authorId) !== normalizeId(currentUserId),
-        )
-        .map((post) => [
-          normalizeId(post.authorId),
-          {
-            authorId: normalizeId(post.authorId),
-            name: post.author,
-            role: `Top ${String(post.genres?.[0] || "General").toLowerCase()} author`,
-            avatar: post.avatar,
-            isFollowing: Boolean(post.followingAuthor),
-            isBusy: Boolean(post.followBusy),
-          },
-        ]),
-    ).values(),
-  ].slice(0, 4);
-
   const activeCommentStory = posts.find(
     (post) => post.id === activeCommentStoryId,
   );
@@ -1405,25 +1531,49 @@ export default function Home() {
 
             <aside className="hidden lg:block w-64 shrink-0 h-full">
               <div className="sticky top-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-lg sm:text-xl font-semibold mb-5 sm:mb-6 text-slate-900">
+                <h2 className="text-lg sm:text-xl font-semibold mb-4 text-slate-900">
                   Top Authors
                 </h2>
 
-                <div className="space-y-4 mb-8">
-                  {topAuthors.map((author) => (
-                    <AuthorRow
-                      key={author.authorId}
-                      {...author}
-                      onToggleFollow={() =>
-                        handleToggleFollowAuthor(author.authorId)
-                      }
-                    />
-                  ))}
+                <div className="space-y-2">
+                  {topAuthorsLoading ? (
+                    <div className="text-sm text-slate-500 py-3">
+                      Loading top authors...
+                    </div>
+                  ) : topAuthorsError ? (
+                    <div className="text-sm text-rose-600 py-3">
+                      {topAuthorsError}
+                    </div>
+                  ) : topAuthors.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-rose-50/60 px-4 py-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-rose-500 shadow-sm ring-1 ring-rose-100">
+                          <User size={18} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">
+                            No author recommendations at the moment!
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Add more genre to your interests or like more
+                            author's stories to help them surface in the
+                            top-author list here!
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    topAuthors.map((author) => (
+                      <AuthorRow
+                        key={author.authorId}
+                        {...author}
+                        onToggleFollow={() =>
+                          handleToggleFollowAuthor(author.authorId)
+                        }
+                      />
+                    ))
+                  )}
                 </div>
-
-                <button className="w-full text-rose-500 text-xs font-semibold hover:underline py-2">
-                  Show more
-                </button>
               </div>
             </aside>
           </div>
