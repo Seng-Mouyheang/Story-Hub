@@ -24,6 +24,7 @@ import {
   toggleStoryBookmark,
   removeStoryBookmark,
   toggleStoryLike,
+  getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
 import { deleteStory } from "../api/story/storyApi";
 import { useNavigate } from "react-router-dom";
@@ -151,13 +152,7 @@ export default function Explore() {
   const [followStateByUserId, setFollowStateByUserId] = useState({});
   const [busyFollowIds, setBusyFollowIds] = useState({});
   const [genresLoading, setGenresLoading] = useState(false);
-  const [savedStoryIds, setSavedStoryIds] = useState(() => {
-    try {
-      return new Set(JSON.parse(localStorage.getItem("savedStoryIds") || "[]"));
-    } catch {
-      return new Set();
-    }
-  });
+  const [savedStoryIds, setSavedStoryIds] = useState(new Set());
   const handleToggleSave = async (storyId) => {
     try {
       const isAlreadySaved = savedStoryIds.has(storyId);
@@ -173,7 +168,6 @@ export default function Explore() {
         } else {
           next.add(storyId);
         }
-        localStorage.setItem("savedStoryIds", JSON.stringify([...next]));
         return next;
       });
     } catch (error) {
@@ -226,6 +220,52 @@ export default function Explore() {
         "storyhub:follow-updated",
         handleFollowUpdated,
       );
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    const loadSavedStories = async () => {
+      if (!currentUserId) {
+        if (isMounted) {
+          setSavedStoryIds(new Set());
+        }
+        return;
+      }
+
+      try {
+        const payload = await getMyBookmarkedStories({
+          signal: abortController.signal,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const bookmarkedIds = Array.isArray(payload?.data)
+          ? payload.data
+              .map((story) => normalizeId(story?._id || story?.id || ""))
+              .filter(Boolean)
+          : [];
+
+        setSavedStoryIds(new Set(bookmarkedIds));
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) {
+          return;
+        }
+
+        console.error("Failed to load bookmarked stories:", error);
+        setSavedStoryIds(new Set());
+      }
+    };
+
+    loadSavedStories();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
     };
   }, [currentUserId]);
 
