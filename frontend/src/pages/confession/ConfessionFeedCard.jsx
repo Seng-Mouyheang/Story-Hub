@@ -1,10 +1,4 @@
-import {
-  Heart,
-  MessageCircle,
-  Bookmark,
-  Share2,
-  MoreHorizontal,
-} from "lucide-react";
+import { Heart, MessageCircle, Bookmark, MoreHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import {
@@ -73,7 +67,6 @@ export default function ConfessionFeedCard({
   onOpenCommentModal,
   onToggleBookmark,
   onTagClick,
-  onShare,
 }) {
   const originalAuthor = item?.authorDisplayName || "Unknown Author";
   const author = item?.isAnonymous ? "Anonymous" : originalAuthor;
@@ -95,74 +88,6 @@ export default function ConfessionFeedCard({
     item?.content,
     isExpanded,
   );
-  const shareUrl =
-    typeof window === "undefined"
-      ? ""
-      : `${window.location.origin}${window.location.pathname}#confession-${confessionId}`;
-
-  const handleShare = async () => {
-    const shareTitle =
-      author === "Anonymous" ? "Confession" : `${author}'s confession`;
-    const shareText = (item?.content || "Read this confession on Story Hub.")
-      .slice(0, 160)
-      .trim();
-
-    const emitShare = async (method) => {
-      if (typeof onShare === "function") {
-        await onShare({
-          confessionId,
-          item,
-          shareUrl,
-          method,
-        });
-      }
-    };
-
-    try {
-      if (
-        typeof navigator !== "undefined" &&
-        typeof navigator.share === "function"
-      ) {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: shareUrl,
-        });
-        await emitShare("web-share");
-        return;
-      }
-
-      if (
-        typeof navigator !== "undefined" &&
-        navigator.clipboard &&
-        typeof navigator.clipboard.writeText === "function"
-      ) {
-        await navigator.clipboard.writeText(shareUrl);
-        await emitShare("clipboard");
-        return;
-      }
-    } catch {
-      if (
-        typeof navigator !== "undefined" &&
-        navigator.clipboard &&
-        typeof navigator.clipboard.writeText === "function"
-      ) {
-        await navigator.clipboard.writeText(shareUrl);
-        await emitShare("clipboard");
-        return;
-      }
-    }
-
-    if (typeof window !== "undefined") {
-      window.open(
-        `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(
-          `${shareText}\n\n${shareUrl}`,
-        )}`,
-        "_self",
-      );
-      await emitShare("mailto");
-    }
-  };
 
   return (
     <div
@@ -339,14 +264,7 @@ export default function ConfessionFeedCard({
               fill={item?.savedByCurrentUser ? "currentColor" : "none"}
             />
           </button>
-          <button
-            type="button"
-            onClick={handleShare}
-            className="text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
-            aria-label="Share confession"
-          >
-            <Share2 size={20} />
-          </button>
+          {/* share button removed */}
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
@@ -28,7 +28,6 @@ import {
   Heart,
   MessageCircle,
   Bookmark,
-  Share2,
   MoreHorizontal,
   User,
   Plus,
@@ -157,11 +156,9 @@ const PostCard = ({
   likedByCurrentUser,
   savedByCurrentUser,
   commentsActive,
-  shareStatus,
   onToggleLike,
   onOpenComments,
   onToggleSave,
-  onShare,
   onDoubleTapLike,
   onToggleMenu,
   onReportStory,
@@ -176,6 +173,7 @@ const PostCard = ({
   showCommentCountPulse,
   followingAuthor,
   followBusy,
+  focused,
 }) => {
   const [isContentMeasured, setIsContentMeasured] = useState(false);
   const contentRef = useRef(null);
@@ -211,7 +209,9 @@ const PostCard = ({
   return (
     <div
       onDoubleClick={() => onDoubleTapLike(id)}
-      className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
+      className={`relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md ${
+        focused ? "ring-4 ring-rose-50 bg-rose-50/60" : ""
+      }`}
     >
       {showLikeBurst && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -431,19 +431,9 @@ const PostCard = ({
               fill={savedByCurrentUser ? "currentColor" : "none"}
             />
           </button>
-          <button
-            onClick={() => onShare(id, title)}
-            className="text-slate-500 hover:text-slate-900 transition-colors duration-200"
-            aria-label="Share story"
-          >
-            <Share2 size={20} />
-          </button>
+          {/* share button removed */}
         </div>
       </div>
-
-      {shareStatus && (
-        <p className="mt-3 text-xs text-emerald-600">{shareStatus}</p>
-      )}
     </div>
   );
 };
@@ -504,6 +494,7 @@ const AuthorRow = ({
 /* -------------------- Home Page -------------------- */
 export default function Home() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [posts, setPosts] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(true);
@@ -521,7 +512,6 @@ export default function Home() {
   const [followingAccountsRefreshToken, setFollowingAccountsRefreshToken] =
     useState(0);
   const [savedStoryIds, setSavedStoryIds] = useState(new Set());
-  const [shareFeedback, setShareFeedback] = useState({});
   const [commentsByStory, setCommentsByStory] = useState({});
   const [activeCommentStoryId, setActiveCommentStoryId] = useState(null);
   const [likeBurstStoryId, setLikeBurstStoryId] = useState(null);
@@ -1025,6 +1015,25 @@ export default function Home() {
   }, [loadStories]);
 
   useEffect(() => {
+    const initialFocused =
+      location && location.state && location.state.focusedPostId;
+    if (!initialFocused) return;
+    // wait for posts to load and then scroll
+    const tryScroll = () => {
+      const el = document.getElementById(`post-${initialFocused}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    };
+
+    // attempt after a frame in case posts are still rendering
+    requestAnimationFrame(tryScroll);
+    const t = setTimeout(tryScroll, 500);
+
+    return () => clearTimeout(t);
+  }, [location, posts]);
+
+  useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         const isIntersecting = Boolean(entries[0]?.isIntersecting);
@@ -1462,18 +1471,9 @@ export default function Home() {
   const handleReportStory = useCallback((storyId) => {
     setMenuStoryId(null);
 
-    setShareFeedback((prev) => ({
-      ...prev,
-      [storyId]: "Report submitted",
-    }));
-
-    setTimeout(() => {
-      setShareFeedback((prev) => {
-        const next = { ...prev };
-        delete next[storyId];
-        return next;
-      });
-    }, 1800);
+    setFeedToast({ message: `Report submitted for ${storyId}` });
+    setIsFeedToastVisible(true);
+    setTimeout(() => setIsFeedToastVisible(false), 1800);
   }, []);
 
   const handleEditStory = useCallback(
@@ -1514,49 +1514,6 @@ export default function Home() {
       setPostsError(error.message || "Failed to delete story.");
     }
   }, [activeCommentStoryId, deleteTargetStoryId]);
-
-  const handleShare = useCallback(async (storyId, storyTitle) => {
-    const url = `${window.location.origin}/stories/${storyId}`;
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: storyTitle,
-          text: "Check out this story on Story-Hub",
-          url,
-        });
-        setShareFeedback((prev) => ({
-          ...prev,
-          [storyId]: "Shared successfully",
-        }));
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(url);
-        setShareFeedback((prev) => ({ ...prev, [storyId]: "Link copied" }));
-      } else {
-        setShareFeedback((prev) => ({
-          ...prev,
-          [storyId]: "Share not supported",
-        }));
-      }
-
-      setTimeout(() => {
-        setShareFeedback((prev) => {
-          const next = { ...prev };
-          delete next[storyId];
-          return next;
-        });
-      }, 1800);
-    } catch {
-      setShareFeedback((prev) => ({ ...prev, [storyId]: "Share cancelled" }));
-      setTimeout(() => {
-        setShareFeedback((prev) => {
-          const next = { ...prev };
-          delete next[storyId];
-          return next;
-        });
-      }, 1800);
-    }
-  }, []);
 
   const handleToggleCommentMenu = useCallback((commentId) => {
     setMenuCommentId((currentId) =>
@@ -1754,18 +1711,33 @@ export default function Home() {
                 {!isLoadingPosts && !postsError && (
                   <>
                     {posts.map((post) => {
+                      const isFocused =
+                        location &&
+                        location.state &&
+                        location.state.focusedPostId === post.id;
                       return (
-                        <div key={post.id} className="w-full max-w-full">
+                        <div
+                          id={`post-${post.id}`}
+                          key={post.id}
+                          className={`w-full max-w-full ${
+                            location &&
+                            location.state &&
+                            location.state.focusedPostId
+                              ? isFocused
+                                ? ""
+                                : "opacity-70"
+                              : ""
+                          }`}
+                        >
                           <PostCard
                             {...post}
+                            focused={isFocused}
                             savedByCurrentUser={savedStoryIds.has(post.id)}
                             isExpanded={Boolean(expandedStoryIds[post.id])}
                             commentsActive={activeCommentStoryId === post.id}
-                            shareStatus={shareFeedback[post.id]}
                             onToggleLike={handleToggleLike}
                             onOpenComments={handleOpenCommentsModal}
                             onToggleSave={handleToggleSave}
-                            onShare={handleShare}
                             onDoubleTapLike={handleDoubleTapLike}
                             onToggleMenu={handleToggleMenu}
                             onReportStory={handleReportStory}

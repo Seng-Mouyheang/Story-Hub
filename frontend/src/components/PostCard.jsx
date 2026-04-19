@@ -1,5 +1,5 @@
 import React from "react";
-import { Heart, MessageCircle, Share2 } from "lucide-react";
+import { Heart, MessageCircle } from "lucide-react";
 
 export default function PostCard({ post }) {
   return (
@@ -25,9 +25,7 @@ export default function PostCard({ post }) {
           <MessageCircle className="w-4 h-4" />
           <span className="text-xs font-medium">{post.comments}</span>
         </button>
-        <button className="flex items-center gap-2 hover:text-slate-600 transition-colors ml-auto">
-          <Share2 className="w-4 h-4" />
-        </button>
+        {/* share button removed */}
       </div>
     </div>
   );

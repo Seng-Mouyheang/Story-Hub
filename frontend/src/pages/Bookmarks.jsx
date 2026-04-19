@@ -3,15 +3,7 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import {
-  Heart,
-  MessageCircle,
-  Bookmark,
-  Share2,
-  User,
-  Loader2,
-  X,
-} from "lucide-react";
+import { Heart, MessageCircle, Bookmark, User, Loader2, X } from "lucide-react";
 import {
   getMyBookmarkedStories,
   removeStoryBookmark,
@@ -261,7 +253,7 @@ const PostCard = ({
             className="text-slate-500 cursor-pointer hover:text-slate-900"
             type="button"
           >
-            <Share2 size={20} />
+            {/* share button removed */}
           </button>
         </div>
       </div>
@@ -421,7 +413,7 @@ const ConfessionCard = ({
             className="text-slate-500 cursor-pointer hover:text-slate-900"
             type="button"
           >
-            <Share2 size={20} />
+            {/* share button removed */}
           </button>
         </div>
       </div>
