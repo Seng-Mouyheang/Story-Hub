@@ -135,14 +135,53 @@ const createProfile = async (userId, profileData, options = {}) => {
  * @param {string} userId
  * @returns {Promise<Object|null>}
  */
+
 const getProfileByUserId = async (userId) => {
   const collection = await getCollection();
   if (!ObjectId.isValid(userId)) return null;
 
-  return await collection.findOne({
-    userId: new ObjectId(userId),
-    deletedAt: null,
-  });
+  const pipeline = [
+    {
+      $match: {
+        userId: new ObjectId(userId),
+        deletedAt: null,
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "userId",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    {
+      $unwind: {
+        path: "$user",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        userId: 1,
+        displayName: 1,
+        username: "$user.username",
+        bio: 1,
+        interest: 1,
+        profilePicture: 1,
+        coverImage: 1,
+        posts: 1,
+        followers: 1,
+        following: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    },
+  ];
+
+  const results = await collection.aggregate(pipeline).toArray();
+  return results[0] || null;
 };
 
 const searchProfilesByUsernameOrDisplayName = async (query, limit = 20) => {

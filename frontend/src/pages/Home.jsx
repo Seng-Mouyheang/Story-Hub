@@ -543,31 +543,43 @@ export default function Home() {
           ),
         ];
 
+        // Fetch all author profiles and include username/displayName
         const authorProfiles = await Promise.all(
           uniqueAuthorIds.map(async (authorId) => {
             try {
               const profile = await getProfileByUserId(authorId);
-              return [authorId, profile?.profilePicture || ""];
+              return [
+                authorId,
+                {
+                  avatar: profile?.profilePicture || "",
+                  name:
+                    profile?.displayName ||
+                    profile?.username ||
+                    profile?.name ||
+                    `Author ${String(authorId).slice(-4).toUpperCase()}`,
+                },
+              ];
             } catch {
-              return [authorId, ""];
+              return [
+                authorId,
+                {
+                  avatar: "",
+                  name: `Author ${String(authorId).slice(-4).toUpperCase()}`,
+                },
+              ];
             }
           }),
         );
 
-        const authorAvatarMap = new Map(authorProfiles);
+        const authorProfileMap = new Map(authorProfiles);
 
         const mappedStories = rawStories.map((story) => {
           const authorId = normalizeId(story.authorId);
-          const authorSeed = String(
-            authorId || story.authorDisplayName || story.authorName || "author",
-          );
-
+          const authorProfile = authorProfileMap.get(authorId) || {};
           return {
             id: String(story._id),
             authorId,
-            author:
-              story.authorDisplayName ||
-              `Author ${authorSeed.slice(-4).toUpperCase()}`,
+            author: authorProfile.name,
             genres:
               Array.isArray(story.genres) && story.genres.length > 0
                 ? story.genres.map((item) => String(item).toUpperCase())
@@ -582,9 +594,9 @@ export default function Home() {
             commentCount: Number(story.commentCount || 0),
             canManage: Boolean(currentUserId) && authorId === currentUserId,
             likedByCurrentUser: Boolean(story.likedByCurrentUser),
-            followingAuthor: Boolean(story.followedByCurrentUser), // ensure correct mapping
+            followingAuthor: Boolean(story.followedByCurrentUser),
             followBusy: false,
-            avatar: authorAvatarMap.get(authorId) || "",
+            avatar: authorProfile.avatar || "",
           };
         });
 
