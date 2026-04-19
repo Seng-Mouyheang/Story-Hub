@@ -8,6 +8,7 @@ import {
   followUser,
   unfollowUser,
   getFollowStatus,
+  getFollowing,
 } from "../api/profile";
 import { getStories, deleteStory } from "../api/story/storyApi";
 import { getAuthorRecommendations } from "../api/recommendation";
@@ -21,6 +22,7 @@ import {
   toggleStoryLike,
   toggleStoryBookmark,
   removeStoryBookmark,
+  getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
 import {
   Heart,
@@ -30,6 +32,7 @@ import {
   MoreHorizontal,
   User,
   Plus,
+  RefreshCcw,
 } from "lucide-react";
 
 const formatCount = (value) => {
@@ -88,44 +91,53 @@ const normalizeId = (value) => {
 };
 
 /* -------------------- Story Circle -------------------- */
-const StoryCircle = ({ name, authorId, isAdd = false, image }) => (
-  <div className="flex flex-col items-center gap-2 flex-shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
-    <div
-      className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 ${
-        isAdd ? "border-slate-300 border-dashed p-1" : "border-rose-300 p-1"
-      } relative`}
-    >
-      <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden">
-        {image ? (
-          <img src={image} alt={name} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-            <User size={30} />
+const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
+  const content = (
+    <>
+      <div
+        className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 ${
+          isAdd ? "border-slate-300 border-dashed p-1" : "border-rose-300 p-1"
+        } relative`}
+      >
+        <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden">
+          {image ? (
+            <img
+              src={image}
+              alt={name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+              <User size={30} />
+            </div>
+          )}
+        </div>
+
+        {isAdd && (
+          <div className="absolute bottom-0 right-0 bg-slate-900 text-white rounded-full p-1 border-2 border-white shadow-sm">
+            <Plus size={12} />
           </div>
         )}
       </div>
 
-      {isAdd && (
-        <div className="absolute bottom-0 right-0 bg-slate-900 text-white rounded-full p-1 border-2 border-white shadow-sm">
-          <Plus size={12} />
-        </div>
-      )}
-    </div>
-
-    {isAdd ? (
-      <span className="text-[11px] sm:text-xs font-medium text-slate-700 whitespace-nowrap">
+      <span className="text-[11px] mx-auto sm:text-xs font-medium text-slate-700 whitespace-nowrap rounded-md px-1.5 py-0.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
         {name}
       </span>
-    ) : (
-      <Link
-        to={authorId ? `/profile/${authorId}` : "/profile"}
-        className="text-[11px] sm:text-xs font-medium text-slate-700 whitespace-nowrap rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-      >
-        {name}
-      </Link>
-    )}
-  </div>
-);
+    </>
+  );
+
+  return (
+    <div className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
+      {isAdd ? (
+        content
+      ) : (
+        <Link to={authorId ? `/profile/${authorId}` : "/profile"}>
+          {content}
+        </Link>
+      )}
+    </div>
+  );
+};
 
 /* -------------------- Post Card -------------------- */
 const PostCard = ({
@@ -133,9 +145,11 @@ const PostCard = ({
   author,
   authorId,
   genres,
+  tags,
   time,
   title,
   excerpt,
+  content,
   likesCount,
   commentCount,
   avatar,
@@ -154,208 +168,285 @@ const PostCard = ({
   onEditStory,
   onDeleteStory,
   onToggleFollowAuthor,
+  isExpanded,
+  onToggleExpanded,
   isMenuOpen,
   showLikeBurst,
   showLikePulse,
   showCommentCountPulse,
   followingAuthor,
   followBusy,
-}) => (
-  <div
-    onDoubleClick={() => onDoubleTapLike(id)}
-    className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
-  >
-    {showLikeBurst && (
-      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <Heart
-          size={54}
-          className="text-red-500 animate-pulse"
-          fill="currentColor"
-        />
-      </div>
-    )}
+}) => {
+  const [isContentMeasured, setIsContentMeasured] = useState(false);
+  const contentRef = useRef(null);
+  const collapsedContentHeight = 120;
+  const storyContent = content || excerpt || "";
 
-    <div className="flex justify-between items-start mb-4">
-      <div className="flex items-center gap-3 min-w-0">
-        <Link
-          to={authorId ? `/profile/${authorId}` : "/profile"}
-          className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-          aria-label={`View ${author} profile`}
-        >
-          {avatar ? (
-            <img
-              src={avatar}
-              alt="avatar"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-              <User size={20} />
+  useEffect(() => {
+    const element = contentRef.current;
+
+    if (!element) {
+      return undefined;
+    }
+
+    const updateMeasurement = () => {
+      setIsContentMeasured(element.scrollHeight > collapsedContentHeight + 1);
+    };
+
+    updateMeasurement();
+
+    if (typeof ResizeObserver === "undefined") {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateMeasurement();
+    });
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, [collapsedContentHeight, storyContent]);
+
+  return (
+    <div
+      onDoubleClick={() => onDoubleTapLike(id)}
+      className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md"
+    >
+      {showLikeBurst && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <Heart
+            size={54}
+            className="text-red-500 animate-pulse"
+            fill="currentColor"
+          />
+        </div>
+      )}
+
+      <div className="flex justify-between items-start mb-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <Link
+            to={authorId ? `/profile/${authorId}` : "/profile"}
+            className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            aria-label={`View ${author} profile`}
+          >
+            {avatar ? (
+              <img
+                src={avatar}
+                alt="avatar"
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                <User size={20} />
+              </div>
+            )}
+          </Link>
+
+          <div className="min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <Link
+                to={authorId ? `/profile/${authorId}` : "/profile"}
+                className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+              >
+                {author}
+              </Link>
+              <span className="text-slate-400 text-xs">• {time}</span>
+            </div>
+
+            <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
+              {(Array.isArray(genres) && genres.length > 0
+                ? genres
+                : ["GENERAL"]
+              ).join(" • ")}
+            </span>
+          </div>
+        </div>
+
+        <div className="relative flex items-center gap-2">
+          {!canManage && authorId ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleFollowAuthor(authorId);
+              }}
+              disabled={followBusy}
+              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+                followingAuthor
+                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                  : "bg-rose-500 hover:bg-rose-600 text-white"
+              } ${followBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+            >
+              {followingAuthor ? "Following" : "Follow"}
+            </button>
+          ) : null}
+
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleMenu(id);
+            }}
+            className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+            aria-label="Story actions"
+          >
+            <MoreHorizontal size={20} />
+          </button>
+
+          {isMenuOpen && (
+            <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+              {canManage ? (
+                <>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEditStory(id);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteStory(id);
+                    }}
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                  >
+                    Delete
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onReportStory(id);
+                  }}
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                >
+                  Report
+                </button>
+              )}
             </div>
           )}
-        </Link>
-
-        <div className="min-w-0">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-            <Link
-              to={authorId ? `/profile/${authorId}` : "/profile"}
-              className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-            >
-              {author}
-            </Link>
-            <span className="text-slate-400 text-xs">• {time}</span>
-          </div>
-
-          <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
-            {(Array.isArray(genres) && genres.length > 0
-              ? genres
-              : ["GENERAL"]
-            ).join(" • ")}
-          </span>
         </div>
       </div>
 
-      <div className="relative flex items-center gap-2">
-        {!canManage && authorId ? (
+      <h2 className="text-xl sm:text-2xl font-semibold mb-3 text-slate-900">
+        {title}
+      </h2>
+      <p
+        ref={contentRef}
+        className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap mb-2"
+        style={
+          isExpanded
+            ? undefined
+            : {
+                maxHeight: `${collapsedContentHeight}px`,
+                overflow: "hidden",
+              }
+        }
+      >
+        {storyContent}
+      </p>
+
+      {isContentMeasured && (
+        <button
+          type="button"
+          onClick={() => onToggleExpanded(id)}
+          className="mb-4 text-xs font-semibold text-slate-500 hover:underline cursor-pointer"
+        >
+          {isExpanded ? "Show less" : "Read more"}
+        </button>
+      )}
+
+      {!isContentMeasured && <div className="mb-4" />}
+
+      {Array.isArray(tags) && tags.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+          {tags.slice(0, 4).map((tag) => (
+            <span
+              key={`${id}-${tag}`}
+              className="text-xs font-semibold tracking-wide text-rose-600"
+            >
+              #
+              {String(tag || "")
+                .trim()
+                .replace(/^#/, "")
+                .replaceAll(/\s+/g, "")}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 flex-wrap pt-4 border-t border-slate-100">
+        <div className="flex items-center gap-4">
           <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleFollowAuthor(authorId);
-            }}
-            disabled={followBusy}
-            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
-              followingAuthor
-                ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
-                : "bg-rose-500 hover:bg-rose-600 text-white"
-            } ${followBusy ? "opacity-60 cursor-not-allowed" : ""}`}
-          >
-            {followingAuthor ? "Following" : "Follow"}
-          </button>
-        ) : null}
-
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleMenu(id);
-          }}
-          className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
-          aria-label="Story actions"
-        >
-          <MoreHorizontal size={20} />
-        </button>
-
-        {isMenuOpen && (
-          <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
-            {canManage ? (
-              <>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onEditStory(id);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDeleteStory(id);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                >
-                  Delete
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onReportStory(id);
-                }}
-                className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
-              >
-                Report
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-
-    <h2 className="text-xl sm:text-2xl font-semibold mb-3 text-slate-900">
-      {title}
-    </h2>
-    <p className="text-slate-600 text-sm leading-relaxed mb-6">{excerpt}</p>
-
-    <div className="flex items-center gap-4 flex-wrap pt-4 border-t border-slate-100">
-      <div className="flex items-center gap-4">
-        <button
-          onClick={() => onToggleLike(id)}
-          className={`flex items-center gap-2 transition-all duration-200 ${
-            likedByCurrentUser
-              ? "text-rose-500"
-              : "text-slate-500 hover:text-rose-500"
-          }`}
-        >
-          <Heart
-            size={20}
-            className={
-              showLikePulse
-                ? "scale-110 transition-transform duration-200"
-                : "transition-transform duration-200"
-            }
-            fill={likedByCurrentUser ? "currentColor" : "none"}
-          />
-          <span className="text-xs sm:text-sm font-medium">
-            {formatCount(likesCount)}
-          </span>
-        </button>
-        <button
-          onClick={() => onOpenComments(id)}
-          className={`flex items-center gap-2 transition-all duration-200 ${
-            commentsActive
-              ? "text-sky-500"
-              : "text-slate-500 hover:text-sky-500"
-          }`}
-        >
-          <MessageCircle size={20} />
-          <span
-            className={`text-xs sm:text-sm font-medium transition-transform duration-300 ${
-              showCommentCountPulse ? "scale-110" : "scale-100"
+            onClick={() => onToggleLike(id)}
+            className={`flex items-center gap-2 transition-all duration-200 ${
+              likedByCurrentUser
+                ? "text-rose-500"
+                : "text-slate-500 hover:text-rose-500"
             }`}
           >
-            {formatCount(commentCount)}
-          </span>
-        </button>
+            <Heart
+              size={20}
+              className={
+                showLikePulse
+                  ? "scale-110 transition-transform duration-200"
+                  : "transition-transform duration-200"
+              }
+              fill={likedByCurrentUser ? "currentColor" : "none"}
+            />
+            <span className="text-xs sm:text-sm font-medium">
+              {formatCount(likesCount)}
+            </span>
+          </button>
+          <button
+            onClick={() => onOpenComments(id)}
+            className={`flex items-center gap-2 transition-all duration-200 ${
+              commentsActive
+                ? "text-sky-500"
+                : "text-slate-500 hover:text-sky-500"
+            }`}
+          >
+            <MessageCircle size={20} />
+            <span
+              className={`text-xs sm:text-sm font-medium transition-transform duration-300 ${
+                showCommentCountPulse ? "scale-110" : "scale-100"
+              }`}
+            >
+              {formatCount(commentCount)}
+            </span>
+          </button>
+        </div>
+        <div className="flex items-center gap-4 ml-auto">
+          <button
+            onClick={() => onToggleSave(id)}
+            className="text-rose-500 hover:text-rose-600 transition-colors duration-200"
+            aria-label="Save story"
+          >
+            <Bookmark
+              size={20}
+              fill={savedByCurrentUser ? "currentColor" : "none"}
+            />
+          </button>
+          <button
+            onClick={() => onShare(id, title)}
+            className="text-slate-500 hover:text-slate-900 transition-colors duration-200"
+            aria-label="Share story"
+          >
+            <Share2 size={20} />
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-4 ml-auto">
-        <button
-          onClick={() => onToggleSave(id)}
-          className="text-rose-500 hover:text-rose-600 transition-colors duration-200"
-          aria-label="Save story"
-        >
-          <Bookmark
-            size={20}
-            fill={savedByCurrentUser ? "currentColor" : "none"}
-          />
-        </button>
-        <button
-          onClick={() => onShare(id, title)}
-          className="text-slate-500 hover:text-slate-900 transition-colors duration-200"
-          aria-label="Share story"
-        >
-          <Share2 size={20} />
-        </button>
-      </div>
-    </div>
 
-    {shareStatus && (
-      <p className="mt-3 text-xs text-emerald-600">{shareStatus}</p>
-    )}
-  </div>
-);
+      {shareStatus && (
+        <p className="mt-3 text-xs text-emerald-600">{shareStatus}</p>
+      )}
+    </div>
+  );
+};
 
 /* -------------------- Author Row -------------------- */
 const AuthorRow = ({
@@ -422,14 +513,14 @@ export default function Home() {
   const [topAuthors, setTopAuthors] = useState([]);
   const [topAuthorsLoading, setTopAuthorsLoading] = useState(true);
   const [topAuthorsError, setTopAuthorsError] = useState("");
-  const [savedStoryIds, setSavedStoryIds] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("savedStoryIds") || "[]");
-      return new Set(saved);
-    } catch {
-      return new Set();
-    }
-  });
+  const [followStateByUserId, setFollowStateByUserId] = useState({});
+  const [busyFollowIds, setBusyFollowIds] = useState({});
+  const [followingAccounts, setFollowingAccounts] = useState([]);
+  const [followingAccountsLoading, setFollowingAccountsLoading] =
+    useState(true);
+  const [followingAccountsRefreshToken, setFollowingAccountsRefreshToken] =
+    useState(0);
+  const [savedStoryIds, setSavedStoryIds] = useState(new Set());
   const [shareFeedback, setShareFeedback] = useState({});
   const [commentsByStory, setCommentsByStory] = useState({});
   const [activeCommentStoryId, setActiveCommentStoryId] = useState(null);
@@ -442,8 +533,16 @@ export default function Home() {
   const [menuCommentId, setMenuCommentId] = useState(null);
   const [deleteTargetComment, setDeleteTargetComment] = useState(null);
   const [commentActionFeedback, setCommentActionFeedback] = useState({});
+  const [expandedStoryIds, setExpandedStoryIds] = useState({});
+  const [feedToast, setFeedToast] = useState(null);
+  const [isFeedToastVisible, setIsFeedToastVisible] = useState(false);
+  const [isEndOfFeedVisible, setIsEndOfFeedVisible] = useState(false);
   const endOfFeedRef = useRef(null);
+  const feedScrollRef = useRef(null);
   const commentInputRef = useRef(null);
+  const feedToastTimeoutRef = useRef(null);
+  const feedToastExitTimeoutRef = useRef(null);
+  const hasShownEndToastRef = useRef(false);
 
   const currentUserId = useMemo(() => {
     try {
@@ -499,8 +598,6 @@ export default function Home() {
                   "recommended",
               ).toLowerCase()} author`,
               avatar: author?.profilePicture || "",
-              isFollowing: false,
-              isBusy: false,
             };
           })
           .filter(
@@ -525,12 +622,11 @@ export default function Home() {
 
         const followStatusMap = new Map(followStatusEntries);
 
-        setTopAuthors(
-          resolvedAuthors.map((author) => ({
-            ...author,
-            isFollowing: followStatusMap.get(author.authorId) || false,
-          })),
-        );
+        setTopAuthors(resolvedAuthors);
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          ...Object.fromEntries(followStatusMap),
+        }));
       } catch (error) {
         if (!isMounted || abortController.signal.aborted) {
           return;
@@ -553,6 +649,130 @@ export default function Home() {
       isMounted = false;
       abortController.abort();
     };
+  }, [currentUserId, followingAccountsRefreshToken]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    const loadFollowingAccounts = async () => {
+      if (!currentUserId) {
+        if (isMounted) {
+          setFollowingAccounts([]);
+          setFollowingAccountsLoading(false);
+        }
+        return;
+      }
+
+      setFollowingAccountsLoading(true);
+
+      try {
+        const payload = await getFollowing(currentUserId, {
+          limit: 6,
+          signal: abortController.signal,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const followingIds = Array.isArray(payload?.following)
+          ? payload.following
+          : [];
+        const uniqueIds = [
+          ...new Set(followingIds.map(normalizeId).filter(Boolean)),
+        ].filter((userId) => userId !== currentUserId);
+
+        const accountRows = await Promise.all(
+          uniqueIds.map(async (userId) => {
+            try {
+              const profilePayload = await getProfileByUserId(userId);
+              return {
+                userId,
+                authorId: userId,
+                name:
+                  profilePayload?.displayName ||
+                  `Author ${userId.slice(-4).toUpperCase()}`,
+                image: profilePayload?.profilePicture || "",
+              };
+            } catch {
+              return {
+                userId,
+                authorId: userId,
+                name: `Author ${userId.slice(-4).toUpperCase()}`,
+                image: "",
+              };
+            }
+          }),
+        );
+
+        setFollowingAccounts(accountRows);
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) {
+          return;
+        }
+
+        console.error("Failed to load following accounts:", error);
+        setFollowingAccounts([]);
+      } finally {
+        if (isMounted) {
+          setFollowingAccountsLoading(false);
+        }
+      }
+    };
+
+    loadFollowingAccounts();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, [currentUserId]);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
+
+    const loadSavedStories = async () => {
+      if (!currentUserId) {
+        if (isMounted) {
+          setSavedStoryIds(new Set());
+        }
+        return;
+      }
+
+      try {
+        const payload = await getMyBookmarkedStories({
+          signal: abortController.signal,
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        const bookmarkedIds = Array.isArray(payload?.data)
+          ? payload.data
+              .map((story) => normalizeId(story?._id || story?.id || ""))
+              .filter(Boolean)
+          : [];
+
+        setSavedStoryIds(new Set(bookmarkedIds));
+      } catch (error) {
+        if (!isMounted || abortController.signal.aborted) {
+          return;
+        }
+
+        console.error("Failed to load bookmarked stories:", error);
+        setSavedStoryIds(new Set());
+      }
+    };
+
+    loadSavedStories();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
   }, [currentUserId]);
 
   const currentUsername = useMemo(() => {
@@ -566,6 +786,53 @@ export default function Home() {
     }
   }, []);
 
+  const hideFeedToast = useCallback(() => {
+    setIsFeedToastVisible(false);
+
+    if (feedToastExitTimeoutRef.current) {
+      clearTimeout(feedToastExitTimeoutRef.current);
+    }
+
+    feedToastExitTimeoutRef.current = setTimeout(() => {
+      setFeedToast(null);
+      feedToastExitTimeoutRef.current = null;
+    }, 220);
+  }, []);
+
+  const showFeedToast = useCallback(
+    (message) => {
+      if (!message) {
+        return;
+      }
+
+      if (feedToastTimeoutRef.current) {
+        clearTimeout(feedToastTimeoutRef.current);
+      }
+
+      if (feedToastExitTimeoutRef.current) {
+        clearTimeout(feedToastExitTimeoutRef.current);
+        feedToastExitTimeoutRef.current = null;
+      }
+
+      setFeedToast({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        message,
+      });
+
+      setIsFeedToastVisible(false);
+
+      requestAnimationFrame(() => {
+        setIsFeedToastVisible(true);
+      });
+
+      feedToastTimeoutRef.current = setTimeout(() => {
+        hideFeedToast();
+        feedToastTimeoutRef.current = null;
+      }, 3200);
+    },
+    [hideFeedToast],
+  );
+
   useEffect(() => {
     const handleFollowUpdated = (event) => {
       const followerId = normalizeId(event?.detail?.followerId || "");
@@ -576,17 +843,17 @@ export default function Home() {
         return;
       }
 
-      setPosts((previousPosts) =>
-        previousPosts.map((post) =>
-          post.authorId === followingId
-            ? {
-                ...post,
-                followingAuthor: following,
-                followBusy: false,
-              }
-            : post,
-        ),
-      );
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        [followingId]: following,
+      }));
+
+      setBusyFollowIds((previous) => ({
+        ...previous,
+        [followingId]: false,
+      }));
+
+      setFollowingAccountsRefreshToken((previous) => previous + 1);
     };
 
     window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
@@ -612,10 +879,6 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeCommentStoryId]);
 
-  useEffect(() => {
-    localStorage.setItem("savedStoryIds", JSON.stringify([...savedStoryIds]));
-  }, [savedStoryIds]);
-
   const loadStories = useCallback(
     async (signal, paginationCursor = null) => {
       const isInitial = paginationCursor === null;
@@ -625,6 +888,8 @@ export default function Home() {
         setPosts([]);
         setCursor(null);
         setHasMore(true);
+        setIsEndOfFeedVisible(false);
+        hasShownEndToastRef.current = false;
       } else {
         setIsLoadingMore(true);
       }
@@ -675,8 +940,14 @@ export default function Home() {
               Array.isArray(story.genres) && story.genres.length > 0
                 ? story.genres.map((item) => String(item).toUpperCase())
                 : ["GENERAL"],
+            tags: Array.isArray(story.tags)
+              ? story.tags
+                  .map((item) => String(item || "").trim())
+                  .filter(Boolean)
+              : [],
             time: getRelativeTime(story.publishedAt || story.createdAt),
             title: story.title || "Untitled Story",
+            content: story.content || story.summary || "",
             excerpt:
               story.summary ||
               story.content?.slice(0, 180) ||
@@ -696,6 +967,21 @@ export default function Home() {
         } else {
           setPosts((prev) => [...prev, ...mappedStories]);
         }
+
+        const derivedFollowState = Object.fromEntries(
+          mappedStories
+            .filter(
+              (story) =>
+                Boolean(story.authorId) && story.authorId !== currentUserId,
+            )
+            .map((story) => [story.authorId, Boolean(story.followingAuthor)]),
+        );
+
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          ...derivedFollowState,
+        }));
+
         setCursor(nextCursor);
         setHasMore(hasMoreStories);
       } catch (error) {
@@ -727,12 +1013,23 @@ export default function Home() {
   }, [loadStories]);
 
   useEffect(() => {
-    if (!hasMore || isLoadingMore || isLoadingPosts) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && cursor) {
+        const isIntersecting = Boolean(entries[0]?.isIntersecting);
+        setIsEndOfFeedVisible(isIntersecting);
+
+        if (!isIntersecting) {
+          return;
+        }
+
+        if (hasMore && cursor) {
           loadStories(new AbortController().signal, cursor);
+          return;
+        }
+
+        if (!hasShownEndToastRef.current && posts.length > 0) {
+          hasShownEndToastRef.current = true;
+          showFeedToast("You're all caught up. Scroll up to refresh.");
         }
       },
       { threshold: 0.1, rootMargin: "100px" },
@@ -749,7 +1046,20 @@ export default function Home() {
         observer.unobserve(currentEndOfFeedRef);
       }
     };
-  }, [cursor, hasMore, isLoadingMore, isLoadingPosts, loadStories]);
+  }, [cursor, hasMore, loadStories, posts.length, showFeedToast]);
+
+  useEffect(
+    () => () => {
+      if (feedToastTimeoutRef.current) {
+        clearTimeout(feedToastTimeoutRef.current);
+      }
+
+      if (feedToastExitTimeoutRef.current) {
+        clearTimeout(feedToastExitTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   const fetchComments = useCallback(async (storyId) => {
     setCommentsByStory((prev) => ({
@@ -1030,7 +1340,6 @@ export default function Home() {
             next.add(storyId);
           }
 
-          localStorage.setItem("savedStoryIds", JSON.stringify([...next]));
           return next;
         });
       } catch (error) {
@@ -1044,139 +1353,98 @@ export default function Home() {
     setMenuStoryId((currentId) => (currentId === storyId ? null : storyId));
   }, []);
 
+  const handleToggleExpandedStory = useCallback((storyId) => {
+    setExpandedStoryIds((previous) => ({
+      ...previous,
+      [storyId]: !previous[storyId],
+    }));
+  }, []);
+
+  const handleRefreshFeed = useCallback(() => {
+    hasShownEndToastRef.current = false;
+
+    if (feedToastTimeoutRef.current) {
+      clearTimeout(feedToastTimeoutRef.current);
+      feedToastTimeoutRef.current = null;
+    }
+
+    if (feedToastExitTimeoutRef.current) {
+      clearTimeout(feedToastExitTimeoutRef.current);
+      feedToastExitTimeoutRef.current = null;
+    }
+
+    setFeedToast(null);
+    setIsFeedToastVisible(false);
+    setIsEndOfFeedVisible(false);
+
+    feedScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+
+    const controller = new AbortController();
+    loadStories(controller.signal, null);
+  }, [loadStories]);
+
   const handleToggleFollowAuthor = useCallback(
     async (authorId) => {
-      if (!authorId || !currentUserId || authorId === currentUserId) {
+      const normalizedTargetUserId = normalizeId(authorId);
+
+      if (
+        !normalizedTargetUserId ||
+        !currentUserId ||
+        normalizedTargetUserId === currentUserId
+      ) {
         return;
       }
 
-      let nextFollowingState = false;
-      let hasMatchedAuthor = false;
-      let hasResolvedNextState = false;
-
-      setPosts((previousPosts) =>
-        previousPosts.map((post) => {
-          if (post.authorId !== authorId || post.followBusy) {
-            return post;
-          }
-
-          hasMatchedAuthor = true;
-
-          if (!hasResolvedNextState) {
-            nextFollowingState = !post.followingAuthor;
-            hasResolvedNextState = true;
-          }
-
-          return {
-            ...post,
-            followingAuthor: nextFollowingState,
-            followBusy: true,
-          };
-        }),
-      );
-
-      setTopAuthors((previousAuthors) =>
-        previousAuthors.map((author) => {
-          if (author.authorId !== authorId || author.isBusy) {
-            return author;
-          }
-
-          hasMatchedAuthor = true;
-
-          if (!hasResolvedNextState) {
-            nextFollowingState = !author.isFollowing;
-            hasResolvedNextState = true;
-          }
-
-          return {
-            ...author,
-            isFollowing: nextFollowingState,
-            isBusy: true,
-          };
-        }),
-      );
-
-      if (!hasMatchedAuthor) {
-        return;
-      }
+      setBusyFollowIds((previous) => ({
+        ...previous,
+        [normalizedTargetUserId]: true,
+      }));
 
       try {
-        if (nextFollowingState) {
-          await followUser(authorId);
+        const isFollowing = Boolean(
+          followStateByUserId[normalizedTargetUserId],
+        );
+        let followResult;
+
+        if (isFollowing) {
+          followResult = await unfollowUser(normalizedTargetUserId);
         } else {
-          await unfollowUser(authorId);
+          followResult = await followUser(normalizedTargetUserId);
         }
 
-        let confirmedFollowing = nextFollowingState;
-
-        try {
-          const statusPayload = await getFollowStatus(authorId);
-          confirmedFollowing = Boolean(statusPayload?.following);
-        } catch {
-          // Keep optimistic state if status refresh fails.
-        }
-
-        setPosts((previousPosts) =>
-          previousPosts.map((post) =>
-            post.authorId === authorId
-              ? {
-                  ...post,
-                  followingAuthor: confirmedFollowing,
-                  followBusy: false,
-                }
-              : post,
-          ),
-        );
-
-        setTopAuthors((previousAuthors) =>
-          previousAuthors.map((author) =>
-            author.authorId === authorId
-              ? {
-                  ...author,
-                  isFollowing: confirmedFollowing,
-                  isBusy: false,
-                }
-              : author,
-          ),
-        );
+        const confirmedFollowing =
+          typeof followResult?.following === "boolean"
+            ? followResult.following
+            : !isFollowing;
+        const eventFollowerId =
+          normalizeId(followResult?.followerId) || currentUserId;
+        const eventFollowingId =
+          normalizeId(followResult?.followingId) || normalizedTargetUserId;
 
         window.dispatchEvent(
           new CustomEvent("storyhub:follow-updated", {
             detail: {
-              followerId: currentUserId,
-              followingId: authorId,
+              followerId: eventFollowerId,
+              followingId: eventFollowingId,
               following: confirmedFollowing,
             },
           }),
         );
-      } catch {
-        setPosts((previousPosts) =>
-          previousPosts.map((post) =>
-            post.authorId === authorId
-              ? {
-                  ...post,
-                  followingAuthor: !nextFollowingState,
-                  followBusy: false,
-                }
-              : post,
-          ),
-        );
 
-        setTopAuthors((previousAuthors) =>
-          previousAuthors.map((author) =>
-            author.authorId === authorId
-              ? {
-                  ...author,
-                  isFollowing: !nextFollowingState,
-                  isBusy: false,
-                }
-              : author,
-          ),
-        );
-        return;
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          [normalizedTargetUserId]: confirmedFollowing,
+        }));
+      } catch {
+        // Keep current state when request fails.
+      } finally {
+        setBusyFollowIds((previous) => ({
+          ...previous,
+          [normalizedTargetUserId]: false,
+        }));
       }
     },
-    [currentUserId],
+    [currentUserId, followStateByUserId],
   );
 
   const handleReportStory = useCallback((storyId) => {
@@ -1379,29 +1647,7 @@ export default function Home() {
     }
   }, [deleteTargetComment]);
 
-  const stories = useMemo(() => {
-    const circles = [{ name: "Add Story", isAdd: true }];
-    const seenAuthors = new Set();
-
-    posts.forEach((post) => {
-      if (post.authorId && String(post.authorId) === String(currentUserId)) {
-        return;
-      }
-
-      if (seenAuthors.has(post.author)) {
-        return;
-      }
-
-      seenAuthors.add(post.author);
-      circles.push({
-        name: post.author,
-        authorId: post.authorId,
-        image: post.avatar,
-      });
-    });
-
-    return circles;
-  }, [posts, currentUserId]);
+  const accountCircles = useMemo(() => followingAccounts, [followingAccounts]);
 
   const activeCommentStory = posts.find(
     (post) => post.id === activeCommentStoryId,
@@ -1428,18 +1674,41 @@ export default function Home() {
 
         <main className="h-[calc(100vh-64px)] overflow-hidden">
           <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-5 sm:py-6">
-            <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <div
+              ref={feedScrollRef}
+              className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            >
               <section className="bg-white/95 border border-slate-200 rounded-xl lg:rounded-3xl p-4 sm:p-6 mb-6 sm:mb-8 shadow-sm transition-all duration-300 hover:shadow-md">
                 <h2 className="text-xl sm:text-2xl font-semibold mb-5 sm:mb-6 px-1 sm:px-2 text-slate-900">
-                  Stories
+                  Following accounts
                 </h2>
 
                 <div className="flex gap-4 sm:gap-6 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                  {stories.map((story, i) => (
-                    <div key={i} className="snap-start">
-                      <StoryCircle {...story} />
+                  {followingAccountsLoading ? (
+                    <div className="text-sm text-slate-500 px-2 py-4">
+                      Loading accounts...
                     </div>
-                  ))}
+                  ) : accountCircles.length > 0 ? (
+                    accountCircles.map((account, i) => (
+                      <div key={i} className="snap-start">
+                        <StoryCircle {...account} />
+                      </div>
+                    ))
+                  ) : (
+                    <Link
+                      to="/explore"
+                      className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5"
+                    >
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-slate-300 border-dashed p-1 relative bg-slate-50/80">
+                        <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-slate-400">
+                          <Plus size={20} />
+                        </div>
+                      </div>
+                      <span className="text-[11px] mx-auto sm:text-xs font-medium text-slate-700 whitespace-nowrap rounded-md px-1.5 py-0.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
+                        Add
+                      </span>
+                    </Link>
+                  )}
                 </div>
               </section>
 
@@ -1478,6 +1747,7 @@ export default function Home() {
                           <PostCard
                             {...post}
                             savedByCurrentUser={savedStoryIds.has(post.id)}
+                            isExpanded={Boolean(expandedStoryIds[post.id])}
                             commentsActive={activeCommentStoryId === post.id}
                             shareStatus={shareFeedback[post.id]}
                             onToggleLike={handleToggleLike}
@@ -1490,9 +1760,14 @@ export default function Home() {
                             onEditStory={handleEditStory}
                             onDeleteStory={handleDeleteStory}
                             onToggleFollowAuthor={handleToggleFollowAuthor}
+                            onToggleExpanded={handleToggleExpandedStory}
                             isMenuOpen={menuStoryId === post.id}
                             showLikeBurst={likeBurstStoryId === post.id}
                             showLikePulse={likePulseStoryId === post.id}
+                            followingAuthor={Boolean(
+                              followStateByUserId[post.authorId],
+                            )}
+                            followBusy={Boolean(busyFollowIds[post.authorId])}
                             showCommentCountPulse={
                               commentCountPulseStoryId === post.id
                             }
@@ -1506,8 +1781,11 @@ export default function Home() {
                       </div>
                     )}
                     {!hasMore && posts.length > 0 && (
-                      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-400 text-center">
-                        No more stories to load
+                      <div className="flex items-center justify-center py-4">
+                        <div
+                          className="h-3 w-3 rounded-full bg-slate-300 shadow-sm ring-4 ring-slate-100"
+                          aria-hidden="true"
+                        />
                       </div>
                     )}
                   </>
@@ -1555,6 +1833,10 @@ export default function Home() {
                       <AuthorRow
                         key={author.authorId}
                         {...author}
+                        isFollowing={Boolean(
+                          followStateByUserId[author.authorId],
+                        )}
+                        isBusy={Boolean(busyFollowIds[author.authorId])}
                         onToggleFollow={() =>
                           handleToggleFollowAuthor(author.authorId)
                         }
@@ -1566,278 +1848,313 @@ export default function Home() {
             </aside>
           </div>
         </main>
-
-        <SiteFooter className="text-left lg:text-right" />
-      </div>
-
-      {activeCommentStory && activeCommentState && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
-          onClick={() => setActiveCommentStoryId(null)}
-        >
-          <div
-            className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[85vh] flex flex-col"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <h3 className="font-semibold text-slate-900">Comments</h3>
-                <p className="text-xs text-slate-400 truncate max-w-[260px]">
-                  {activeCommentStory.title}
-                </p>
+        {feedToast && (isEndOfFeedVisible || isFeedToastVisible) && (
+          <div className="pointer-events-none fixed right-4 bottom-4 z-50 w-[min(92vw,360px)]">
+            <div
+              className={`pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur px-4 py-3 transition-all duration-200 ease-out ${
+                isFeedToastVisible
+                  ? "translate-y-0 opacity-100"
+                  : "translate-y-4 opacity-0"
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-start gap-3">
+                <div className="mt-0.5 shrink-0 text-slate-500">
+                  <RefreshCcw size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold text-slate-900">
+                    Feed updated
+                  </p>
+                  <p className="mt-0.5 text-sm leading-snug text-slate-600">
+                    {feedToast.message}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRefreshFeed}
+                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
+                  >
+                    <RefreshCcw size={12} />
+                    Back to top & refresh
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => setActiveCommentStoryId(null)}
-                className="text-sm text-slate-500 hover:text-slate-700"
-              >
-                Close
-              </button>
             </div>
+          </div>
+        )}
+        {activeCommentStory && activeCommentState && (
+          <div
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+            onClick={() => setActiveCommentStoryId(null)}
+          >
+            <div
+              className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[85vh] flex flex-col"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <div>
+                  <h3 className="font-semibold text-slate-900">Comments</h3>
+                  <p className="text-xs text-slate-400 truncate max-w-[260px]">
+                    {activeCommentStory.title}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setActiveCommentStoryId(null)}
+                  className="text-sm text-slate-500 hover:text-slate-700"
+                >
+                  Close
+                </button>
+              </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              {activeCommentState.loading && (
-                <p className="text-xs text-slate-500">Loading comments...</p>
-              )}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                {activeCommentState.loading && (
+                  <p className="text-xs text-slate-500">Loading comments...</p>
+                )}
 
-              {!activeCommentState.loading && activeCommentState.error && (
-                <p className="text-xs text-red-500">
-                  {activeCommentState.error}
-                </p>
-              )}
-
-              {!activeCommentState.loading &&
-                !activeCommentState.error &&
-                activeCommentState.items.length === 0 && (
-                  <p className="text-xs text-gray-500">
-                    No comments yet. Be the first to comment.
+                {!activeCommentState.loading && activeCommentState.error && (
+                  <p className="text-xs text-red-500">
+                    {activeCommentState.error}
                   </p>
                 )}
 
-              {!activeCommentState.loading &&
-                !activeCommentState.error &&
-                activeCommentState.items.map((comment) => {
-                  const commentId = String(comment._id);
-                  const commentOwnerId = normalizeId(comment.userId);
-                  const canManageComment =
-                    Boolean(currentUserId) && commentOwnerId === currentUserId;
+                {!activeCommentState.loading &&
+                  !activeCommentState.error &&
+                  activeCommentState.items.length === 0 && (
+                    <p className="text-xs text-gray-500">
+                      No comments yet. Be the first to comment.
+                    </p>
+                  )}
 
-                  return (
-                    <div
-                      key={comment._id}
-                      className="rounded-xl bg-gray-50 px-3 py-2"
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        {commentOwnerId ? (
-                          <Link
-                            to={`/profile/${commentOwnerId}`}
-                            className="text-xs font-semibold text-slate-700 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                          >
-                            {comment.authorDisplayName || "Anonymous"}
-                          </Link>
-                        ) : (
-                          <p className="text-xs font-semibold text-slate-700">
-                            {comment.authorDisplayName || "Anonymous"}
+                {!activeCommentState.loading &&
+                  !activeCommentState.error &&
+                  activeCommentState.items.map((comment) => {
+                    const commentId = String(comment._id);
+                    const commentOwnerId = normalizeId(comment.userId);
+                    const canManageComment =
+                      Boolean(currentUserId) &&
+                      commentOwnerId === currentUserId;
+
+                    return (
+                      <div
+                        key={comment._id}
+                        className="rounded-xl bg-gray-50 px-3 py-2"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          {commentOwnerId ? (
+                            <Link
+                              to={`/profile/${commentOwnerId}`}
+                              className="text-xs font-semibold text-slate-700 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                            >
+                              {comment.authorDisplayName || "Anonymous"}
+                            </Link>
+                          ) : (
+                            <p className="text-xs font-semibold text-slate-700">
+                              {comment.authorDisplayName || "Anonymous"}
+                            </p>
+                          )}
+
+                          <div className="relative">
+                            <button
+                              onClick={() => handleToggleCommentMenu(commentId)}
+                              className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+                              aria-label="Comment actions"
+                            >
+                              <MoreHorizontal size={16} />
+                            </button>
+
+                            {menuCommentId === commentId && (
+                              <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                                {canManageComment ? (
+                                  <>
+                                    <button
+                                      onClick={() =>
+                                        handleEditComment(
+                                          activeCommentStory.id,
+                                          comment,
+                                        )
+                                      }
+                                      className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleDeleteComment(
+                                          activeCommentStory.id,
+                                          commentId,
+                                        )
+                                      }
+                                      className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={() =>
+                                      handleReportComment(commentId)
+                                    }
+                                    className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                                  >
+                                    Report
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="text-sm text-slate-700">
+                          {comment.content}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {getRelativeTime(comment.createdAt)}
+                        </p>
+
+                        {commentActionFeedback[commentId] && (
+                          <p className="text-[11px] text-emerald-600 mt-1">
+                            {commentActionFeedback[commentId]}
                           </p>
                         )}
-
-                        <div className="relative">
-                          <button
-                            onClick={() => handleToggleCommentMenu(commentId)}
-                            className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
-                            aria-label="Comment actions"
-                          >
-                            <MoreHorizontal size={16} />
-                          </button>
-
-                          {menuCommentId === commentId && (
-                            <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                              {canManageComment ? (
-                                <>
-                                  <button
-                                    onClick={() =>
-                                      handleEditComment(
-                                        activeCommentStory.id,
-                                        comment,
-                                      )
-                                    }
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      handleDeleteComment(
-                                        activeCommentStory.id,
-                                        commentId,
-                                      )
-                                    }
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                                  >
-                                    Delete
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  onClick={() => handleReportComment(commentId)}
-                                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
-                                >
-                                  Report
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
                       </div>
+                    );
+                  })}
+              </div>
 
-                      <p className="text-sm text-slate-700">
-                        {comment.content}
-                      </p>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {getRelativeTime(comment.createdAt)}
-                      </p>
-
-                      {commentActionFeedback[commentId] && (
-                        <p className="text-[11px] text-emerald-600 mt-1">
-                          {commentActionFeedback[commentId]}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                handleSubmitComment(activeCommentStory.id);
-              }}
-              className="px-5 py-4 border-t border-slate-100 flex items-center gap-2"
-            >
-              {activeCommentState.editingCommentId && (
-                <p className="text-xs text-sky-600 whitespace-nowrap">
-                  Editing comment
-                </p>
-              )}
-              <input
-                ref={commentInputRef}
-                type="text"
-                value={activeCommentState.input || ""}
-                onChange={(event) =>
-                  handleCommentInputChange(
-                    activeCommentStory.id,
-                    event.target.value,
-                  )
-                }
-                placeholder={
-                  activeCommentState.editingCommentId
-                    ? "Edit your comment..."
-                    : "Write a comment..."
-                }
-                className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
-              />
-              {activeCommentState.editingCommentId && (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  handleSubmitComment(activeCommentStory.id);
+                }}
+                className="px-5 py-4 border-t border-slate-100 flex items-center gap-2"
+              >
+                {activeCommentState.editingCommentId && (
+                  <p className="text-xs text-sky-600 whitespace-nowrap">
+                    Editing comment
+                  </p>
+                )}
+                <input
+                  ref={commentInputRef}
+                  type="text"
+                  value={activeCommentState.input || ""}
+                  onChange={(event) =>
+                    handleCommentInputChange(
+                      activeCommentStory.id,
+                      event.target.value,
+                    )
+                  }
+                  placeholder={
+                    activeCommentState.editingCommentId
+                      ? "Edit your comment..."
+                      : "Write a comment..."
+                  }
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
+                />
+                {activeCommentState.editingCommentId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCommentsByStory((prev) => ({
+                        ...prev,
+                        [activeCommentStory.id]: {
+                          ...prev[activeCommentStory.id],
+                          input: "",
+                          editingCommentId: null,
+                        },
+                      }));
+                    }}
+                    className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={() => {
-                    setCommentsByStory((prev) => ({
-                      ...prev,
-                      [activeCommentStory.id]: {
-                        ...prev[activeCommentStory.id],
-                        input: "",
-                        editingCommentId: null,
-                      },
-                    }));
-                  }}
-                  className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
+                  type="submit"
+                  disabled={activeCommentState.submitting}
+                  className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
+                >
+                  {activeCommentState.submitting
+                    ? activeCommentState.editingCommentId
+                      ? "Updating..."
+                      : "Posting..."
+                    : activeCommentState.editingCommentId
+                      ? "Update"
+                      : "Post"}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {deleteTargetStoryId && (
+          <div
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+            onClick={() => setDeleteTargetStoryId(null)}
+          >
+            <div
+              className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold text-slate-900 mb-2">
+                Delete this story?
+              </h3>
+              <p className="text-sm text-slate-500 mb-5">
+                This action cannot be undone.
+              </p>
+
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setDeleteTargetStoryId(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
                 >
                   Cancel
                 </button>
-              )}
-              <button
-                type="submit"
-                disabled={activeCommentState.submitting}
-                className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
-              >
-                {activeCommentState.submitting
-                  ? activeCommentState.editingCommentId
-                    ? "Updating..."
-                    : "Posting..."
-                  : activeCommentState.editingCommentId
-                    ? "Update"
-                    : "Post"}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {deleteTargetStoryId && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
-          onClick={() => setDeleteTargetStoryId(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <h3 className="text-base font-semibold text-slate-900 mb-2">
-              Delete this story?
-            </h3>
-            <p className="text-sm text-slate-500 mb-5">
-              This action cannot be undone.
-            </p>
-
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setDeleteTargetStoryId(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDeleteStory}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
-              >
-                Delete
-              </button>
+                <button
+                  onClick={handleConfirmDeleteStory}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {deleteTargetComment && (
-        <div
-          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
-          onClick={() => setDeleteTargetComment(null)}
-        >
+        {deleteTargetComment && (
           <div
-            className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5"
-            onClick={(event) => event.stopPropagation()}
+            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+            onClick={() => setDeleteTargetComment(null)}
           >
-            <h3 className="text-base font-semibold text-slate-900 mb-2">
-              Delete this comment?
-            </h3>
-            <p className="text-sm text-slate-500 mb-5">
-              This action cannot be undone.
-            </p>
+            <div
+              className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 className="text-base font-semibold text-slate-900 mb-2">
+                Delete this comment?
+              </h3>
+              <p className="text-sm text-slate-500 mb-5">
+                This action cannot be undone.
+              </p>
 
-            <div className="flex items-center justify-end gap-2">
-              <button
-                onClick={() => setDeleteTargetComment(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmDeleteComment}
-                className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
-              >
-                Delete
-              </button>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setDeleteTargetComment(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDeleteComment}
+                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
