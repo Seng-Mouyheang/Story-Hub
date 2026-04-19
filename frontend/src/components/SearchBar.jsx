@@ -7,10 +7,56 @@ const MIN_SEARCH_LENGTH = 2;
 const MAX_HISTORY = 10;
 const SEARCH_HISTORY_KEY = "story_hub_search_history";
 
+const historyKey = (entry) => {
+  if (!entry || typeof entry !== "object") return "";
+  if (entry.kind === "account" && entry.userId)
+    return `account:${entry.userId}`;
+  if (entry.kind === "query" && entry.query) return `query:${entry.query}`;
+  return "";
+};
+
+const normalizeHistoryEntry = (entry) => {
+  if (!entry) return null;
+
+  if (typeof entry === "string") {
+    const query = entry.trim();
+    if (query.length < MIN_SEARCH_LENGTH) return null;
+    return { kind: "query", query };
+  }
+
+  if (typeof entry !== "object") return null;
+
+  if (entry.kind === "account" && entry.userId) {
+    return {
+      kind: "account",
+      userId: entry.userId,
+      username: entry.username || "",
+      displayName: entry.displayName || entry.username || "",
+      profilePicture: entry.profilePicture || "",
+    };
+  }
+
+  if (entry.kind === "query" && typeof entry.query === "string") {
+    const query = entry.query.trim();
+    if (query.length < MIN_SEARCH_LENGTH) return null;
+    return { kind: "query", query };
+  }
+
+  return null;
+};
+
 const loadSearchHistory = () => {
   try {
     const stored = localStorage.getItem(SEARCH_HISTORY_KEY);
-    return stored ? JSON.parse(stored) : [];
+    if (!stored) return [];
+
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map(normalizeHistoryEntry)
+      .filter(Boolean)
+      .slice(0, MAX_HISTORY);
   } catch {
     return [];
   }
@@ -24,14 +70,33 @@ const saveSearchHistory = (history) => {
   }
 };
 
-const addToHistory = (query) => {
-  if (!query || query.trim().length < MIN_SEARCH_LENGTH) return;
-  const trimmed = query.trim();
+const upsertHistoryEntry = (entry) => {
+  const normalized = normalizeHistoryEntry(entry);
+  if (!normalized) return loadSearchHistory();
+
   const history = loadSearchHistory();
-  const filtered = history.filter((h) => h !== trimmed);
-  const updated = [trimmed, ...filtered].slice(0, MAX_HISTORY);
+  const key = historyKey(normalized);
+  const filtered = history.filter((item) => historyKey(item) !== key);
+  const updated = [normalized, ...filtered].slice(0, MAX_HISTORY);
   saveSearchHistory(updated);
   return updated;
+};
+
+const addQueryToHistory = (query) => {
+  if (!query || query.trim().length < MIN_SEARCH_LENGTH) return;
+  const trimmed = query.trim();
+  return upsertHistoryEntry({ kind: "query", query: trimmed });
+};
+
+const addAccountToHistory = (account) => {
+  if (!account?.userId) return;
+  return upsertHistoryEntry({
+    kind: "account",
+    userId: account.userId,
+    username: account.username || "",
+    displayName: account.displayName || account.username || "",
+    profilePicture: account.profilePicture || "",
+  });
 };
 
 export default function SearchBar({ onResult }) {
@@ -142,7 +207,7 @@ export default function SearchBar({ onResult }) {
           signal: controller.signal,
         });
         if (mobileAbortRef.current !== controller) return;
-        const updated = addToHistory(trimmedQuery);
+        const updated = addQueryToHistory(trimmedQuery);
         setMobileHistory(updated);
         setMobileResults(res);
         setMobileDropdown(true);
@@ -198,7 +263,7 @@ export default function SearchBar({ onResult }) {
           signal: controller.signal,
         });
         if (abortRef.current !== controller) return;
-        const updated = addToHistory(trimmedQuery);
+        const updated = addQueryToHistory(trimmedQuery);
         setHistory(updated);
         setResults(res);
         // setShowDropdown removed: dropdown is always shown based on query/loading/error
@@ -246,7 +311,7 @@ export default function SearchBar({ onResult }) {
   const searchFromQuery = async (q, { mobile = false } = {}) => {
     if (!q || q.trim().length < MIN_SEARCH_LENGTH) return;
     const trimmed = q.trim();
-    const updated = addToHistory(trimmed);
+    const updated = addQueryToHistory(trimmed);
     setHistory(updated);
     setMobileHistory(updated);
 
@@ -257,8 +322,13 @@ export default function SearchBar({ onResult }) {
     }
   };
 
-  const openUserProfile = (userId, { mobile = false } = {}) => {
-    if (!userId) return;
+  const openUserProfile = (account, { mobile = false } = {}) => {
+    if (!account?.userId) return;
+    const updated = addAccountToHistory(account);
+    if (updated) {
+      setHistory(updated);
+      setMobileHistory(updated);
+    }
 
     if (mobile) {
       closeMobileSearch();
@@ -268,7 +338,7 @@ export default function SearchBar({ onResult }) {
       setError("");
     }
 
-    navigate(`/profile/${userId}`);
+    navigate(`/profile/${account.userId}`);
   };
 
   // Desktop handlers
@@ -280,8 +350,23 @@ export default function SearchBar({ onResult }) {
     inputRef.current?.focus();
   };
 
-  const handleClearHistory = (e) => {
+  const handleDeleteHistoryItem = (entry, e) => {
     e.stopPropagation();
+    const key = historyKey(entry);
+    if (!key) return;
+
+    const updated = loadSearchHistory().filter(
+      (item) => historyKey(item) !== key,
+    );
+    saveSearchHistory(updated);
+    setHistory(updated);
+    setMobileHistory(updated);
+    setShowDesktopDropdown(true);
+    if (mobileActive) setMobileDropdown(true);
+  };
+
+  const handleClearHistory = (e) => {
+    e?.stopPropagation();
     saveSearchHistory([]);
     setHistory([]);
     setMobileHistory([]);
@@ -303,6 +388,12 @@ export default function SearchBar({ onResult }) {
     !results &&
     history.length > 0;
 
+  const hasMobileDropdownContent =
+    mobileLoading || mobileError || shouldShowMobileHistory || mobileResults;
+
+  const hasDesktopDropdownContent =
+    query || loading || error || shouldShowDesktopHistory || results;
+
   return (
     <React.Fragment>
       {/* Mobile: show only icon, open overlay on click */}
@@ -322,9 +413,15 @@ export default function SearchBar({ onResult }) {
             ></div>
             <div
               ref={mobileContainerRef}
-              className="fixed top-1/3 left-1/2 -translate-x-1/2 z-50 bg-white rounded-xl shadow-lg w-full max-w-md mx-2"
+              className="fixed top-1/3 left-1/2 -translate-x-1/2 z-50 w-full max-w-md mx-2"
             >
-              <div className="relative p-4 flex items-center gap-2">
+              <div
+                className={`relative p-4 flex items-center gap-2 ${
+                  mobileDropdown && hasMobileDropdownContent
+                    ? "bg-white border border-slate-200 border-b-0 rounded-t-2xl rounded-b-none shadow-lg"
+                    : "bg-white rounded-2xl shadow-lg"
+                }`}
+              >
                 <button
                   className="p-2 text-slate-400 hover:text-slate-600"
                   onClick={closeMobileSearch}
@@ -345,8 +442,8 @@ export default function SearchBar({ onResult }) {
                 />
                 {/* No right-side X/cancel icon, only back arrow */}
               </div>
-              {mobileDropdown && (
-                <div className="absolute left-0 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-80 overflow-y-auto">
+              {mobileDropdown && hasMobileDropdownContent && (
+                <div className="absolute left-0 top-full mt-0 w-full bg-white border border-slate-200 border-t-0 rounded-b-2xl shadow-lg z-50 max-h-80 overflow-y-auto">
                   {mobileLoading && (
                     <div className="p-3 text-sm text-slate-400">
                       Searching...
@@ -367,25 +464,86 @@ export default function SearchBar({ onResult }) {
                         <button
                           type="button"
                           onClick={handleClearHistory}
-                          className="p-0.5 text-slate-400 hover:text-slate-600"
-                          aria-label="Clear search history"
+                          className="text-xs text-slate-400 hover:text-slate-600"
+                          aria-label="Clear all search history"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          Clear all
                         </button>
                       </div>
-                      {mobileHistory.map((item) => (
-                        <button
-                          type="button"
-                          key={item}
-                          className="w-full px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-left text-slate-700"
-                          onClick={() =>
-                            searchFromQuery(item, { mobile: true })
-                          }
-                        >
-                          <Clock className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm">{item}</span>
-                        </button>
-                      ))}
+                      {mobileHistory.map((item) => {
+                        const key = historyKey(item);
+
+                        if (item.kind === "account") {
+                          return (
+                            <div
+                              key={key}
+                              className="w-full px-3 py-2 hover:bg-slate-50 flex items-center gap-2"
+                            >
+                              <button
+                                type="button"
+                                className="flex-1 cursor-pointer flex items-center gap-2 text-left"
+                                onClick={() =>
+                                  openUserProfile(item, { mobile: true })
+                                }
+                              >
+                                <img
+                                  src={
+                                    item.profilePicture ||
+                                    "https://api.dicebear.com/7.x/avataaars/svg?seed=" +
+                                      (item.username || item.displayName)
+                                  }
+                                  alt="avatar"
+                                  className="w-6 h-6 rounded-full bg-slate-200"
+                                />
+                                <span className="font-medium text-slate-800">
+                                  {item.displayName || item.username}
+                                </span>
+                                <span className="ml-2 text-xs text-slate-400">
+                                  @{item.username}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                className="p-1 text-slate-400 hover:text-slate-600"
+                                aria-label="Delete history item"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) =>
+                                  handleDeleteHistoryItem(item, e)
+                                }
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={key}
+                            className="w-full px-3 py-2 hover:bg-slate-50 flex items-center gap-2"
+                          >
+                            <button
+                              type="button"
+                              className="flex-1 cursor-pointer flex items-center gap-2 text-left text-slate-700"
+                              onClick={() =>
+                                searchFromQuery(item.query, { mobile: true })
+                              }
+                            >
+                              <Clock className="w-4 h-4 text-slate-400" />
+                              <span className="text-sm">{item.query}</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="p-1 text-slate-400 hover:text-slate-600"
+                              aria-label="Delete history item"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => handleDeleteHistoryItem(item, e)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {mobileResults && !mobileLoading && !mobileError && (
@@ -400,9 +558,7 @@ export default function SearchBar({ onResult }) {
                           type="button"
                           key={acc.userId}
                           className="w-full px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-left"
-                          onClick={() =>
-                            openUserProfile(acc.userId, { mobile: true })
-                          }
+                          onClick={() => openUserProfile(acc, { mobile: true })}
                         >
                           <img
                             src={
@@ -484,7 +640,11 @@ export default function SearchBar({ onResult }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search..."
-          className="pl-10 pr-8 py-1.5 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-red-200 outline-none w-full"
+          className={`pl-10 pr-8 py-1.5 text-sm outline-none w-full ${
+            showDesktopDropdown && hasDesktopDropdownContent
+              ? "bg-white border border-slate-200 border-b-0 rounded-t-2xl rounded-b-none"
+              : "bg-slate-100 border-none rounded-full"
+          }`}
           onFocus={() => setShowDesktopDropdown(true)}
           onBlur={() => setTimeout(() => setShowDesktopDropdown(false), 150)}
           autoComplete="off"
@@ -499,129 +659,177 @@ export default function SearchBar({ onResult }) {
             <X className="w-4 h-4" />
           </button>
         )}
-        {showDesktopDropdown &&
-          (query ||
-            loading ||
-            error ||
-            shouldShowDesktopHistory ||
-            results) && (
-            <div className="absolute left-0 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-lg z-50 max-h-80 overflow-y-auto">
-              {loading && (
-                <div className="p-3 text-sm text-slate-400">Searching...</div>
-              )}
-              {error && (
-                <div className="p-3 text-sm text-rose-500">{error}</div>
-              )}
-              {shouldShowDesktopHistory && (
-                <div className="border-t border-slate-200">
-                  <div className="px-3 pt-3 pb-1 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      Recent
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleClearHistory}
-                      className="p-0.5 text-slate-400 hover:text-slate-600"
-                      aria-label="Clear search history"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </div>
-                  {history.map((item) => (
-                    <button
-                      type="button"
-                      key={item}
-                      className="w-full px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-left text-slate-700"
-                      onClick={() => searchFromQuery(item)}
-                    >
-                      <Clock className="w-4 h-4 text-slate-400" />
-                      <span className="text-sm">{item}</span>
-                    </button>
-                  ))}
+        {showDesktopDropdown && hasDesktopDropdownContent && (
+          <div className="absolute left-0 top-full mt-0 w-full bg-white border border-slate-200 border-t-0 rounded-b-2xl shadow-lg z-50 max-h-80 overflow-y-auto">
+            {loading && (
+              <div className="p-3 text-sm text-slate-400">Searching...</div>
+            )}
+            {error && <div className="p-3 text-sm text-rose-500">{error}</div>}
+            {shouldShowDesktopHistory && (
+              <div className="border-t border-slate-200">
+                <div className="px-3 pt-3 pb-1 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Recent
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleClearHistory}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                    aria-label="Clear all search history"
+                  >
+                    Clear all
+                  </button>
                 </div>
-              )}
-              {error && (
-                <div className="p-3 text-sm text-rose-500">{error}</div>
-              )}
-              {results && !loading && !error && (
-                <>
-                  {results.accounts?.length > 0 && (
-                    <div className="px-3 pt-3 pb-1 text-xs font-semibold text-slate-500">
-                      Accounts
-                    </div>
-                  )}
-                  {results.accounts?.map((acc) => (
-                    <button
-                      type="button"
-                      key={acc.userId}
-                      className="w-full px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-left"
-                      onClick={() => openUserProfile(acc.userId)}
-                    >
-                      <img
-                        src={
-                          acc.profilePicture ||
-                          "https://api.dicebear.com/7.x/avataaars/svg?seed=" +
-                            (acc.username || acc.displayName)
-                        }
-                        alt="avatar"
-                        className="w-6 h-6 rounded-full bg-slate-200"
-                      />
-                      <span className="font-medium text-slate-800">
-                        {acc.displayName || acc.username}
-                      </span>
-                      <span className="ml-2 text-xs text-slate-400">
-                        @{acc.username}
-                      </span>
-                    </button>
-                  ))}
-                  {results.stories?.length > 0 && (
-                    <div className="px-3 pt-3 pb-1 text-xs font-semibold text-slate-500">
-                      Stories
-                    </div>
-                  )}
-                  {results.stories?.map((story) => (
+                {history.map((item) => {
+                  const key = historyKey(item);
+
+                  if (item.kind === "account") {
+                    return (
+                      <div
+                        key={key}
+                        className="w-full px-3 py-2 hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <button
+                          type="button"
+                          className="flex-1 cursor-pointer flex items-center gap-2 text-left"
+                          onClick={() => openUserProfile(item)}
+                        >
+                          <img
+                            src={
+                              item.profilePicture ||
+                              "https://api.dicebear.com/7.x/avataaars/svg?seed=" +
+                                (item.username || item.displayName)
+                            }
+                            alt="avatar"
+                            className="w-6 h-6 rounded-full bg-slate-200"
+                          />
+                          <span className="font-medium text-slate-800">
+                            {item.displayName || item.username}
+                          </span>
+                          <span className="ml-2 text-xs text-slate-400">
+                            @{item.username}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className="p-1 text-slate-400 hover:text-slate-600"
+                          aria-label="Delete history item"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => handleDeleteHistoryItem(item, e)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
                     <div
-                      key={story._id}
-                      className="px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                      key={key}
+                      className="w-full px-3 py-2 hover:bg-slate-50 flex items-center gap-2"
                     >
-                      <div className="font-medium text-slate-800">
-                        {story.title}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        {story.summary?.slice(0, 60) || "No summary"}
-                      </div>
+                      <button
+                        type="button"
+                        className="flex-1 cursor-pointer flex items-center gap-2 text-left text-slate-700"
+                        onClick={() => searchFromQuery(item.query)}
+                      >
+                        <Clock className="w-4 h-4 text-slate-400" />
+                        <span className="text-sm">{item.query}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="p-1 text-slate-400 hover:text-slate-600"
+                        aria-label="Delete history item"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => handleDeleteHistoryItem(item, e)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                  ))}
-                  {results.confessions?.length > 0 && (
-                    <div className="px-3 pt-3 pb-1 text-xs font-semibold text-slate-500">
-                      Confessions
+                  );
+                })}
+              </div>
+            )}
+            {error && <div className="p-3 text-sm text-rose-500">{error}</div>}
+            {results && !loading && !error && (
+              <>
+                {results.accounts?.length > 0 && (
+                  <div className="px-3 pt-3 pb-1 text-xs font-semibold text-slate-500">
+                    Accounts
+                  </div>
+                )}
+                {results.accounts?.map((acc) => (
+                  <button
+                    type="button"
+                    key={acc.userId}
+                    className="w-full px-3 py-2 hover:bg-slate-50 cursor-pointer flex items-center gap-2 text-left"
+                    onClick={() => openUserProfile(acc)}
+                  >
+                    <img
+                      src={
+                        acc.profilePicture ||
+                        "https://api.dicebear.com/7.x/avataaars/svg?seed=" +
+                          (acc.username || acc.displayName)
+                      }
+                      alt="avatar"
+                      className="w-6 h-6 rounded-full bg-slate-200"
+                    />
+                    <span className="font-medium text-slate-800">
+                      {acc.displayName || acc.username}
+                    </span>
+                    <span className="ml-2 text-xs text-slate-400">
+                      @{acc.username}
+                    </span>
+                  </button>
+                ))}
+                {results.stories?.length > 0 && (
+                  <div className="px-3 pt-3 pb-1 text-xs font-semibold text-slate-500">
+                    Stories
+                  </div>
+                )}
+                {results.stories?.map((story) => (
+                  <div
+                    key={story._id}
+                    className="px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <div className="font-medium text-slate-800">
+                      {story.title}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {story.summary?.slice(0, 60) || "No summary"}
+                    </div>
+                  </div>
+                ))}
+                {results.confessions?.length > 0 && (
+                  <div className="px-3 pt-3 pb-1 text-xs font-semibold text-slate-500">
+                    Confessions
+                  </div>
+                )}
+                {results.confessions?.map((conf) => (
+                  <div
+                    key={conf._id}
+                    className="px-3 py-2 hover:bg-slate-50 cursor-pointer"
+                  >
+                    <div className="font-medium text-slate-800">
+                      {conf.content?.slice(0, 60) || "No content"}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {conf.authorDisplayName}
+                    </div>
+                  </div>
+                ))}
+                {results.accounts?.length === 0 &&
+                  results.stories?.length === 0 &&
+                  results.confessions?.length === 0 && (
+                    <div className="p-3 text-sm text-slate-400">
+                      No results found.
                     </div>
                   )}
-                  {results.confessions?.map((conf) => (
-                    <div
-                      key={conf._id}
-                      className="px-3 py-2 hover:bg-slate-50 cursor-pointer"
-                    >
-                      <div className="font-medium text-slate-800">
-                        {conf.content?.slice(0, 60) || "No content"}
-                      </div>
-                      <div className="text-xs text-slate-400">
-                        {conf.authorDisplayName}
-                      </div>
-                    </div>
-                  ))}
-                  {results.accounts?.length === 0 &&
-                    results.stories?.length === 0 &&
-                    results.confessions?.length === 0 && (
-                      <div className="p-3 text-sm text-slate-400">
-                        No results found.
-                      </div>
-                    )}
-                </>
-              )}
-            </div>
-          )}
+              </>
+            )}
+          </div>
+        )}
       </div>
     </React.Fragment>
   );
