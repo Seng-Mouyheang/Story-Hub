@@ -5,7 +5,7 @@ import { globalSearch } from "../api/search/searchApi";
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_HISTORY = 10;
-const SEARCH_HISTORY_KEY = "story_hub_search_history";
+// Search history persistence removed: keep history in-memory only
 
 const historyKey = (entry) => {
   if (!entry || typeof entry !== "object") return "";
@@ -46,28 +46,12 @@ const normalizeHistoryEntry = (entry) => {
 };
 
 const loadSearchHistory = () => {
-  try {
-    const stored = localStorage.getItem(SEARCH_HISTORY_KEY);
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map(normalizeHistoryEntry)
-      .filter(Boolean)
-      .slice(0, MAX_HISTORY);
-  } catch {
-    return [];
-  }
+  // Persistence intentionally disabled: return empty history on mount
+  return [];
 };
 
-const saveSearchHistory = (history) => {
-  try {
-    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history));
-  } catch {
-    // Silently fail if localStorage is unavailable
-  }
+const saveSearchHistory = () => {
+  // no-op: do not persist search history to localStorage
 };
 
 const upsertHistoryEntry = (entry) => {

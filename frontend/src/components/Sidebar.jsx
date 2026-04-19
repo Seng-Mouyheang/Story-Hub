@@ -12,7 +12,7 @@ import {
   FileText,
   LogOut,
   LayoutDashboard,
-  Menu,
+  Settings,
   X,
 } from "lucide-react";
 
@@ -53,6 +53,7 @@ export default function Sidebar() {
     { path: "/profile", icon: User, label: "Profile" },
     { path: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
     { path: "/bookmarks", icon: Bookmark, label: "Bookmark" },
+    { path: "/settings", icon: Settings, label: "Settings" },
   ];
 
   const sidebarBody = (

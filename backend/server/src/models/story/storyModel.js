@@ -73,7 +73,7 @@ const buildPublishedStoriesPipeline = (matchStage, limit) => {
             },
           },
           {
-            $project: { displayName: 1 },
+            $project: { displayName: 1, username: 1 },
           },
         ],
         as: "author",
@@ -148,7 +148,8 @@ const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
     likedByCurrentUser: likedStoryIds.has(story._id.toString()),
     savedByCurrentUser: bookmarkedStoryIds.has(story._id.toString()),
     followedByCurrentUser: followedAuthorIds.has(story.authorId.toString()),
-    authorDisplayName: story.author?.displayName || null,
+    authorDisplayName:
+      story.author?.displayName || story.author?.username || null,
   }));
 
   let nextCursor = null;

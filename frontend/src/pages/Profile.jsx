@@ -9,7 +9,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { ChevronLeft, Share, User } from "lucide-react";
+import { ChevronLeft, User } from "lucide-react";
 import {
   getProfileByUserId,
   getUserStats,
@@ -935,9 +935,6 @@ export default function Profile() {
                         >
                           Edit Profile
                         </Link>
-                        <button className="p-2 border border-slate-300 rounded-xl hover:bg-slate-100 transition-colors">
-                          <Share className="w-4 h-4" />
-                        </button>
                       </div>
                     ) : (
                       <button
