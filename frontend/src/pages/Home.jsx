@@ -176,9 +176,17 @@ const PostCard = ({
   focused,
 }) => {
   const [isContentMeasured, setIsContentMeasured] = useState(false);
+  const [areGenresExpanded, setAreGenresExpanded] = useState(false);
   const contentRef = useRef(null);
   const collapsedContentHeight = 120;
+  const genreDisplayLimit = 5;
   const storyContent = content || excerpt || "";
+  const storyGenres =
+    Array.isArray(genres) && genres.length > 0 ? genres : ["GENERAL"];
+  const visibleGenres = areGenresExpanded
+    ? storyGenres
+    : storyGenres.slice(0, genreDisplayLimit);
+  const hiddenGenreCount = Math.max(storyGenres.length - genreDisplayLimit, 0);
 
   useEffect(() => {
     const element = contentRef.current;
@@ -223,11 +231,11 @@ const PostCard = ({
         </div>
       )}
 
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex justify-between items-start gap-3 mb-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
           <Link
             to={authorId ? `/profile/${authorId}` : "/profile"}
-            className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            className="w-10 h-10 shrink-0 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
             aria-label={`View ${author} profile`}
           >
             {avatar ? (
@@ -254,12 +262,48 @@ const PostCard = ({
               <span className="text-slate-400 text-xs">• {time}</span>
             </div>
 
-            <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
-              {(Array.isArray(genres) && genres.length > 0
-                ? genres
-                : ["GENERAL"]
-              ).join(" • ")}
-            </span>
+            <div className="mt-1 flex max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+              {visibleGenres.map((genre, index) => (
+                <span
+                  key={`${id}-genre-${String(genre)}-${index}`}
+                  className="inline-flex max-w-full items-center gap-2"
+                >
+                  {index > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="text-[10px] font-semibold text-rose-400"
+                    >
+                      •
+                    </span>
+                  )}
+                  <span className="max-w-full truncate text-[10px] font-semibold uppercase tracking-wider text-rose-500">
+                    {genre}
+                  </span>
+                </span>
+              ))}
+
+              {hiddenGenreCount > 0 && !areGenresExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setAreGenresExpanded(true)}
+                  className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-rose-600 transition-colors hover:text-rose-700"
+                  aria-label={`Show ${hiddenGenreCount} more genres`}
+                >
+                  +{hiddenGenreCount}
+                </button>
+              )}
+
+              {hiddenGenreCount > 0 && areGenresExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setAreGenresExpanded(false)}
+                  className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-slate-500 transition-colors hover:text-slate-700"
+                  aria-label="Collapse genres"
+                >
+                  Show less
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

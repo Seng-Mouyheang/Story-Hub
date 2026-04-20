@@ -53,6 +53,27 @@ const normalizeGenres = (inputGenres) => {
   }, []);
 };
 
+const extractTagsFromInput = (rawInput) => {
+  const matches = String(rawInput || "").match(/#\w+/g) || [];
+  const uniqueByLowercase = new Map();
+
+  for (const rawTag of matches) {
+    const cleanedTag = rawTag.slice(1).trim();
+
+    if (!cleanedTag) {
+      continue;
+    }
+
+    const normalizedKey = cleanedTag.toLowerCase();
+
+    if (!uniqueByLowercase.has(normalizedKey)) {
+      uniqueByLowercase.set(normalizedKey, cleanedTag);
+    }
+  }
+
+  return Array.from(uniqueByLowercase.values());
+};
+
 export default function Write() {
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState("");
@@ -103,7 +124,11 @@ export default function Write() {
               : [],
           ),
         );
-        setTags(Array.isArray(payload?.tags) ? payload.tags.join(", ") : "");
+        setTags(
+          Array.isArray(payload?.tags)
+            ? payload.tags.map((tag) => `#${tag}`).join(" ")
+            : "",
+        );
         setVisibility(payload?.visibility || "public");
       } catch (error) {
         if (isMounted) {
@@ -153,18 +178,7 @@ export default function Write() {
   };
 
   const parseTagsArray = () => {
-    return tags
-      .split(",")
-      .map((raw) => raw.trim())
-      .filter((raw) => raw.length > 0)
-      .map((raw) => {
-        // remove leading # if present
-        const withoutHash = raw.startsWith("#") ? raw.slice(1) : raw;
-        // only take the first word (stop at whitespace)
-        const firstWord = withoutHash.split(/\s+/)[0] || "";
-        return firstWord.trim();
-      })
-      .filter((t) => t.length > 0);
+    return extractTagsFromInput(tags);
   };
 
   const getGenresForSubmit = () => {
@@ -279,7 +293,7 @@ export default function Write() {
 
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            <div className="flex flex-col lg:flex-row max-w-[1400px] mx-auto w-full p-3 sm:p-5 lg:p-8 gap-6 lg:gap-12">
+            <div className="flex flex-col lg:flex-row max-w-350 mx-auto w-full p-3 sm:p-5 lg:p-8 gap-6 lg:gap-12">
               {/* Editor Section */}
               <div className="flex-1 bg-white p-4 sm:p-8 lg:p-12 shadow-sm border border-slate-200 rounded-2xl">
                 <div className="max-w-3xl mx-auto">
@@ -295,10 +309,10 @@ export default function Write() {
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                   />
-                  <div className="h-[1px] bg-slate-200 w-full mb-10"></div>
+                  <div className="h-px bg-slate-200 w-full mb-10"></div>
                   <textarea
                     placeholder="Untitled story line..."
-                    className="w-full min-h-[360px] sm:min-h-[500px] lg:min-h-[600px] text-base sm:text-lg lg:text-xl text-slate-300 focus:text-slate-700 outline-none resize-none leading-relaxed"
+                    className="w-full min-h-90 sm:min-h-125 lg:min-h-150 text-base sm:text-lg lg:text-xl text-slate-300 focus:text-slate-700 outline-none resize-none leading-relaxed"
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                   />
@@ -306,7 +320,7 @@ export default function Write() {
               </div>
 
               {/* Story Metadata Panel */}
-              <aside className="w-full lg:w-[340px] flex flex-col gap-8 lg:gap-10 lg:sticky lg:top-24 self-start">
+              <aside className="w-full lg:w-85 flex flex-col gap-8 lg:gap-10 lg:sticky lg:top-24 self-start">
                 {/* Story Details */}
                 <section>
                   <h3 className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-6">
@@ -356,7 +370,7 @@ export default function Write() {
                     Tags #
                   </h3>
                   <textarea
-                    placeholder="Eg. #DailyLifeMotivation, #NeedAdvice, ..."
+                    placeholder="Eg. #DailyLifeMotivation #NeedAdvice"
                     className="w-full h-32 p-4 border border-slate-300 rounded-2xl text-sm bg-slate-50 outline-none focus:bg-white focus:border-rose-300 transition-all resize-none italic text-slate-400"
                     value={tags}
                     onChange={(e) => setTags(e.target.value)}

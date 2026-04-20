@@ -113,6 +113,64 @@ const AuthorRow = ({
   </div>
 );
 
+const ExpandableGenreChips = ({ storyId, genres, limit = 5 }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const safeGenres = Array.isArray(genres) && genres.length > 0 ? genres : [];
+  const visibleGenres = isExpanded ? safeGenres : safeGenres.slice(0, limit);
+  const hiddenGenresCount = Math.max(safeGenres.length - limit, 0);
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      {visibleGenres.map((genre, index) => (
+        <span
+          key={`${storyId}-genre-${String(genre)}-${index}`}
+          className="inline-flex items-center gap-2"
+        >
+          {index > 0 && (
+            <span
+              aria-hidden="true"
+              className="text-[10px] font-semibold text-rose-400"
+            >
+              •
+            </span>
+          )}
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-500">
+            {String(genre)}
+          </span>
+        </span>
+      ))}
+
+      {hiddenGenresCount > 0 && !isExpanded && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsExpanded(true);
+          }}
+          className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-rose-600 transition-colors hover:text-rose-700"
+          aria-label={`Show ${hiddenGenresCount} more genres`}
+        >
+          +{hiddenGenresCount}
+        </button>
+      )}
+
+      {hiddenGenresCount > 0 && isExpanded && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            setIsExpanded(false);
+          }}
+          className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-700"
+          aria-label="Collapse genres"
+        >
+          Show less
+        </button>
+      )}
+    </div>
+  );
+};
+
 export default function Explore() {
   const navigate = useNavigate();
   const [menuStoryId, setMenuStoryId] = useState(null);
@@ -687,16 +745,13 @@ export default function Explore() {
                       }
                       className="cursor-pointer bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
-                      <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
-                        <div className="flex flex-wrap gap-2">
-                          {story.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-3 py-1 rounded-md uppercase"
-                            >
-                              {String(tag)}
-                            </span>
-                          ))}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="min-w-0 flex-1">
+                          <ExpandableGenreChips
+                            storyId={story.id}
+                            genres={story.tags}
+                            limit={5}
+                          />
                         </div>
 
                         <div className="flex items-center gap-2 text-slate-500 shrink-0">
@@ -899,16 +954,13 @@ export default function Explore() {
                       }
                       className="cursor-pointer bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
                     >
-                      <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
-                        <div className="flex flex-wrap gap-2">
-                          {story.tags.map((tag, idx) => (
-                            <span
-                              key={idx}
-                              className="bg-rose-50 text-rose-500 text-[10px] font-semibold px-3 py-1 rounded-md uppercase"
-                            >
-                              {String(tag)}
-                            </span>
-                          ))}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="min-w-0 flex-1">
+                          <ExpandableGenreChips
+                            storyId={story.id}
+                            genres={story.tags}
+                            limit={5}
+                          />
                         </div>
 
                         <div className="flex items-center gap-2 text-slate-500 shrink-0">
