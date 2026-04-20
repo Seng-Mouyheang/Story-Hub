@@ -177,16 +177,30 @@ const PostCard = ({
 }) => {
   const [isContentMeasured, setIsContentMeasured] = useState(false);
   const [areGenresExpanded, setAreGenresExpanded] = useState(false);
+  const [areTagsExpanded, setAreTagsExpanded] = useState(false);
+  const [areTagsWrapped, setAreTagsWrapped] = useState(false);
+  const [firstRowTagCount, setFirstRowTagCount] = useState(4);
   const contentRef = useRef(null);
+  const tagMeasurementRef = useRef(null);
   const collapsedContentHeight = 120;
   const genreDisplayLimit = 5;
   const storyContent = content || excerpt || "";
   const storyGenres =
     Array.isArray(genres) && genres.length > 0 ? genres : ["GENERAL"];
+  const storyTags = Array.isArray(tags) ? tags : [];
   const visibleGenres = areGenresExpanded
     ? storyGenres
     : storyGenres.slice(0, genreDisplayLimit);
   const hiddenGenreCount = Math.max(storyGenres.length - genreDisplayLimit, 0);
+  const hiddenTagCount = areTagsWrapped
+    ? Math.max(storyTags.length - firstRowTagCount, 0)
+    : 0;
+  const canExpandTags = hiddenTagCount > 0;
+  const isTagsExpanded = canExpandTags && areTagsExpanded;
+  const visibleTags =
+    areTagsWrapped && !isTagsExpanded
+      ? storyTags.slice(0, firstRowTagCount)
+      : storyTags;
 
   useEffect(() => {
     const element = contentRef.current;
@@ -213,6 +227,54 @@ const PostCard = ({
 
     return () => observer.disconnect();
   }, [collapsedContentHeight, storyContent]);
+
+  useEffect(() => {
+    const measurementElement = tagMeasurementRef.current;
+
+    if (!measurementElement) {
+      return undefined;
+    }
+
+    const updateTagWrapState = () => {
+      const tagElements = Array.from(
+        measurementElement.querySelectorAll('[data-tag-chip="true"]'),
+      );
+
+      if (tagElements.length === 0) {
+        setAreTagsWrapped(false);
+        setFirstRowTagCount(4);
+        return;
+      }
+
+      const firstRowTop = tagElements[0].offsetTop;
+      const calculatedFirstRowCount = tagElements.filter(
+        (tagElement) => tagElement.offsetTop <= firstRowTop + 1,
+      ).length;
+      const safeFirstRowCount = Math.max(calculatedFirstRowCount, 1);
+
+      setFirstRowTagCount(safeFirstRowCount);
+      setAreTagsWrapped(safeFirstRowCount < tagElements.length);
+    };
+
+    const frameId = requestAnimationFrame(() => {
+      updateTagWrapState();
+    });
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => cancelAnimationFrame(frameId);
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateTagWrapState();
+    });
+
+    observer.observe(measurementElement);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [storyTags]);
 
   return (
     <div
@@ -406,20 +468,64 @@ const PostCard = ({
 
       {!isContentMeasured && <div className="mb-4" />}
 
-      {Array.isArray(tags) && tags.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {tags.slice(0, 4).map((tag) => (
-            <span
-              key={`${id}-${tag}`}
-              className="text-xs font-semibold tracking-wide text-rose-600"
-            >
-              #
-              {String(tag || "")
-                .trim()
-                .replace(/^#/, "")
-                .replaceAll(/\s+/g, "")}
-            </span>
-          ))}
+      {storyTags.length > 0 && (
+        <div className="relative mb-4">
+          <div
+            ref={tagMeasurementRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 -z-10 flex w-full flex-wrap items-center gap-x-3 gap-y-1 opacity-0"
+          >
+            {storyTags.map((tag, index) => (
+              <span
+                key={`${id}-measure-tag-${String(tag)}-${index}`}
+                data-tag-chip="true"
+                className="text-xs font-semibold tracking-wide text-rose-600"
+              >
+                #
+                {String(tag || "")
+                  .trim()
+                  .replace(/^#/, "")
+                  .replaceAll(/\s+/g, "")}
+              </span>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            {visibleTags.map((tag, index) => (
+              <span
+                key={`${id}-tag-${String(tag)}-${index}`}
+                className="text-xs font-semibold tracking-wide text-rose-600"
+              >
+                #
+                {String(tag || "")
+                  .trim()
+                  .replace(/^#/, "")
+                  .replaceAll(/\s+/g, "")}
+              </span>
+            ))}
+
+            {canExpandTags && !isTagsExpanded && (
+              <button
+                type="button"
+                onClick={() => setAreTagsExpanded(true)}
+                className="text-xs font-semibold cursor-pointer tracking-wide text-rose-600 transition-colors hover:text-rose-700"
+                aria-label={`Show ${hiddenTagCount} more tags`}
+              >
+                +{hiddenTagCount}
+              </button>
+            )}
+
+            {canExpandTags && isTagsExpanded && (
+              <button
+                type="button"
+                onClick={() => setAreTagsExpanded(false)}
+                className="text-xs font-semibold cursor-pointer tracking-wide text-slate-500 transition-colors hover:text-slate-700"
+                aria-label="Collapse tags"
+              >
+                Show less
+              </button>
+            )}
+          </div>
         </div>
       )}
 
