@@ -114,6 +114,7 @@ const PostCard = ({
   author,
   authorId,
   avatar,
+  genres,
   genre,
   tags,
   time,
@@ -128,6 +129,17 @@ const PostCard = ({
   onOpenComments,
   onToggleExpanded,
 }) => {
+  const [areGenresExpanded, setAreGenresExpanded] = useState(false);
+  const genreDisplayLimit = 5;
+  const storyGenres =
+    Array.isArray(genres) && genres.length > 0
+      ? genres
+      : [String(genre || "GENERAL")];
+  const visibleGenres = areGenresExpanded
+    ? storyGenres
+    : storyGenres.slice(0, genreDisplayLimit);
+  const hiddenGenreCount = Math.max(storyGenres.length - genreDisplayLimit, 0);
+
   const { visibleContent, isLongContent } = getContentPreview(
     content,
     isExpanded,
@@ -164,9 +176,48 @@ const PostCard = ({
               <span className="text-slate-400 text-xs">• {time}</span>
             </div>
 
-            <span className="text-[10px] font-semibold text-rose-500 uppercase tracking-wider">
-              {genre}
-            </span>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              {visibleGenres.map((storyGenre, index) => (
+                <span
+                  key={`${id}-genre-${String(storyGenre)}-${index}`}
+                  className="inline-flex items-center gap-2"
+                >
+                  {index > 0 && (
+                    <span
+                      aria-hidden="true"
+                      className="text-[10px] font-semibold text-rose-400"
+                    >
+                      •
+                    </span>
+                  )}
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-500">
+                    {storyGenre}
+                  </span>
+                </span>
+              ))}
+
+              {hiddenGenreCount > 0 && !areGenresExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setAreGenresExpanded(true)}
+                  className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-rose-600 transition-colors hover:text-rose-700"
+                  aria-label={`Show ${hiddenGenreCount} more genres`}
+                >
+                  +{hiddenGenreCount}
+                </button>
+              )}
+
+              {hiddenGenreCount > 0 && areGenresExpanded && (
+                <button
+                  type="button"
+                  onClick={() => setAreGenresExpanded(false)}
+                  className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-slate-500 transition-colors hover:text-slate-700"
+                  aria-label="Collapse genres"
+                >
+                  Show less
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -521,6 +572,10 @@ export default function Bookmarks() {
             story.authorDisplayName ||
             "Anonymous Author",
           avatar: profile?.profilePicture || null,
+          genres:
+            Array.isArray(story.genres) && story.genres.length > 0
+              ? story.genres.map((item) => String(item).toUpperCase())
+              : ["GENERAL"],
           genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
           tags: Array.isArray(story.tags) ? story.tags : [],
           time: getRelativeTime(story.publishedAt || story.createdAt),
