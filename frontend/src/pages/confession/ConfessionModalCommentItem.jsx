@@ -78,11 +78,11 @@ export default function ConfessionModalCommentItem({
           <Link
             to={`/profile/${commentAuthorId}`}
             className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0 block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-            aria-label={`View ${commentAuthor} profile`}
+            aria-label={`View ${commentAuthor || "user"} profile`}
           >
             <img
               src={commentAvatarSrc}
-              alt="commenter avatar"
+              alt={`${commentAuthor || "user"} avatar`}
               className="h-full w-full object-cover"
             />
           </Link>
@@ -90,7 +90,7 @@ export default function ConfessionModalCommentItem({
           <div className="h-8 w-8 overflow-hidden rounded-full bg-slate-200 shrink-0">
             <img
               src={commentAvatarSrc}
-              alt="commenter avatar"
+              alt={`${commentAuthor || "user"} avatar`}
               className="h-full w-full object-cover"
             />
           </div>
