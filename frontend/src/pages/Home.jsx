@@ -17,9 +17,11 @@ import {
   addStoryComment,
   updateStoryComment,
   deleteStoryComment,
+  getCommentReplies,
 } from "../api/story/storyCommentsApi";
 import {
   toggleStoryLike,
+  toggleCommentLike,
   toggleStoryBookmark,
   removeStoryBookmark,
   getMyBookmarkedStories,
@@ -88,6 +90,30 @@ const normalizeId = (value) => {
 
   return String(value);
 };
+
+const createEmptyRepliesState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  error: "",
+  items: [],
+});
+
+const createEmptyCommentState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  error: "",
+  items: [],
+  input: "",
+  editingCommentId: null,
+  replyingToCommentId: null,
+  replyingToAuthor: "",
+  submitting: false,
+  repliesByComment: {},
+});
+
+const COMMENT_CHARACTER_LIMIT = 2200;
 
 /* -------------------- Story Circle -------------------- */
 const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
@@ -673,6 +699,7 @@ export default function Home() {
   const [menuCommentId, setMenuCommentId] = useState(null);
   const [deleteTargetComment, setDeleteTargetComment] = useState(null);
   const [commentActionFeedback, setCommentActionFeedback] = useState({});
+  const [pendingCommentLikeIds, setPendingCommentLikeIds] = useState({});
   const [expandedStoryIds, setExpandedStoryIds] = useState({});
   const [feedToast, setFeedToast] = useState(null);
   const [isFeedToastVisible, setIsFeedToastVisible] = useState(false);
@@ -1276,17 +1303,22 @@ export default function Home() {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
+          ...createEmptyCommentState(),
           ...prev[storyId],
           loading: false,
           error: "",
           loaded: true,
-          items: comments,
+          items: comments.map((comment) => ({
+            ...comment,
+            replyCount: Number(comment?.replyCount || 0),
+          })),
         },
       }));
     } catch {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
+          ...createEmptyCommentState(),
           ...prev[storyId],
           loading: false,
           error: "Unable to load comments.",
@@ -1329,16 +1361,7 @@ export default function Home() {
 
   const handleToggleComments = useCallback(
     (storyId) => {
-      const current = commentsByStory[storyId] || {
-        open: false,
-        loaded: false,
-        loading: false,
-        error: "",
-        items: [],
-        input: "",
-        editingCommentId: null,
-        submitting: false,
-      };
+      const current = commentsByStory[storyId] || createEmptyCommentState();
 
       const nextOpen = !current.open;
 
@@ -1387,19 +1410,102 @@ export default function Home() {
     [posts, handleToggleLike],
   );
 
+  const fetchReplies = useCallback(async (storyId, commentId) => {
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        repliesByComment: {
+          ...(prev[storyId]?.repliesByComment || {}),
+          [commentId]: {
+            ...createEmptyRepliesState(),
+            ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+            loading: true,
+            error: "",
+          },
+        },
+      },
+    }));
+
+    try {
+      const payload = await getCommentReplies(commentId, { limit: 10 });
+      const replies = Array.isArray(payload?.replies) ? payload.replies : [];
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...createEmptyRepliesState(),
+              ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+              loading: false,
+              loaded: true,
+              open: true,
+              error: "",
+              items: replies,
+            },
+          },
+        },
+      }));
+    } catch {
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...createEmptyRepliesState(),
+              ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+              loading: false,
+              error: "Unable to load replies.",
+            },
+          },
+        },
+      }));
+    }
+  }, []);
+
+  const handleToggleReplies = useCallback(
+    (storyId, commentId) => {
+      const currentReplyState =
+        commentsByStory[storyId]?.repliesByComment?.[commentId] ||
+        createEmptyRepliesState();
+      const nextOpen = !currentReplyState.open;
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...currentReplyState,
+              open: nextOpen,
+            },
+          },
+        },
+      }));
+
+      if (nextOpen && !currentReplyState.loaded && !currentReplyState.loading) {
+        fetchReplies(storyId, commentId);
+      }
+    },
+    [commentsByStory, fetchReplies],
+  );
+
   const handleCommentInputChange = useCallback((storyId, input) => {
     setCommentsByStory((prev) => ({
       ...prev,
       [storyId]: {
-        ...(prev[storyId] || {
-          open: true,
-          loaded: true,
-          loading: false,
-          error: "",
-          items: [],
-          editingCommentId: null,
-          submitting: false,
-        }),
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
         input,
       },
     }));
@@ -1428,6 +1534,7 @@ export default function Home() {
       const current = commentsByStory[storyId];
       const content = current?.input?.trim();
       const editingCommentId = current?.editingCommentId || null;
+      const replyingToCommentId = current?.replyingToCommentId || null;
       if (!content) return;
 
       setCommentsByStory((prev) => ({
@@ -1446,39 +1553,101 @@ export default function Home() {
           setCommentsByStory((prev) => ({
             ...prev,
             [storyId]: {
+              ...createEmptyCommentState(),
               ...prev[storyId],
               submitting: false,
               input: "",
               editingCommentId: null,
+              replyingToCommentId: null,
+              replyingToAuthor: "",
               loaded: true,
               items: (prev[storyId]?.items || []).map((item) =>
                 String(item._id) === String(editingCommentId)
                   ? { ...item, content, isEdited: true }
                   : item,
               ),
+              repliesByComment: Object.fromEntries(
+                Object.entries(prev[storyId]?.repliesByComment || {}).map(
+                  ([parentId, replyState]) => [
+                    parentId,
+                    {
+                      ...replyState,
+                      items: (replyState?.items || []).map((item) =>
+                        String(item?._id || item?.id) ===
+                        String(editingCommentId)
+                          ? { ...item, content, isEdited: true }
+                          : item,
+                      ),
+                    },
+                  ],
+                ),
+              ),
             },
           }));
 
           showCommentActionFeedback(editingCommentId, "Comment updated");
         } else {
-          const payload = await addStoryComment(storyId, { content });
+          const payload = await addStoryComment(storyId, {
+            content,
+            parentId: replyingToCommentId,
+          });
           const newComment = {
             _id: payload.commentId || `${Date.now()}`,
             userId: currentUserId,
             authorDisplayName: currentUsername,
+            authorProfilePicture: "",
             content,
             createdAt: new Date().toISOString(),
+            likesCount: 0,
+            likedByCurrentUser: false,
+            isEdited: false,
+            parentId: replyingToCommentId,
+            replyCount: 0,
           };
 
           setCommentsByStory((prev) => ({
             ...prev,
             [storyId]: {
+              ...createEmptyCommentState(),
               ...prev[storyId],
               submitting: false,
               input: "",
               editingCommentId: null,
+              replyingToCommentId: null,
+              replyingToAuthor: "",
               loaded: true,
-              items: [newComment, ...(prev[storyId]?.items || [])],
+              items: replyingToCommentId
+                ? (prev[storyId]?.items || []).map((item) =>
+                    String(item?._id || item?.id) ===
+                    String(replyingToCommentId)
+                      ? {
+                          ...item,
+                          replyCount: Number(item?.replyCount || 0) + 1,
+                        }
+                      : item,
+                  )
+                : [newComment, ...(prev[storyId]?.items || [])],
+              repliesByComment: replyingToCommentId
+                ? {
+                    ...(prev[storyId]?.repliesByComment || {}),
+                    [replyingToCommentId]: {
+                      ...createEmptyRepliesState(),
+                      ...(prev[storyId]?.repliesByComment?.[
+                        replyingToCommentId
+                      ] || {}),
+                      open: true,
+                      loaded: true,
+                      loading: false,
+                      error: "",
+                      items: [
+                        ...(prev[storyId]?.repliesByComment?.[
+                          replyingToCommentId
+                        ]?.items || []),
+                        newComment,
+                      ],
+                    },
+                  }
+                : prev[storyId]?.repliesByComment || {},
             },
           }));
 
@@ -1501,11 +1670,14 @@ export default function Home() {
         setCommentsByStory((prev) => ({
           ...prev,
           [storyId]: {
+            ...createEmptyCommentState(),
             ...prev[storyId],
             submitting: false,
             error: editingCommentId
               ? "Failed to update comment."
-              : "Failed to post comment.",
+              : replyingToCommentId
+                ? "Failed to post reply."
+                : "Failed to post comment.",
           },
         }));
       }
@@ -1698,6 +1870,98 @@ export default function Home() {
     );
   }, []);
 
+  const handleToggleCommentLike = useCallback(
+    async (storyId, commentId) => {
+      if (!storyId || !commentId || pendingCommentLikeIds[commentId]) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setPostsError("Please login to like comments.");
+        return;
+      }
+
+      setPendingCommentLikeIds((prev) => ({ ...prev, [commentId]: true }));
+
+      try {
+        const payload = await toggleCommentLike(commentId);
+
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            items: (prev[storyId]?.items || []).map((item) =>
+              String(item?._id || item?.id) === String(commentId)
+                ? {
+                    ...item,
+                    likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
+                    likesCount: Number(payload?.likesCount || 0),
+                  }
+                : item,
+            ),
+            repliesByComment: Object.fromEntries(
+              Object.entries(prev[storyId]?.repliesByComment || {}).map(
+                ([parentId, replyState]) => [
+                  parentId,
+                  {
+                    ...replyState,
+                    items: (replyState?.items || []).map((item) =>
+                      String(item?._id || item?.id) === String(commentId)
+                        ? {
+                            ...item,
+                            likedByCurrentUser: Boolean(
+                              payload?.likedByCurrentUser,
+                            ),
+                            likesCount: Number(payload?.likesCount || 0),
+                          }
+                        : item,
+                    ),
+                  },
+                ],
+              ),
+            ),
+          },
+        }));
+      } catch (error) {
+        setPostsError(error.message || "Failed to update comment like.");
+      } finally {
+        setPendingCommentLikeIds((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
+      }
+    },
+    [pendingCommentLikeIds],
+  );
+
+  const handleStartReply = useCallback((storyId, comment) => {
+    setMenuCommentId(null);
+
+    const replyCommentId = String(comment?._id || comment?.id || "");
+    const replyAuthor = comment?.authorDisplayName || "Anonymous";
+
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: "",
+        editingCommentId: null,
+        replyingToCommentId: replyCommentId,
+        replyingToAuthor: replyAuthor,
+      },
+    }));
+
+    setTimeout(() => {
+      if (commentInputRef.current) {
+        commentInputRef.current.focus();
+      }
+    }, 0);
+  }, []);
+
   const handleReportComment = useCallback(
     (commentId) => {
       setMenuCommentId(null);
@@ -1714,16 +1978,12 @@ export default function Home() {
     setCommentsByStory((prev) => ({
       ...prev,
       [storyId]: {
-        ...(prev[storyId] || {
-          open: true,
-          loaded: true,
-          loading: false,
-          error: "",
-          items: [],
-          submitting: false,
-        }),
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
         input: comment.content || "",
         editingCommentId: commentId,
+        replyingToCommentId: null,
+        replyingToAuthor: "",
       },
     }));
 
@@ -1738,9 +1998,45 @@ export default function Home() {
     }, 0);
   }, []);
 
-  const handleDeleteComment = useCallback((storyId, commentId) => {
-    setMenuCommentId(null);
-    setDeleteTargetComment({ storyId, commentId });
+  const handleDeleteComment = useCallback(
+    (storyId, commentId) => {
+      setMenuCommentId(null);
+      const storyState = commentsByStory[storyId] || createEmptyCommentState();
+      const topLevelComment = (storyState.items || []).find(
+        (item) => String(item?._id || item?.id) === String(commentId),
+      );
+      const replyParentEntry = Object.entries(
+        storyState.repliesByComment || {},
+      ).find(([, replyState]) =>
+        (replyState?.items || []).some(
+          (item) => String(item?._id || item?.id) === String(commentId),
+        ),
+      );
+
+      setDeleteTargetComment({
+        storyId,
+        commentId,
+        replyCount: Number(topLevelComment?.replyCount || 0),
+        parentId:
+          normalizeId(topLevelComment?.parentId) ||
+          String(replyParentEntry?.[0] || ""),
+      });
+    },
+    [commentsByStory],
+  );
+
+  const handleCancelCommentComposer = useCallback((storyId) => {
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: "",
+        editingCommentId: null,
+        replyingToCommentId: null,
+        replyingToAuthor: "",
+      },
+    }));
   }, []);
 
   const handleConfirmDeleteComment = useCallback(async () => {
@@ -1748,7 +2044,12 @@ export default function Home() {
       return;
     }
 
-    const { storyId, commentId } = deleteTargetComment;
+    const {
+      storyId,
+      commentId,
+      parentId,
+      replyCount = 0,
+    } = deleteTargetComment;
     setDeleteTargetComment(null);
 
     const token = localStorage.getItem("token");
@@ -1763,27 +2064,80 @@ export default function Home() {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
-          ...prev[storyId],
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
           editingCommentId:
             String(prev[storyId]?.editingCommentId || "") === String(commentId)
               ? null
               : prev[storyId]?.editingCommentId || null,
           input:
-            String(prev[storyId]?.editingCommentId || "") === String(commentId)
+            String(prev[storyId]?.editingCommentId || "") ===
+              String(commentId) ||
+            String(prev[storyId]?.replyingToCommentId || "") ===
+              String(commentId)
               ? ""
               : prev[storyId]?.input || "",
+          replyingToCommentId:
+            String(prev[storyId]?.replyingToCommentId || "") ===
+            String(commentId)
+              ? null
+              : prev[storyId]?.replyingToCommentId || null,
+          replyingToAuthor:
+            String(prev[storyId]?.replyingToCommentId || "") ===
+            String(commentId)
+              ? ""
+              : prev[storyId]?.replyingToAuthor || "",
           items: (prev[storyId]?.items || []).filter(
-            (item) => item._id !== commentId,
+            (item) => String(item?._id || item?.id) !== String(commentId),
+          ),
+          repliesByComment: Object.fromEntries(
+            Object.entries(prev[storyId]?.repliesByComment || {})
+              .map(([replyParentId, replyState]) => [
+                replyParentId,
+                {
+                  ...replyState,
+                  items: (replyState?.items || []).filter(
+                    (item) =>
+                      String(item?._id || item?.id) !== String(commentId),
+                  ),
+                },
+              ])
+              .filter(
+                ([replyParentId]) =>
+                  String(replyParentId) !== String(commentId),
+              ),
           ),
         },
       }));
+
+      if (parentId) {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            items: (prev[storyId]?.items || []).map((item) =>
+              String(item?._id || item?.id) === String(parentId)
+                ? {
+                    ...item,
+                    replyCount: Math.max(0, Number(item?.replyCount || 0) - 1),
+                  }
+                : item,
+            ),
+          },
+        }));
+      }
 
       setPosts((prev) =>
         prev.map((post) =>
           post.id === storyId
             ? {
                 ...post,
-                commentCount: Math.max(0, Number(post.commentCount || 0) - 1),
+                commentCount: Math.max(
+                  0,
+                  Number(post.commentCount || 0) -
+                    (parentId ? 1 : 1 + Number(replyCount || 0)),
+                ),
               }
             : post,
         ),
@@ -1800,14 +2154,8 @@ export default function Home() {
   );
   const activeCommentState = activeCommentStoryId
     ? commentsByStory[activeCommentStoryId] || {
+        ...createEmptyCommentState(),
         open: true,
-        loaded: false,
-        loading: false,
-        error: "",
-        items: [],
-        input: "",
-        editingCommentId: null,
-        submitting: false,
       }
     : null;
 
@@ -2095,6 +2443,14 @@ export default function Home() {
                     const canManageComment =
                       Boolean(currentUserId) &&
                       commentOwnerId === currentUserId;
+                    const isCommentLikePending = Boolean(
+                      pendingCommentLikeIds[commentId],
+                    );
+                    const commentLikesCount = Number(comment?.likesCount || 0);
+                    const replyCount = Number(comment?.replyCount || 0);
+                    const replyState =
+                      activeCommentState.repliesByComment?.[commentId] ||
+                      createEmptyRepliesState();
 
                     return (
                       <div
@@ -2225,10 +2581,309 @@ export default function Home() {
                               {comment?.content || "No comment content"}
                             </p>
 
+                            <div className="mt-2 flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleCommentLike(
+                                    activeCommentStory.id,
+                                    commentId,
+                                  )
+                                }
+                                disabled={isCommentLikePending}
+                                className={`inline-flex items-center gap-1.5 rounded-full py-1 text-xs font-medium transition-colors ${
+                                  comment?.likedByCurrentUser
+                                    ? "text-rose-600"
+                                    : "text-slate-500 hover:text-rose-500"
+                                } ${
+                                  isCommentLikePending
+                                    ? "cursor-not-allowed opacity-60"
+                                    : "cursor-pointer"
+                                }`}
+                                aria-label={
+                                  comment?.likedByCurrentUser
+                                    ? "Unlike comment"
+                                    : "Like comment"
+                                }
+                              >
+                                <Heart
+                                  size={14}
+                                  fill={
+                                    comment?.likedByCurrentUser
+                                      ? "currentColor"
+                                      : "none"
+                                  }
+                                />
+                                <span>{formatCount(commentLikesCount)}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleStartReply(
+                                    activeCommentStory.id,
+                                    comment,
+                                  )
+                                }
+                                className="text-xs font-medium text-slate-500 transition-colors hover:text-slate-700"
+                              >
+                                Reply
+                              </button>
+                              {replyCount > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleToggleReplies(
+                                      activeCommentStory.id,
+                                      commentId,
+                                    )
+                                  }
+                                  className="text-xs font-medium text-slate-500 transition-colors hover:text-slate-700"
+                                >
+                                  {replyState.open
+                                    ? `Hide replies (${formatCount(replyCount)})`
+                                    : `View replies (${formatCount(replyCount)})`}
+                                </button>
+                              )}
+                            </div>
+
                             {commentActionFeedback[commentId] && (
                               <p className="text-[11px] text-emerald-600 mt-1">
                                 {commentActionFeedback[commentId]}
                               </p>
+                            )}
+
+                            {replyState.open && (
+                              <div className="mt-3 space-y-2 border-l border-slate-200 pl-3">
+                                {replyState.loading && (
+                                  <p className="text-[11px] text-slate-500">
+                                    Loading replies...
+                                  </p>
+                                )}
+
+                                {!replyState.loading && replyState.error && (
+                                  <p className="text-[11px] text-rose-500">
+                                    {replyState.error}
+                                  </p>
+                                )}
+
+                                {!replyState.loading &&
+                                  !replyState.error &&
+                                  (replyState.items || []).map((reply) => {
+                                    const replyId = String(
+                                      reply?._id || reply?.id,
+                                    );
+                                    const replyOwnerId = normalizeId(
+                                      reply?.userId,
+                                    );
+                                    const canManageReply =
+                                      Boolean(currentUserId) &&
+                                      replyOwnerId === currentUserId;
+                                    const isReplyLikePending = Boolean(
+                                      pendingCommentLikeIds[replyId],
+                                    );
+
+                                    return (
+                                      <div
+                                        key={replyId}
+                                        className="rounded-xl bg-white px-3 py-2"
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          {replyOwnerId ? (
+                                            <Link
+                                              to={`/profile/${replyOwnerId}`}
+                                              className="w-7 h-7 shrink-0 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                                              aria-label={`View ${reply.authorDisplayName || "user"} profile`}
+                                            >
+                                              {reply.authorProfilePicture ? (
+                                                <img
+                                                  src={
+                                                    reply.authorProfilePicture
+                                                  }
+                                                  alt={
+                                                    reply.authorDisplayName ||
+                                                    "User"
+                                                  }
+                                                  className="w-full h-full object-cover"
+                                                />
+                                              ) : (
+                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                                                  <User size={12} />
+                                                </div>
+                                              )}
+                                            </Link>
+                                          ) : (
+                                            <div className="w-7 h-7 shrink-0 rounded-full bg-slate-200 overflow-hidden">
+                                              {reply.authorProfilePicture ? (
+                                                <img
+                                                  src={
+                                                    reply.authorProfilePicture
+                                                  }
+                                                  alt={
+                                                    reply.authorDisplayName ||
+                                                    "User"
+                                                  }
+                                                  className="w-full h-full object-cover"
+                                                />
+                                              ) : (
+                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                                                  <User size={12} />
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+
+                                          <div className="min-w-0 flex-1">
+                                            <div className="flex items-start justify-between gap-2">
+                                              <div className="min-w-0">
+                                                {replyOwnerId ? (
+                                                  <Link
+                                                    to={`/profile/${replyOwnerId}`}
+                                                    className="text-xs font-semibold text-slate-700 truncate block rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                                                  >
+                                                    {reply.authorDisplayName ||
+                                                      "Anonymous"}
+                                                  </Link>
+                                                ) : (
+                                                  <span className="text-xs font-semibold text-slate-700 truncate block">
+                                                    {reply.authorDisplayName ||
+                                                      "Anonymous"}
+                                                  </span>
+                                                )}
+                                                <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
+                                                  <span>
+                                                    {getRelativeTime(
+                                                      reply?.createdAt,
+                                                    )}
+                                                  </span>
+                                                  {reply?.isEdited ? (
+                                                    <span>• Edited</span>
+                                                  ) : null}
+                                                </span>
+                                              </div>
+
+                                              <div
+                                                className="relative shrink-0"
+                                                data-comment-menu
+                                              >
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    handleToggleCommentMenu(
+                                                      replyId,
+                                                    )
+                                                  }
+                                                  className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+                                                  aria-label="Reply actions"
+                                                >
+                                                  <MoreHorizontal size={14} />
+                                                </button>
+
+                                                {menuCommentId === replyId && (
+                                                  <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
+                                                    {canManageReply ? (
+                                                      <>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleEditComment(
+                                                              activeCommentStory.id,
+                                                              reply,
+                                                            )
+                                                          }
+                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                                        >
+                                                          Edit
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleDeleteComment(
+                                                              activeCommentStory.id,
+                                                              replyId,
+                                                            )
+                                                          }
+                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                                        >
+                                                          Delete
+                                                        </button>
+                                                      </>
+                                                    ) : (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                          handleReportComment(
+                                                            replyId,
+                                                          )
+                                                        }
+                                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                                                      >
+                                                        Report
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
+                                              {reply?.content ||
+                                                "No reply content"}
+                                            </p>
+
+                                            <div className="mt-2 flex items-center gap-3">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleToggleCommentLike(
+                                                    activeCommentStory.id,
+                                                    replyId,
+                                                  )
+                                                }
+                                                disabled={isReplyLikePending}
+                                                className={`inline-flex items-center gap-1.5 rounded-full py-1 text-xs font-medium transition-colors ${
+                                                  reply?.likedByCurrentUser
+                                                    ? "text-rose-600"
+                                                    : "text-slate-500 hover:text-rose-500"
+                                                } ${
+                                                  isReplyLikePending
+                                                    ? "cursor-not-allowed opacity-60"
+                                                    : "cursor-pointer"
+                                                }`}
+                                                aria-label={
+                                                  reply?.likedByCurrentUser
+                                                    ? "Unlike reply"
+                                                    : "Like reply"
+                                                }
+                                              >
+                                                <Heart
+                                                  size={14}
+                                                  fill={
+                                                    reply?.likedByCurrentUser
+                                                      ? "currentColor"
+                                                      : "none"
+                                                  }
+                                                />
+                                                <span>
+                                                  {formatCount(
+                                                    Number(
+                                                      reply?.likesCount || 0,
+                                                    ),
+                                                  )}
+                                                </span>
+                                              </button>
+                                            </div>
+
+                                            {commentActionFeedback[replyId] && (
+                                              <p className="text-[11px] text-emerald-600 mt-1">
+                                                {commentActionFeedback[replyId]}
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -2242,61 +2897,95 @@ export default function Home() {
                   event.preventDefault();
                   handleSubmitComment(activeCommentStory.id);
                 }}
-                className="px-5 py-4 border-t border-slate-100 flex items-center gap-2"
+                className="px-5 py-4 border-t border-slate-100"
               >
-                {activeCommentState.editingCommentId && (
-                  <p className="text-xs text-sky-600 whitespace-nowrap">
-                    Editing comment
-                  </p>
-                )}
-                <input
-                  ref={commentInputRef}
-                  type="text"
-                  value={activeCommentState.input || ""}
-                  onChange={(event) =>
-                    handleCommentInputChange(
-                      activeCommentStory.id,
-                      event.target.value,
-                    )
-                  }
-                  placeholder={
-                    activeCommentState.editingCommentId
-                      ? "Edit your comment..."
-                      : "Write a comment..."
-                  }
-                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
-                />
-                {activeCommentState.editingCommentId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCommentsByStory((prev) => ({
-                        ...prev,
-                        [activeCommentStory.id]: {
-                          ...prev[activeCommentStory.id],
-                          input: "",
-                          editingCommentId: null,
-                        },
-                      }));
-                    }}
-                    className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    {activeCommentState.editingCommentId && (
+                      <p className="text-xs text-sky-600 whitespace-nowrap">
+                        Editing comment
+                      </p>
+                    )}
+                    {!activeCommentState.editingCommentId &&
+                      activeCommentState.replyingToCommentId && (
+                        <p className="text-xs text-rose-600 whitespace-nowrap">
+                          Replying to{" "}
+                          {activeCommentState.replyingToAuthor || "user"}
+                        </p>
+                      )}
+                    {!activeCommentState.editingCommentId &&
+                      !activeCommentState.replyingToCommentId &&
+                      activeCommentState.input.length ===
+                        COMMENT_CHARACTER_LIMIT && (
+                        <p className="text-xs text-rose-500">
+                          Comments can't be over 2200 characters.
+                        </p>
+                      )}
+                  </div>
+                  <p
+                    className={`shrink-0 text-[11px] font-medium ${
+                      (activeCommentState.input || "").length >=
+                      COMMENT_CHARACTER_LIMIT * 0.9
+                        ? "text-rose-600"
+                        : "text-slate-400"
+                    }`}
                   >
-                    Cancel
+                    {(activeCommentState.input || "").length}/
+                    {COMMENT_CHARACTER_LIMIT}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={commentInputRef}
+                    type="text"
+                    maxLength={COMMENT_CHARACTER_LIMIT}
+                    value={activeCommentState.input || ""}
+                    onChange={(event) =>
+                      handleCommentInputChange(
+                        activeCommentStory.id,
+                        event.target.value,
+                      )
+                    }
+                    placeholder={
+                      activeCommentState.editingCommentId
+                        ? "Edit your comment..."
+                        : activeCommentState.replyingToCommentId
+                          ? `Write a reply to ${activeCommentState.replyingToAuthor || "this comment"}...`
+                          : "Write a comment..."
+                    }
+                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
+                  />
+                  {(activeCommentState.editingCommentId ||
+                    activeCommentState.replyingToCommentId) && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCancelCommentComposer(activeCommentStory.id)
+                      }
+                      className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={activeCommentState.submitting}
+                    className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
+                  >
+                    {activeCommentState.submitting
+                      ? activeCommentState.editingCommentId
+                        ? "Updating..."
+                        : activeCommentState.replyingToCommentId
+                          ? "Replying..."
+                          : "Posting..."
+                      : activeCommentState.editingCommentId
+                        ? "Update"
+                        : activeCommentState.replyingToCommentId
+                          ? "Reply"
+                          : "Post"}
                   </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={activeCommentState.submitting}
-                  className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
-                >
-                  {activeCommentState.submitting
-                    ? activeCommentState.editingCommentId
-                      ? "Updating..."
-                      : "Posting..."
-                    : activeCommentState.editingCommentId
-                      ? "Update"
-                      : "Post"}
-                </button>
+                </div>
               </form>
             </div>
           </div>
