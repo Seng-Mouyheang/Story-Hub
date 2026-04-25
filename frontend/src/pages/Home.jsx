@@ -17,14 +17,21 @@ import {
   addStoryComment,
   updateStoryComment,
   deleteStoryComment,
+  getCommentReplies,
 } from "../api/story/storyCommentsApi";
 import {
   toggleStoryLike,
+  toggleCommentLike,
   toggleStoryBookmark,
   removeStoryBookmark,
   getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
+import CommentSection from "../components/CommentSection";
+import Toast from "../components/Toast";
+import { useToast } from "../lib/useToast";
 import {
+  AlertTriangle,
+  CheckCircle2,
   Heart,
   MessageCircle,
   Bookmark,
@@ -32,6 +39,7 @@ import {
   User,
   Plus,
   RefreshCcw,
+  X,
 } from "lucide-react";
 
 const formatCount = (value) => {
@@ -89,6 +97,35 @@ const normalizeId = (value) => {
   return String(value);
 };
 
+const createEmptyRepliesState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  loadingMore: false,
+  error: "",
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+});
+
+const createEmptyCommentState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  loadingMore: false,
+  error: "",
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+  input: "",
+  originalInput: "",
+  editingCommentId: null,
+  replyingToCommentId: null,
+  replyingToAuthor: "",
+  submitting: false,
+  repliesByComment: {},
+});
+
 /* -------------------- Story Circle -------------------- */
 const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
   const content = (
@@ -119,14 +156,14 @@ const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
         )}
       </div>
 
-      <span className="text-[11px] mx-auto sm:text-xs font-medium text-slate-700 whitespace-nowrap rounded-md px-1.5 py-0.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
+      <span className="block w-full max-w-16 sm:max-w-20 text-center text-[11px] sm:text-xs font-medium text-slate-700 truncate rounded-md px-1.5 py-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
         {name}
       </span>
     </>
   );
 
   return (
-    <div className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
+    <div className="flex flex-col items-center gap-2 shrink-0 p-2 cursor-pointer group transition duration-300 ease-out hover:scale-[1.04]">
       {isAdd ? (
         content
       ) : (
@@ -161,7 +198,6 @@ const PostCard = ({
   onToggleSave,
   onDoubleTapLike,
   onToggleMenu,
-  onReportStory,
   onEditStory,
   onDeleteStory,
   onToggleFollowAuthor,
@@ -369,7 +405,7 @@ const PostCard = ({
           </div>
         </div>
 
-        <div className="relative flex items-center gap-2">
+        <div className="relative flex items-center gap-2" data-story-menu>
           {!canManage && authorId ? (
             <button
               type="button"
@@ -388,27 +424,27 @@ const PostCard = ({
             </button>
           ) : null}
 
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleMenu(id);
-            }}
-            className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
-            aria-label="Story actions"
-          >
-            <MoreHorizontal size={20} />
-          </button>
+          {canManage ? (
+            <>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleMenu(id);
+                }}
+                className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
+                aria-label="Story actions"
+              >
+                <MoreHorizontal size={20} />
+              </button>
 
-          {isMenuOpen && (
-            <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
-              {canManage ? (
-                <>
+              {isMenuOpen && (
+                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
                       onEditStory(id);
                     }}
-                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
                   >
                     Edit
                   </button>
@@ -417,24 +453,14 @@ const PostCard = ({
                       event.stopPropagation();
                       onDeleteStory(id);
                     }}
-                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
                   >
                     Delete
                   </button>
-                </>
-              ) : (
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onReportStory(id);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
-                >
-                  Report
-                </button>
+                </div>
               )}
-            </div>
-          )}
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -533,7 +559,7 @@ const PostCard = ({
         <div className="flex items-center gap-4">
           <button
             onClick={() => onToggleLike(id)}
-            className={`flex items-center gap-2 transition-all duration-200 ${
+            className={`flex items-center gap-2 transition-all cursor-pointer duration-200 ${
               likedByCurrentUser
                 ? "text-rose-500"
                 : "text-slate-500 hover:text-rose-500"
@@ -554,7 +580,7 @@ const PostCard = ({
           </button>
           <button
             onClick={() => onOpenComments(id)}
-            className={`flex items-center gap-2 transition-all duration-200 ${
+            className={`flex items-center gap-2 transition-all cursor-pointer duration-200 ${
               commentsActive
                 ? "text-sky-500"
                 : "text-slate-500 hover:text-sky-500"
@@ -573,7 +599,7 @@ const PostCard = ({
         <div className="flex items-center gap-4 ml-auto">
           <button
             onClick={() => onToggleSave(id)}
-            className="text-rose-500 hover:text-rose-600 transition-colors duration-200"
+            className="text-rose-500 hover:text-rose-600 transition-colors duration-200 cursor-pointer"
             aria-label="Save story"
           >
             <Bookmark
@@ -673,16 +699,33 @@ export default function Home() {
   const [menuCommentId, setMenuCommentId] = useState(null);
   const [deleteTargetComment, setDeleteTargetComment] = useState(null);
   const [commentActionFeedback, setCommentActionFeedback] = useState({});
+  const [pendingCommentLikeIds, setPendingCommentLikeIds] = useState({});
+  const [commentLikePulseIds, setCommentLikePulseIds] = useState({});
   const [expandedStoryIds, setExpandedStoryIds] = useState({});
-  const [feedToast, setFeedToast] = useState(null);
-  const [isFeedToastVisible, setIsFeedToastVisible] = useState(false);
   const [isEndOfFeedVisible, setIsEndOfFeedVisible] = useState(false);
   const endOfFeedRef = useRef(null);
   const feedScrollRef = useRef(null);
   const commentInputRef = useRef(null);
-  const feedToastTimeoutRef = useRef(null);
-  const feedToastExitTimeoutRef = useRef(null);
+  const commentListRef = useRef(null);
+  const commentListSentinelRef = useRef(null);
   const hasShownEndToastRef = useRef(false);
+
+  const {
+    toast: feedToast,
+    isVisible: isFeedToastVisible,
+    isPaused: isFeedToastPaused,
+    duration,
+    showToast: showFeedToast,
+    hideToast: hideFeedToast,
+    pauseToast: pauseFeedToast,
+    resumeToast: resumeFeedToast,
+  } = useToast();
+
+  const resizeCommentTextarea = useCallback((textarea) => {
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
 
   const currentUserId = useMemo(() => {
     try {
@@ -867,7 +910,7 @@ export default function Home() {
       isMounted = false;
       abortController.abort();
     };
-  }, [currentUserId]);
+  }, [currentUserId, followingAccountsRefreshToken]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -926,52 +969,47 @@ export default function Home() {
     }
   }, []);
 
-  const hideFeedToast = useCallback(() => {
-    setIsFeedToastVisible(false);
+  const [currentUserProfilePicture, setCurrentUserProfilePicture] = useState(
+    () => {
+      try {
+        const currentUser = JSON.parse(
+          localStorage.getItem("currentUser") || "null",
+        );
+        return currentUser?.profilePicture || "";
+      } catch {
+        return "";
+      }
+    },
+  );
 
-    if (feedToastExitTimeoutRef.current) {
-      clearTimeout(feedToastExitTimeoutRef.current);
+  useEffect(() => {
+    let isMounted = true;
+    if (!currentUserId) {
+      if (isMounted) setCurrentUserProfilePicture("");
+      return () => {
+        isMounted = false;
+      };
     }
 
-    feedToastExitTimeoutRef.current = setTimeout(() => {
-      setFeedToast(null);
-      feedToastExitTimeoutRef.current = null;
-    }, 220);
-  }, []);
-
-  const showFeedToast = useCallback(
-    (message) => {
-      if (!message) {
-        return;
+    const loadCurrentUserProfile = async () => {
+      try {
+        const profilePayload = await getProfileByUserId(currentUserId);
+        if (isMounted) {
+          setCurrentUserProfilePicture(profilePayload?.profilePicture || "");
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentUserProfilePicture("");
+        }
       }
+    };
 
-      if (feedToastTimeoutRef.current) {
-        clearTimeout(feedToastTimeoutRef.current);
-      }
+    loadCurrentUserProfile();
 
-      if (feedToastExitTimeoutRef.current) {
-        clearTimeout(feedToastExitTimeoutRef.current);
-        feedToastExitTimeoutRef.current = null;
-      }
-
-      setFeedToast({
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        message,
-      });
-
-      setIsFeedToastVisible(false);
-
-      requestAnimationFrame(() => {
-        setIsFeedToastVisible(true);
-      });
-
-      feedToastTimeoutRef.current = setTimeout(() => {
-        hideFeedToast();
-        feedToastTimeoutRef.current = null;
-      }, 3200);
-    },
-    [hideFeedToast],
-  );
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
 
   useEffect(() => {
     const handleFollowUpdated = (event) => {
@@ -1018,6 +1056,33 @@ export default function Home() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [activeCommentStoryId]);
+
+  useEffect(() => {
+    if (!menuStoryId && !menuCommentId) {
+      return undefined;
+    }
+
+    const handlePointerDownOutsideMenu = (event) => {
+      if (!(event.target instanceof Element)) {
+        return;
+      }
+
+      if (event.target.closest("[data-story-menu],[data-comment-menu]")) {
+        return;
+      }
+
+      setMenuStoryId(null);
+      setMenuCommentId(null);
+    };
+
+    document.addEventListener("mousedown", handlePointerDownOutsideMenu);
+    document.addEventListener("touchstart", handlePointerDownOutsideMenu);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDownOutsideMenu);
+      document.removeEventListener("touchstart", handlePointerDownOutsideMenu);
+    };
+  }, [menuCommentId, menuStoryId]);
 
   const loadStories = useCallback(
     async (signal, paginationCursor = null) => {
@@ -1138,11 +1203,14 @@ export default function Home() {
         setHasMore(hasMoreStories);
       } catch (error) {
         if (error.name !== "AbortError") {
+          const errorMessage =
+            "Unable to load stories right now. Please try again.";
+
           if (isInitial) {
-            setPostsError(
-              "Unable to load stories right now. Please try again.",
-            );
+            setPostsError(errorMessage);
           }
+
+          showFeedToast(errorMessage, "error");
         }
       } finally {
         if (!signal?.aborted) {
@@ -1154,7 +1222,7 @@ export default function Home() {
         }
       }
     },
-    [currentUserId],
+    [currentUserId, showFeedToast],
   );
 
   useEffect(() => {
@@ -1165,23 +1233,35 @@ export default function Home() {
   }, [loadStories]);
 
   useEffect(() => {
-    const initialFocused =
-      location && location.state && location.state.focusedPostId;
+    const initialFocused = location?.state?.focusedPostId;
     if (!initialFocused) return;
-    // wait for posts to load and then scroll
+
     const tryScroll = () => {
       const el = document.getElementById(`post-${initialFocused}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!el) {
+        return;
       }
+
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      navigate(location.pathname, { replace: true, state: {} });
     };
 
-    // attempt after a frame in case posts are still rendering
     requestAnimationFrame(tryScroll);
     const t = setTimeout(tryScroll, 500);
 
     return () => clearTimeout(t);
-  }, [location, posts]);
+  }, [location, posts, navigate]);
+
+  const handleRefreshFeed = useCallback(() => {
+    hasShownEndToastRef.current = false;
+    hideFeedToast();
+    setIsEndOfFeedVisible(false);
+
+    feedScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+
+    const controller = new AbortController();
+    loadStories(controller.signal, null);
+  }, [hideFeedToast, loadStories]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -1200,7 +1280,13 @@ export default function Home() {
 
         if (!hasShownEndToastRef.current && posts.length > 0) {
           hasShownEndToastRef.current = true;
-          showFeedToast("You're all caught up. Scroll up to refresh.");
+          showFeedToast("You're all caught up. Scroll up to refresh.", "info", {
+            action: {
+              label: "Back to top & refresh",
+              icon: RefreshCcw,
+              onClick: handleRefreshFeed,
+            },
+          });
         }
       },
       { threshold: 0.1, rootMargin: "100px" },
@@ -1217,101 +1303,125 @@ export default function Home() {
         observer.unobserve(currentEndOfFeedRef);
       }
     };
-  }, [cursor, hasMore, loadStories, posts.length, showFeedToast]);
+  }, [
+    cursor,
+    hasMore,
+    handleRefreshFeed,
+    loadStories,
+    posts.length,
+    showFeedToast,
+  ]);
 
-  useEffect(
-    () => () => {
-      if (feedToastTimeoutRef.current) {
-        clearTimeout(feedToastTimeoutRef.current);
-      }
+  const fetchComments = useCallback(
+    async (storyId, cursor = null, append = false) => {
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...prev[storyId],
+          loading: !append,
+          loadingMore: append,
+          error: "",
+        },
+      }));
 
-      if (feedToastExitTimeoutRef.current) {
-        clearTimeout(feedToastExitTimeoutRef.current);
+      try {
+        const payload = await getStoryComments(storyId, {
+          limit: 10,
+          cursor,
+        });
+        const comments = Array.isArray(payload?.comments)
+          ? payload.comments
+          : [];
+
+        setCommentsByStory((prev) => {
+          const existingState = prev[storyId] || createEmptyCommentState();
+          const mergedItems = append
+            ? [...(existingState.items || []), ...comments]
+            : comments;
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...existingState,
+              loading: false,
+              loadingMore: false,
+              error: "",
+              loaded: true,
+              items: mergedItems.map((comment) => ({
+                ...comment,
+                replyCount: Number(comment?.replyCount || 0),
+              })),
+              nextCursor: payload?.nextCursor || null,
+              hasMore: Boolean(payload?.hasMore),
+            },
+          };
+        });
+      } catch {
+        setCommentsByStory((prev) => {
+          const existingState = prev[storyId] || createEmptyCommentState();
+          const shouldShowInlineError = Boolean(existingState.loaded);
+
+          if (!shouldShowInlineError) {
+            showFeedToast("Unable to load comments.", "error");
+          }
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...existingState,
+              loading: false,
+              loadingMore: false,
+              error: "Unable to load comments.",
+            },
+          };
+        });
       }
     },
-    [],
+    [showFeedToast],
   );
 
-  const fetchComments = useCallback(async (storyId) => {
-    setCommentsByStory((prev) => ({
-      ...prev,
-      [storyId]: {
-        ...prev[storyId],
-        loading: true,
-        error: "",
-      },
-    }));
+  const handleToggleLike = useCallback(
+    async (storyId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login", { replace: true });
+        return;
+      }
 
-    try {
-      const payload = await getStoryComments(storyId, { limit: 10 });
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
+      setLikePulseStoryId(storyId);
+      setTimeout(() => {
+        setLikePulseStoryId((currentId) =>
+          currentId === storyId ? null : currentId,
+        );
+      }, 220);
 
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...prev[storyId],
-          loading: false,
-          error: "",
-          loaded: true,
-          items: comments,
-        },
-      }));
-    } catch {
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...prev[storyId],
-          loading: false,
-          error: "Unable to load comments.",
-        },
-      }));
-    }
-  }, []);
-
-  const handleToggleLike = useCallback(async (storyId) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setPostsError("Please login to react to stories.");
-      return;
-    }
-
-    setLikePulseStoryId(storyId);
-    setTimeout(() => {
-      setLikePulseStoryId((currentId) =>
-        currentId === storyId ? null : currentId,
-      );
-    }, 220);
-
-    try {
-      const payload = await toggleStoryLike(storyId);
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === storyId
-            ? {
-                ...post,
-                likedByCurrentUser: Boolean(payload.likedByCurrentUser),
-                likesCount: Number(payload.likesCount || 0),
-              }
-            : post,
-        ),
-      );
-    } catch {
-      setPostsError("Failed to update reaction. Please try again.");
-    }
-  }, []);
+      try {
+        const payload = await toggleStoryLike(storyId);
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === storyId
+              ? {
+                  ...post,
+                  likedByCurrentUser: Boolean(payload.likedByCurrentUser),
+                  likesCount: Number(payload.likesCount || 0),
+                }
+              : post,
+          ),
+        );
+      } catch {
+        const errorMessage = "Failed to update reaction. Please try again.";
+        setPostsError(errorMessage);
+        showFeedToast(errorMessage, "error");
+      }
+    },
+    [navigate, showFeedToast],
+  );
 
   const handleToggleComments = useCallback(
     (storyId) => {
-      const current = commentsByStory[storyId] || {
-        open: false,
-        loaded: false,
-        loading: false,
-        error: "",
-        items: [],
-        input: "",
-        editingCommentId: null,
-        submitting: false,
-      };
+      const current = commentsByStory[storyId] || createEmptyCommentState();
 
       const nextOpen = !current.open;
 
@@ -1330,6 +1440,18 @@ export default function Home() {
     [commentsByStory, fetchComments],
   );
 
+  const handleLoadMoreComments = useCallback(
+    (storyId) => {
+      const current = commentsByStory[storyId] || createEmptyCommentState();
+      if (!current.hasMore || !current.nextCursor) {
+        return;
+      }
+
+      fetchComments(storyId, current.nextCursor, true);
+    },
+    [commentsByStory, fetchComments],
+  );
+
   const handleOpenCommentsModal = useCallback(
     (storyId) => {
       if (activeCommentStoryId === storyId) {
@@ -1342,6 +1464,43 @@ export default function Home() {
     },
     [activeCommentStoryId, handleToggleComments],
   );
+
+  useEffect(() => {
+    if (!activeCommentStoryId) {
+      return undefined;
+    }
+
+    const activeCommentState =
+      commentsByStory[activeCommentStoryId] || createEmptyCommentState();
+    const sentinel = commentListSentinelRef.current;
+    const root = commentListRef.current;
+
+    if (
+      !sentinel ||
+      !root ||
+      !activeCommentState.hasMore ||
+      activeCommentState.loading ||
+      activeCommentState.loadingMore
+    ) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          handleLoadMoreComments(activeCommentStoryId);
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 120px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeCommentStoryId, commentsByStory, handleLoadMoreComments]);
 
   const handleDoubleTapLike = useCallback(
     (storyId) => {
@@ -1360,19 +1519,137 @@ export default function Home() {
     [posts, handleToggleLike],
   );
 
+  const fetchReplies = useCallback(
+    async (storyId, commentId, cursor = null, append = false) => {
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...createEmptyRepliesState(),
+              ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+              loading: !append,
+              loadingMore: append,
+              error: "",
+            },
+          },
+        },
+      }));
+
+      try {
+        const payload = await getCommentReplies(commentId, {
+          limit: 4,
+          cursor,
+        });
+        const replies = Array.isArray(payload?.replies) ? payload.replies : [];
+
+        setCommentsByStory((prev) => {
+          const existingReplyState =
+            prev[storyId]?.repliesByComment?.[commentId] ||
+            createEmptyRepliesState();
+          const mergedItems = append
+            ? [...(existingReplyState.items || []), ...replies]
+            : replies;
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...prev[storyId],
+              repliesByComment: {
+                ...(prev[storyId]?.repliesByComment || {}),
+                [commentId]: {
+                  ...createEmptyRepliesState(),
+                  ...existingReplyState,
+                  loading: false,
+                  loaded: true,
+                  open: true,
+                  error: "",
+                  items: mergedItems,
+                  nextCursor: payload?.nextCursor || null,
+                  hasMore: Boolean(payload?.hasMore),
+                },
+              },
+            },
+          };
+        });
+      } catch {
+        showFeedToast("Unable to load replies.", "error");
+
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...prev[storyId],
+            repliesByComment: {
+              ...(prev[storyId]?.repliesByComment || {}),
+              [commentId]: {
+                ...createEmptyRepliesState(),
+                ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+                loading: false,
+                error: "Unable to load replies.",
+              },
+            },
+          },
+        }));
+      }
+    },
+    [showFeedToast],
+  );
+
+  const handleToggleReplies = useCallback(
+    (storyId, commentId) => {
+      const currentReplyState =
+        commentsByStory[storyId]?.repliesByComment?.[commentId] ||
+        createEmptyRepliesState();
+      const nextOpen = !currentReplyState.open;
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...currentReplyState,
+              open: nextOpen,
+            },
+          },
+        },
+      }));
+
+      if (nextOpen && !currentReplyState.loaded && !currentReplyState.loading) {
+        fetchReplies(storyId, commentId);
+      }
+    },
+    [commentsByStory, fetchReplies],
+  );
+
+  const handleLoadMoreReplies = useCallback(
+    (storyId, commentId) => {
+      const currentReplyState =
+        commentsByStory[storyId]?.repliesByComment?.[commentId] ||
+        createEmptyRepliesState();
+
+      if (!currentReplyState.hasMore || !currentReplyState.nextCursor) {
+        return;
+      }
+
+      fetchReplies(storyId, commentId, currentReplyState.nextCursor, true);
+    },
+    [commentsByStory, fetchReplies],
+  );
+
   const handleCommentInputChange = useCallback((storyId, input) => {
     setCommentsByStory((prev) => ({
       ...prev,
       [storyId]: {
-        ...(prev[storyId] || {
-          open: true,
-          loaded: true,
-          loading: false,
-          error: "",
-          items: [],
-          editingCommentId: null,
-          submitting: false,
-        }),
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
         input,
       },
     }));
@@ -1394,13 +1671,14 @@ export default function Home() {
     async (storyId) => {
       const token = localStorage.getItem("token");
       if (!token) {
-        setPostsError("Please login to comment.");
+        navigate("/login", { replace: true });
         return;
       }
 
       const current = commentsByStory[storyId];
       const content = current?.input?.trim();
       const editingCommentId = current?.editingCommentId || null;
+      const replyingToCommentId = current?.replyingToCommentId || null;
       if (!content) return;
 
       setCommentsByStory((prev) => ({
@@ -1419,41 +1697,115 @@ export default function Home() {
           setCommentsByStory((prev) => ({
             ...prev,
             [storyId]: {
+              ...createEmptyCommentState(),
               ...prev[storyId],
               submitting: false,
               input: "",
               editingCommentId: null,
+              replyingToCommentId: null,
+              replyingToAuthor: "",
               loaded: true,
               items: (prev[storyId]?.items || []).map((item) =>
                 String(item._id) === String(editingCommentId)
                   ? { ...item, content, isEdited: true }
                   : item,
               ),
+              repliesByComment: Object.fromEntries(
+                Object.entries(prev[storyId]?.repliesByComment || {}).map(
+                  ([parentId, replyState]) => [
+                    parentId,
+                    {
+                      ...replyState,
+                      items: (replyState?.items || []).map((item) =>
+                        String(item?._id || item?.id) ===
+                        String(editingCommentId)
+                          ? { ...item, content, isEdited: true }
+                          : item,
+                      ),
+                    },
+                  ],
+                ),
+              ),
             },
           }));
 
           showCommentActionFeedback(editingCommentId, "Comment updated");
+          showFeedToast("Comment updated.", "success");
         } else {
-          const payload = await addStoryComment(storyId, { content });
+          const payload = await addStoryComment(storyId, {
+            content,
+            parentId: replyingToCommentId,
+          });
+          const previousReplyState =
+            current?.repliesByComment?.[replyingToCommentId] ||
+            createEmptyRepliesState();
+          const didLoadReplies = Boolean(previousReplyState.loaded);
+
           const newComment = {
             _id: payload.commentId || `${Date.now()}`,
             userId: currentUserId,
             authorDisplayName: currentUsername,
+            authorProfilePicture: currentUserProfilePicture,
             content,
             createdAt: new Date().toISOString(),
+            likesCount: 0,
+            likedByCurrentUser: false,
+            isEdited: false,
+            parentId: replyingToCommentId,
+            replyCount: 0,
           };
 
-          setCommentsByStory((prev) => ({
-            ...prev,
-            [storyId]: {
-              ...prev[storyId],
-              submitting: false,
-              input: "",
-              editingCommentId: null,
-              loaded: true,
-              items: [newComment, ...(prev[storyId]?.items || [])],
-            },
-          }));
+          setCommentsByStory((prev) => {
+            const existingReplyState =
+              prev[storyId]?.repliesByComment?.[replyingToCommentId] || {};
+            const replyStateLoaded = existingReplyState.loaded === true;
+
+            return {
+              ...prev,
+              [storyId]: {
+                ...createEmptyCommentState(),
+                ...prev[storyId],
+                submitting: false,
+                input: "",
+                editingCommentId: null,
+                replyingToCommentId: null,
+                replyingToAuthor: "",
+                loaded: true,
+                items: replyingToCommentId
+                  ? (prev[storyId]?.items || []).map((item) =>
+                      String(item?._id || item?.id) ===
+                      String(replyingToCommentId)
+                        ? {
+                            ...item,
+                            replyCount: Number(item?.replyCount || 0) + 1,
+                          }
+                        : item,
+                    )
+                  : [newComment, ...(prev[storyId]?.items || [])],
+                repliesByComment: replyingToCommentId
+                  ? {
+                      ...(prev[storyId]?.repliesByComment || {}),
+                      [replyingToCommentId]: {
+                        ...createEmptyRepliesState(),
+                        ...existingReplyState,
+                        open: true,
+                        loaded: replyStateLoaded,
+                        loading: false,
+                        error: "",
+                        items: [
+                          ...(existingReplyState?.items || []),
+                          newComment,
+                        ],
+                      },
+                    }
+                  : prev[storyId]?.repliesByComment || {},
+              },
+            };
+          });
+
+          if (replyingToCommentId && !didLoadReplies) {
+            fetchReplies(storyId, replyingToCommentId);
+          }
 
           setCommentCountPulseStoryId(storyId);
           setTimeout(() => {
@@ -1469,16 +1821,21 @@ export default function Home() {
                 : post,
             ),
           );
+
+          showFeedToast("Comment posted.", "success");
         }
       } catch {
         setCommentsByStory((prev) => ({
           ...prev,
           [storyId]: {
+            ...createEmptyCommentState(),
             ...prev[storyId],
             submitting: false,
             error: editingCommentId
               ? "Failed to update comment."
-              : "Failed to post comment.",
+              : replyingToCommentId
+                ? "Failed to post reply."
+                : "Failed to post comment.",
           },
         }));
       }
@@ -1487,12 +1844,21 @@ export default function Home() {
       commentsByStory,
       currentUserId,
       currentUsername,
+      currentUserProfilePicture,
+      navigate,
       showCommentActionFeedback,
+      showFeedToast,
     ],
   );
 
   const handleToggleSave = useCallback(
     async (storyId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
       try {
         const isAlreadySaved = savedStoryIds.has(storyId);
 
@@ -1513,11 +1879,19 @@ export default function Home() {
 
           return next;
         });
+
+        showFeedToast(
+          isAlreadySaved
+            ? "Removed story from saved items."
+            : "Story saved successfully.",
+          "success",
+        );
       } catch (error) {
         console.error("Failed to toggle bookmark:", error);
+        showFeedToast("Failed to update bookmark. Please try again.", "error");
       }
     },
-    [savedStoryIds],
+    [savedStoryIds, navigate, showFeedToast],
   );
 
   const handleToggleMenu = useCallback((storyId) => {
@@ -1531,38 +1905,20 @@ export default function Home() {
     }));
   }, []);
 
-  const handleRefreshFeed = useCallback(() => {
-    hasShownEndToastRef.current = false;
-
-    if (feedToastTimeoutRef.current) {
-      clearTimeout(feedToastTimeoutRef.current);
-      feedToastTimeoutRef.current = null;
-    }
-
-    if (feedToastExitTimeoutRef.current) {
-      clearTimeout(feedToastExitTimeoutRef.current);
-      feedToastExitTimeoutRef.current = null;
-    }
-
-    setFeedToast(null);
-    setIsFeedToastVisible(false);
-    setIsEndOfFeedVisible(false);
-
-    feedScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-
-    const controller = new AbortController();
-    loadStories(controller.signal, null);
-  }, [loadStories]);
-
   const handleToggleFollowAuthor = useCallback(
     async (authorId) => {
       const normalizedTargetUserId = normalizeId(authorId);
 
-      if (
-        !normalizedTargetUserId ||
-        !currentUserId ||
-        normalizedTargetUserId === currentUserId
-      ) {
+      if (!normalizedTargetUserId) {
+        return;
+      }
+
+      if (!currentUserId) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (normalizedTargetUserId === currentUserId) {
         return;
       }
 
@@ -1606,8 +1962,18 @@ export default function Home() {
           ...previous,
           [normalizedTargetUserId]: confirmedFollowing,
         }));
+
+        showFeedToast(
+          confirmedFollowing
+            ? "You are now following this author."
+            : "You have unfollowed this author.",
+          "success",
+        );
       } catch {
-        // Keep current state when request fails.
+        showFeedToast(
+          "Unable to update follow status. Please try again.",
+          "error",
+        );
       } finally {
         setBusyFollowIds((previous) => ({
           ...previous,
@@ -1615,16 +1981,16 @@ export default function Home() {
         }));
       }
     },
-    [currentUserId, followStateByUserId],
+    [currentUserId, followStateByUserId, navigate, showFeedToast],
   );
 
-  const handleReportStory = useCallback((storyId) => {
-    setMenuStoryId(null);
-
-    setFeedToast({ message: `Report submitted for ${storyId}` });
-    setIsFeedToastVisible(true);
-    setTimeout(() => setIsFeedToastVisible(false), 1800);
-  }, []);
+  const handleReportStory = useCallback(
+    (storyId) => {
+      setMenuStoryId(null);
+      showFeedToast(`Report submitted for ${storyId}`, "success");
+    },
+    [showFeedToast],
+  );
 
   const handleEditStory = useCallback(
     (storyId) => {
@@ -1649,7 +2015,7 @@ export default function Home() {
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setPostsError("Please login to delete stories.");
+      navigate("/login", { replace: true });
       return;
     }
 
@@ -1661,14 +2027,120 @@ export default function Home() {
         setActiveCommentStoryId(null);
       }
     } catch (error) {
-      setPostsError(error.message || "Failed to delete story.");
+      const errorMessage = error.message || "Failed to delete story.";
+      setPostsError(errorMessage);
+      showFeedToast(errorMessage, "error");
     }
-  }, [activeCommentStoryId, deleteTargetStoryId]);
+  }, [activeCommentStoryId, deleteTargetStoryId, navigate, showFeedToast]);
 
   const handleToggleCommentMenu = useCallback((commentId) => {
     setMenuCommentId((currentId) =>
       currentId === commentId ? null : commentId,
     );
+  }, []);
+
+  const handleToggleCommentLike = useCallback(
+    async (storyId, commentId) => {
+      if (!storyId || !commentId || pendingCommentLikeIds[commentId]) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      setCommentLikePulseIds((prev) => ({ ...prev, [commentId]: true }));
+      setPendingCommentLikeIds((prev) => ({ ...prev, [commentId]: true }));
+
+      try {
+        const payload = await toggleCommentLike(commentId);
+
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            items: (prev[storyId]?.items || []).map((item) =>
+              String(item?._id || item?.id) === String(commentId)
+                ? {
+                    ...item,
+                    likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
+                    likesCount: Number(payload?.likesCount || 0),
+                  }
+                : item,
+            ),
+            repliesByComment: Object.fromEntries(
+              Object.entries(prev[storyId]?.repliesByComment || {}).map(
+                ([parentId, replyState]) => [
+                  parentId,
+                  {
+                    ...replyState,
+                    items: (replyState?.items || []).map((item) =>
+                      String(item?._id || item?.id) === String(commentId)
+                        ? {
+                            ...item,
+                            likedByCurrentUser: Boolean(
+                              payload?.likedByCurrentUser,
+                            ),
+                            likesCount: Number(payload?.likesCount || 0),
+                          }
+                        : item,
+                    ),
+                  },
+                ],
+              ),
+            ),
+          },
+        }));
+      } catch (error) {
+        showCommentActionFeedback(
+          commentId,
+          error.message || "Failed to update comment like.",
+        );
+      } finally {
+        setPendingCommentLikeIds((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
+
+        setTimeout(() => {
+          setCommentLikePulseIds((prev) => {
+            const next = { ...prev };
+            delete next[commentId];
+            return next;
+          });
+        }, 220);
+      }
+    },
+    [pendingCommentLikeIds, navigate, showCommentActionFeedback],
+  );
+
+  const handleStartReply = useCallback((storyId, comment) => {
+    setMenuCommentId(null);
+
+    const replyCommentId = String(comment?._id || comment?.id || "");
+    const replyAuthor = comment?.authorDisplayName || "Anonymous";
+
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: "",
+        editingCommentId: null,
+        replyingToCommentId: replyCommentId,
+        replyingToAuthor: replyAuthor,
+      },
+    }));
+
+    setTimeout(() => {
+      if (commentInputRef.current) {
+        commentInputRef.current.focus();
+      }
+    }, 0);
   }, []);
 
   const handleReportComment = useCallback(
@@ -1687,16 +2159,13 @@ export default function Home() {
     setCommentsByStory((prev) => ({
       ...prev,
       [storyId]: {
-        ...(prev[storyId] || {
-          open: true,
-          loaded: true,
-          loading: false,
-          error: "",
-          items: [],
-          submitting: false,
-        }),
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
         input: comment.content || "",
+        originalInput: comment.content || "",
         editingCommentId: commentId,
+        replyingToCommentId: null,
+        replyingToAuthor: "",
       },
     }));
 
@@ -1711,9 +2180,45 @@ export default function Home() {
     }, 0);
   }, []);
 
-  const handleDeleteComment = useCallback((storyId, commentId) => {
-    setMenuCommentId(null);
-    setDeleteTargetComment({ storyId, commentId });
+  const handleDeleteComment = useCallback(
+    (storyId, commentId) => {
+      setMenuCommentId(null);
+      const storyState = commentsByStory[storyId] || createEmptyCommentState();
+      const topLevelComment = (storyState.items || []).find(
+        (item) => String(item?._id || item?.id) === String(commentId),
+      );
+      const replyParentEntry = Object.entries(
+        storyState.repliesByComment || {},
+      ).find(([, replyState]) =>
+        (replyState?.items || []).some(
+          (item) => String(item?._id || item?.id) === String(commentId),
+        ),
+      );
+
+      setDeleteTargetComment({
+        storyId,
+        commentId,
+        replyCount: Number(topLevelComment?.replyCount || 0),
+        parentId:
+          normalizeId(topLevelComment?.parentId) ||
+          String(replyParentEntry?.[0] || ""),
+      });
+    },
+    [commentsByStory],
+  );
+
+  const handleCancelCommentComposer = useCallback((storyId) => {
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: "",
+        editingCommentId: null,
+        replyingToCommentId: null,
+        replyingToAuthor: "",
+      },
+    }));
   }, []);
 
   const handleConfirmDeleteComment = useCallback(async () => {
@@ -1721,12 +2226,17 @@ export default function Home() {
       return;
     }
 
-    const { storyId, commentId } = deleteTargetComment;
+    const {
+      storyId,
+      commentId,
+      parentId,
+      replyCount = 0,
+    } = deleteTargetComment;
     setDeleteTargetComment(null);
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setPostsError("Please login to delete comments.");
+      navigate("/login", { replace: true });
       return;
     }
 
@@ -1736,35 +2246,93 @@ export default function Home() {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
-          ...prev[storyId],
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
           editingCommentId:
             String(prev[storyId]?.editingCommentId || "") === String(commentId)
               ? null
               : prev[storyId]?.editingCommentId || null,
           input:
-            String(prev[storyId]?.editingCommentId || "") === String(commentId)
+            String(prev[storyId]?.editingCommentId || "") ===
+              String(commentId) ||
+            String(prev[storyId]?.replyingToCommentId || "") ===
+              String(commentId)
               ? ""
               : prev[storyId]?.input || "",
+          replyingToCommentId:
+            String(prev[storyId]?.replyingToCommentId || "") ===
+            String(commentId)
+              ? null
+              : prev[storyId]?.replyingToCommentId || null,
+          replyingToAuthor:
+            String(prev[storyId]?.replyingToCommentId || "") ===
+            String(commentId)
+              ? ""
+              : prev[storyId]?.replyingToAuthor || "",
           items: (prev[storyId]?.items || []).filter(
-            (item) => item._id !== commentId,
+            (item) => String(item?._id || item?.id) !== String(commentId),
+          ),
+          repliesByComment: Object.fromEntries(
+            Object.entries(prev[storyId]?.repliesByComment || {})
+              .map(([replyParentId, replyState]) => [
+                replyParentId,
+                {
+                  ...replyState,
+                  items: (replyState?.items || []).filter(
+                    (item) =>
+                      String(item?._id || item?.id) !== String(commentId),
+                  ),
+                },
+              ])
+              .filter(
+                ([replyParentId]) =>
+                  String(replyParentId) !== String(commentId),
+              ),
           ),
         },
       }));
+
+      if (parentId) {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            items: (prev[storyId]?.items || []).map((item) =>
+              String(item?._id || item?.id) === String(parentId)
+                ? {
+                    ...item,
+                    replyCount: Math.max(0, Number(item?.replyCount || 0) - 1),
+                  }
+                : item,
+            ),
+          },
+        }));
+      }
 
       setPosts((prev) =>
         prev.map((post) =>
           post.id === storyId
             ? {
                 ...post,
-                commentCount: Math.max(0, Number(post.commentCount || 0) - 1),
+                commentCount: Math.max(
+                  0,
+                  Number(post.commentCount || 0) -
+                    (parentId ? 1 : 1 + Number(replyCount || 0)),
+                ),
               }
             : post,
         ),
       );
+
+      showFeedToast("Comment deleted.", "success");
     } catch (error) {
-      setPostsError(error.message || "Failed to delete comment.");
+      showCommentActionFeedback(
+        commentId,
+        error.message || "Failed to delete comment.",
+      );
     }
-  }, [deleteTargetComment]);
+  }, [deleteTargetComment, navigate, showCommentActionFeedback, showFeedToast]);
 
   const accountCircles = useMemo(() => followingAccounts, [followingAccounts]);
 
@@ -1773,16 +2341,18 @@ export default function Home() {
   );
   const activeCommentState = activeCommentStoryId
     ? commentsByStory[activeCommentStoryId] || {
+        ...createEmptyCommentState(),
         open: true,
-        loaded: false,
-        loading: false,
-        error: "",
-        items: [],
-        input: "",
-        editingCommentId: null,
-        submitting: false,
       }
     : null;
+
+  useEffect(() => {
+    if (!activeCommentStoryId || !commentInputRef.current) {
+      return;
+    }
+
+    resizeCommentTextarea(commentInputRef.current);
+  }, [activeCommentStoryId, activeCommentState?.input, resizeCommentTextarea]);
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -1802,10 +2372,18 @@ export default function Home() {
                   Following accounts
                 </h2>
 
-                <div className="flex gap-4 sm:gap-6 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex md:gap-2 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {followingAccountsLoading ? (
-                    <div className="text-sm text-slate-500 px-2 py-4">
-                      Loading accounts...
+                    <div className="flex gap-4 sm:gap-5">
+                      {[...Array(3)].map((_, index) => (
+                        <div
+                          key={index}
+                          className="snap-start flex flex-col items-center gap-2 shrink-0 animate-pulse"
+                        >
+                          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-200" />
+                          <div className="h-3 w-12 rounded-full bg-slate-200" />
+                        </div>
+                      ))}
                     </div>
                   ) : accountCircles.length > 0 ? (
                     accountCircles.map((account, i) => (
@@ -1816,7 +2394,7 @@ export default function Home() {
                   ) : (
                     <Link
                       to="/explore"
-                      className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5"
+                      className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition duration-300 ease-out hover:scale-[1.04]"
                     >
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-slate-300 border-dashed p-1 relative bg-slate-50/80">
                         <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-slate-400">
@@ -1833,8 +2411,31 @@ export default function Home() {
 
               <section className="flex-1 min-h-0 flex flex-col py-4">
                 {isLoadingPosts && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                    Loading stories...
+                  <div className="space-y-5">
+                    {[...Array(3)].map((_, index) => (
+                      <div
+                        key={index}
+                        className="rounded-2xl bg-slate-100 p-5 sm:p-6 animate-pulse"
+                      >
+                        <div className="flex items-start gap-3 mb-4">
+                          <div className="h-10 w-10 rounded-full bg-slate-200" />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="h-4 w-1/3 rounded-full bg-slate-200" />
+                            <div className="h-3 w-1/4 rounded-full bg-slate-200" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="h-5 rounded-full bg-slate-200 w-5/6" />
+                          <div className="h-5 rounded-full bg-slate-200 w-full" />
+                          <div className="h-5 rounded-full bg-slate-200 w-2/3" />
+                          <div className="flex items-center gap-3 pt-4">
+                            <div className="h-9 w-20 rounded-full bg-slate-200" />
+                            <div className="h-9 w-16 rounded-full bg-slate-200" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -1983,243 +2584,40 @@ export default function Home() {
           </div>
         </main>
         {feedToast && (isEndOfFeedVisible || isFeedToastVisible) && (
-          <div className="pointer-events-none fixed right-4 bottom-4 z-50 w-[min(92vw,360px)]">
-            <div
-              className={`pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur px-4 py-3 transition-all duration-200 ease-out ${
-                isFeedToastVisible
-                  ? "translate-y-0 opacity-100"
-                  : "translate-y-4 opacity-0"
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 shrink-0 text-slate-500">
-                  <RefreshCcw size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-slate-900">
-                    Feed updated
-                  </p>
-                  <p className="mt-0.5 text-sm leading-snug text-slate-600">
-                    {feedToast.message}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleRefreshFeed}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
-                  >
-                    <RefreshCcw size={12} />
-                    Back to top & refresh
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <Toast
+            toast={feedToast}
+            isVisible={isFeedToastVisible}
+            isPaused={isFeedToastPaused}
+            durationMs={duration}
+            onClose={hideFeedToast}
+            onPause={pauseFeedToast}
+            onResume={resumeFeedToast}
+          />
         )}
-        {activeCommentStory && activeCommentState && (
-          <div
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
-            onClick={() => setActiveCommentStoryId(null)}
-          >
-            <div
-              className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[85vh] flex flex-col"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <div>
-                  <h3 className="font-semibold text-slate-900">Comments</h3>
-                  <p className="text-xs text-slate-400 truncate max-w-[260px]">
-                    {activeCommentStory.title}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setActiveCommentStoryId(null)}
-                  className="text-sm text-slate-500 hover:text-slate-700"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                {activeCommentState.loading && (
-                  <p className="text-xs text-slate-500">Loading comments...</p>
-                )}
-
-                {!activeCommentState.loading && activeCommentState.error && (
-                  <p className="text-xs text-red-500">
-                    {activeCommentState.error}
-                  </p>
-                )}
-
-                {!activeCommentState.loading &&
-                  !activeCommentState.error &&
-                  activeCommentState.items.length === 0 && (
-                    <p className="text-xs text-gray-500">
-                      No comments yet. Be the first to comment.
-                    </p>
-                  )}
-
-                {!activeCommentState.loading &&
-                  !activeCommentState.error &&
-                  activeCommentState.items.map((comment) => {
-                    const commentId = String(comment._id);
-                    const commentOwnerId = normalizeId(comment.userId);
-                    const canManageComment =
-                      Boolean(currentUserId) &&
-                      commentOwnerId === currentUserId;
-
-                    return (
-                      <div
-                        key={comment._id}
-                        className="rounded-xl bg-gray-50 px-3 py-2"
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          {commentOwnerId ? (
-                            <Link
-                              to={`/profile/${commentOwnerId}`}
-                              className="text-xs font-semibold text-slate-700 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                            >
-                              {comment.authorDisplayName || "Anonymous"}
-                            </Link>
-                          ) : (
-                            <p className="text-xs font-semibold text-slate-700">
-                              {comment.authorDisplayName || "Anonymous"}
-                            </p>
-                          )}
-
-                          <div className="relative">
-                            <button
-                              onClick={() => handleToggleCommentMenu(commentId)}
-                              className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
-                              aria-label="Comment actions"
-                            >
-                              <MoreHorizontal size={16} />
-                            </button>
-
-                            {menuCommentId === commentId && (
-                              <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                                {canManageComment ? (
-                                  <>
-                                    <button
-                                      onClick={() =>
-                                        handleEditComment(
-                                          activeCommentStory.id,
-                                          comment,
-                                        )
-                                      }
-                                      className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        handleDeleteComment(
-                                          activeCommentStory.id,
-                                          commentId,
-                                        )
-                                      }
-                                      className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                                    >
-                                      Delete
-                                    </button>
-                                  </>
-                                ) : (
-                                  <button
-                                    onClick={() =>
-                                      handleReportComment(commentId)
-                                    }
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
-                                  >
-                                    Report
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        <p className="text-sm text-slate-700">
-                          {comment.content}
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-1">
-                          {getRelativeTime(comment.createdAt)}
-                        </p>
-
-                        {commentActionFeedback[commentId] && (
-                          <p className="text-[11px] text-emerald-600 mt-1">
-                            {commentActionFeedback[commentId]}
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleSubmitComment(activeCommentStory.id);
-                }}
-                className="px-5 py-4 border-t border-slate-100 flex items-center gap-2"
-              >
-                {activeCommentState.editingCommentId && (
-                  <p className="text-xs text-sky-600 whitespace-nowrap">
-                    Editing comment
-                  </p>
-                )}
-                <input
-                  ref={commentInputRef}
-                  type="text"
-                  value={activeCommentState.input || ""}
-                  onChange={(event) =>
-                    handleCommentInputChange(
-                      activeCommentStory.id,
-                      event.target.value,
-                    )
-                  }
-                  placeholder={
-                    activeCommentState.editingCommentId
-                      ? "Edit your comment..."
-                      : "Write a comment..."
-                  }
-                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
-                />
-                {activeCommentState.editingCommentId && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCommentsByStory((prev) => ({
-                        ...prev,
-                        [activeCommentStory.id]: {
-                          ...prev[activeCommentStory.id],
-                          input: "",
-                          editingCommentId: null,
-                        },
-                      }));
-                    }}
-                    className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
-                  >
-                    Cancel
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  disabled={activeCommentState.submitting}
-                  className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
-                >
-                  {activeCommentState.submitting
-                    ? activeCommentState.editingCommentId
-                      ? "Updating..."
-                      : "Posting..."
-                    : activeCommentState.editingCommentId
-                      ? "Update"
-                      : "Post"}
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
+        <CommentSection
+          story={activeCommentStory}
+          commentState={activeCommentState}
+          activeMenuCommentId={menuCommentId}
+          currentUserId={currentUserId}
+          commentActionFeedback={commentActionFeedback}
+          pendingCommentLikeIds={pendingCommentLikeIds}
+          commentLikePulseIds={commentLikePulseIds}
+          commentListRef={commentListRef}
+          commentListSentinelRef={commentListSentinelRef}
+          commentInputRef={commentInputRef}
+          onClose={() => setActiveCommentStoryId(null)}
+          onToggleCommentLike={handleToggleCommentLike}
+          onToggleCommentMenu={handleToggleCommentMenu}
+          onEditComment={handleEditComment}
+          onDeleteComment={handleDeleteComment}
+          onReportComment={handleReportComment}
+          onStartReply={handleStartReply}
+          onToggleReplies={handleToggleReplies}
+          onLoadMoreReplies={handleLoadMoreReplies}
+          onCancelCommentComposer={handleCancelCommentComposer}
+          onCommentInputChange={handleCommentInputChange}
+          onSubmitComment={handleSubmitComment}
+        />
 
         {deleteTargetStoryId && (
           <div
@@ -2240,13 +2638,13 @@ export default function Home() {
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={() => setDeleteTargetStoryId(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 cursor-pointer hover:text-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmDeleteStory}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg cursor-pointer bg-rose-500 text-white hover:bg-rose-600"
                 >
                   Delete
                 </button>
@@ -2274,13 +2672,13 @@ export default function Home() {
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={() => setDeleteTargetComment(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 cursor-pointer hover:text-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmDeleteComment}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg cursor-pointer bg-rose-500 text-white hover:bg-rose-600"
                 >
                   Delete
                 </button>

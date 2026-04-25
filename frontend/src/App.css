@@ -25,3 +25,12 @@ body,
   margin: 0;
   padding: 0;
 }
+
+@keyframes toastCountDown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
