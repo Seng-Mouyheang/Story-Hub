@@ -4,6 +4,8 @@ import { useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
+import Toast from "../components/Toast";
+import { useToast } from "../lib/useToast";
 import {
   Lock,
   LockOpen,
@@ -12,8 +14,6 @@ import {
   Loader2,
   SendHorizontal,
   X,
-  CheckCircle2,
-  AlertCircle,
 } from "lucide-react";
 import {
   normalizeId,
@@ -198,8 +198,6 @@ function ModalDialog({
 
 export default function Confession() {
   // NOSONAR
-  const TOAST_DURATION_MS = 3200;
-  const TOAST_EXIT_MS = 220;
   const [confession, setConfession] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [visibility, setVisibility] = useState("public");
@@ -210,7 +208,6 @@ export default function Confession() {
   const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
   const [feedError, setFeedError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [toast, setToast] = useState(null);
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
   const [pendingLikeIds, setPendingLikeIds] = useState(() => new Set());
@@ -230,83 +227,36 @@ export default function Confession() {
   const lastTapRef = useRef({ confessionId: "", time: 0 });
   const pendingLikeIdsRef = useRef(new Set());
   const pendingBookmarkIdsRef = useRef(new Set());
-  const toastTimeoutRef = useRef(null);
-  const toastExitTimeoutRef = useRef(null);
   const pressedLikeTimerRef = useRef(null);
   const pressedBookmarkTimerRef = useRef(null);
   const gestureLikeBurstTimerRef = useRef(null);
-  const [isToastVisible, setIsToastVisible] = useState(false);
+  const {
+    toast,
+    isVisible: isToastVisible,
+    isPaused: isToastPaused,
+    showToast,
+    hideToast,
+    pauseToast,
+    resumeToast,
+  } = useToast();
   const commentDialogTitleId = "confession-comments-dialog-title";
   const editDialogTitleId = "confession-edit-dialog-title";
   const deleteDialogTitleId = "confession-delete-dialog-title";
 
-  const hideToast = React.useCallback(() => {
-    setIsToastVisible(false);
-
-    if (toastExitTimeoutRef.current) {
-      clearTimeout(toastExitTimeoutRef.current);
-    }
-
-    toastExitTimeoutRef.current = setTimeout(() => {
-      setToast(null);
-      toastExitTimeoutRef.current = null;
-    }, TOAST_EXIT_MS);
-  }, [TOAST_EXIT_MS]);
-
   const dismissToast = React.useCallback(() => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-      toastTimeoutRef.current = null;
-    }
-
     hideToast();
   }, [hideToast]);
 
-  const showToast = React.useCallback(
-    (type, message) => {
-      if (!message) {
-        return;
-      }
-
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
-
-      if (toastExitTimeoutRef.current) {
-        clearTimeout(toastExitTimeoutRef.current);
-        toastExitTimeoutRef.current = null;
-      }
-
-      setToast({
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        type,
-        message,
-      });
-
-      setIsToastVisible(false);
-
-      requestAnimationFrame(() => {
-        setIsToastVisible(true);
-      });
-
-      toastTimeoutRef.current = setTimeout(() => {
-        hideToast();
-        toastTimeoutRef.current = null;
-      }, TOAST_DURATION_MS);
-    },
-    [TOAST_DURATION_MS, hideToast],
-  );
-
   const showError = React.useCallback(
     (message) => {
-      showToast("error", message);
+      showToast(message, "error");
     },
     [showToast],
   );
 
   const showSuccess = React.useCallback(
     (message) => {
-      showToast("success", message);
+      showToast(message, "success");
     },
     [showToast],
   );
@@ -923,14 +873,6 @@ export default function Confession() {
 
   React.useEffect(
     () => () => {
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
-
-      if (toastExitTimeoutRef.current) {
-        clearTimeout(toastExitTimeoutRef.current);
-      }
-
       if (pressedLikeTimerRef.current) {
         clearTimeout(pressedLikeTimerRef.current);
       }
@@ -1330,75 +1272,15 @@ export default function Confession() {
       </div>
 
       {toast && (
-        <div className="pointer-events-none fixed right-4 top-4 z-90 w-[min(92vw,360px)]">
-          <div
-            className={`pointer-events-auto rounded-2xl border bg-white/95 shadow-2xl backdrop-blur px-4 py-3 transition-all duration-200 ease-out ${
-              isToastVisible
-                ? "translate-x-0 opacity-100"
-                : "translate-x-8 opacity-0"
-            } ${
-              {
-                success: "border-emerald-200",
-                error: "border-rose-200",
-              }[toast.type]
-            }`}
-            role="status"
-            aria-live="polite"
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className={`mt-0.5 shrink-0 ${
-                  toast.type === "success"
-                    ? "text-emerald-600"
-                    : "text-rose-600"
-                }`}
-              >
-                {toast.type === "success" ? (
-                  <CheckCircle2 size={18} />
-                ) : (
-                  <AlertCircle size={18} />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold text-slate-900">
-                  {toast.type === "success" ? "Done" : "Alert"}
-                </p>
-                <p className="mt-0.5 text-sm leading-snug text-slate-600 wrap-break-word">
-                  {toast.message}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={dismissToast}
-                className="shrink-0 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-                aria-label="Dismiss notification"
-              >
-                <X size={14} />
-              </button>
-            </div>
-            <div className="mt-3 h-1 overflow-hidden rounded-full bg-slate-100">
-              <div
-                key={toast.id}
-                className={`h-full origin-left ${
-                  toast.type === "success"
-                    ? "bg-emerald-500/70"
-                    : "bg-rose-500/70"
-                }`}
-                style={{
-                  animation: `toastCountDown ${TOAST_DURATION_MS}ms linear forwards`,
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        <Toast
+          toast={toast}
+          isVisible={isToastVisible}
+          isPaused={isToastPaused}
+          onClose={dismissToast}
+          onPause={pauseToast}
+          onResume={resumeToast}
+        />
       )}
-
-      <style>{`
-        @keyframes toastCountDown {
-          from { transform: scaleX(1); }
-          to { transform: scaleX(0); }
-        }
-      `}</style>
     </div>
   );
 }
