@@ -95,16 +95,22 @@ const createEmptyRepliesState = () => ({
   open: false,
   loaded: false,
   loading: false,
+  loadingMore: false,
   error: "",
   items: [],
+  nextCursor: null,
+  hasMore: false,
 });
 
 const createEmptyCommentState = () => ({
   open: false,
   loaded: false,
   loading: false,
+  loadingMore: false,
   error: "",
   items: [],
+  nextCursor: null,
+  hasMore: false,
   input: "",
   editingCommentId: null,
   replyingToCommentId: null,
@@ -419,7 +425,7 @@ const PostCard = ({
               event.stopPropagation();
               onToggleMenu(id);
             }}
-            className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+            className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
             aria-label="Story actions"
           >
             <MoreHorizontal size={20} />
@@ -434,7 +440,7 @@ const PostCard = ({
                       event.stopPropagation();
                       onEditStory(id);
                     }}
-                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
                   >
                     Edit
                   </button>
@@ -443,7 +449,7 @@ const PostCard = ({
                       event.stopPropagation();
                       onDeleteStory(id);
                     }}
-                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
                   >
                     Delete
                   </button>
@@ -454,7 +460,7 @@ const PostCard = ({
                     event.stopPropagation();
                     onReportStory(id);
                   }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
                 >
                   Report
                 </button>
@@ -559,7 +565,7 @@ const PostCard = ({
         <div className="flex items-center gap-4">
           <button
             onClick={() => onToggleLike(id)}
-            className={`flex items-center gap-2 transition-all duration-200 ${
+            className={`flex items-center gap-2 transition-all cursor-pointer duration-200 ${
               likedByCurrentUser
                 ? "text-rose-500"
                 : "text-slate-500 hover:text-rose-500"
@@ -580,7 +586,7 @@ const PostCard = ({
           </button>
           <button
             onClick={() => onOpenComments(id)}
-            className={`flex items-center gap-2 transition-all duration-200 ${
+            className={`flex items-center gap-2 transition-all cursor-pointer duration-200 ${
               commentsActive
                 ? "text-sky-500"
                 : "text-slate-500 hover:text-sky-500"
@@ -599,7 +605,7 @@ const PostCard = ({
         <div className="flex items-center gap-4 ml-auto">
           <button
             onClick={() => onToggleSave(id)}
-            className="text-rose-500 hover:text-rose-600 transition-colors duration-200"
+            className="text-rose-500 hover:text-rose-600 transition-colors duration-200 cursor-pointer"
             aria-label="Save story"
           >
             <Bookmark
@@ -707,9 +713,17 @@ export default function Home() {
   const endOfFeedRef = useRef(null);
   const feedScrollRef = useRef(null);
   const commentInputRef = useRef(null);
+  const commentListRef = useRef(null);
+  const commentListSentinelRef = useRef(null);
   const feedToastTimeoutRef = useRef(null);
   const feedToastExitTimeoutRef = useRef(null);
   const hasShownEndToastRef = useRef(false);
+
+  const resizeCommentTextarea = useCallback((textarea) => {
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }, []);
 
   const currentUserId = useMemo(() => {
     try {
@@ -1286,46 +1300,66 @@ export default function Home() {
     [],
   );
 
-  const fetchComments = useCallback(async (storyId) => {
-    setCommentsByStory((prev) => ({
-      ...prev,
-      [storyId]: {
-        ...prev[storyId],
-        loading: true,
-        error: "",
-      },
-    }));
-
-    try {
-      const payload = await getStoryComments(storyId, { limit: 10 });
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
-
+  const fetchComments = useCallback(
+    async (storyId, cursor = null, append = false) => {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
-          ...createEmptyCommentState(),
           ...prev[storyId],
-          loading: false,
+          loading: !append,
+          loadingMore: append,
           error: "",
-          loaded: true,
-          items: comments.map((comment) => ({
-            ...comment,
-            replyCount: Number(comment?.replyCount || 0),
-          })),
         },
       }));
-    } catch {
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...createEmptyCommentState(),
-          ...prev[storyId],
-          loading: false,
-          error: "Unable to load comments.",
-        },
-      }));
-    }
-  }, []);
+
+      try {
+        const payload = await getStoryComments(storyId, {
+          limit: 10,
+          cursor,
+        });
+        const comments = Array.isArray(payload?.comments)
+          ? payload.comments
+          : [];
+
+        setCommentsByStory((prev) => {
+          const existingState = prev[storyId] || createEmptyCommentState();
+          const mergedItems = append
+            ? [...(existingState.items || []), ...comments]
+            : comments;
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...existingState,
+              loading: false,
+              loadingMore: false,
+              error: "",
+              loaded: true,
+              items: mergedItems.map((comment) => ({
+                ...comment,
+                replyCount: Number(comment?.replyCount || 0),
+              })),
+              nextCursor: payload?.nextCursor || null,
+              hasMore: Boolean(payload?.hasMore),
+            },
+          };
+        });
+      } catch {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...prev[storyId],
+            loading: false,
+            loadingMore: false,
+            error: "Unable to load comments.",
+          },
+        }));
+      }
+    },
+    [],
+  );
 
   const handleToggleLike = useCallback(async (storyId) => {
     const token = localStorage.getItem("token");
@@ -1380,6 +1414,18 @@ export default function Home() {
     [commentsByStory, fetchComments],
   );
 
+  const handleLoadMoreComments = useCallback(
+    (storyId) => {
+      const current = commentsByStory[storyId] || createEmptyCommentState();
+      if (!current.hasMore || !current.nextCursor) {
+        return;
+      }
+
+      fetchComments(storyId, current.nextCursor, true);
+    },
+    [commentsByStory, fetchComments],
+  );
+
   const handleOpenCommentsModal = useCallback(
     (storyId) => {
       if (activeCommentStoryId === storyId) {
@@ -1392,6 +1438,43 @@ export default function Home() {
     },
     [activeCommentStoryId, handleToggleComments],
   );
+
+  useEffect(() => {
+    if (!activeCommentStoryId) {
+      return undefined;
+    }
+
+    const activeCommentState =
+      commentsByStory[activeCommentStoryId] || createEmptyCommentState();
+    const sentinel = commentListSentinelRef.current;
+    const root = commentListRef.current;
+
+    if (
+      !sentinel ||
+      !root ||
+      !activeCommentState.hasMore ||
+      activeCommentState.loading ||
+      activeCommentState.loadingMore
+    ) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          handleLoadMoreComments(activeCommentStoryId);
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 120px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeCommentStoryId, commentsByStory, handleLoadMoreComments]);
 
   const handleDoubleTapLike = useCallback(
     (storyId) => {
@@ -1410,28 +1493,8 @@ export default function Home() {
     [posts, handleToggleLike],
   );
 
-  const fetchReplies = useCallback(async (storyId, commentId) => {
-    setCommentsByStory((prev) => ({
-      ...prev,
-      [storyId]: {
-        ...createEmptyCommentState(),
-        ...(prev[storyId] || {}),
-        repliesByComment: {
-          ...(prev[storyId]?.repliesByComment || {}),
-          [commentId]: {
-            ...createEmptyRepliesState(),
-            ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
-            loading: true,
-            error: "",
-          },
-        },
-      },
-    }));
-
-    try {
-      const payload = await getCommentReplies(commentId, { limit: 10 });
-      const replies = Array.isArray(payload?.replies) ? payload.replies : [];
-
+  const fetchReplies = useCallback(
+    async (storyId, commentId, cursor = null, append = false) => {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
@@ -1442,34 +1505,72 @@ export default function Home() {
             [commentId]: {
               ...createEmptyRepliesState(),
               ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
-              loading: false,
-              loaded: true,
-              open: true,
+              loading: !append,
+              loadingMore: append,
               error: "",
-              items: replies,
             },
           },
         },
       }));
-    } catch {
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...createEmptyCommentState(),
-          ...(prev[storyId] || {}),
-          repliesByComment: {
-            ...(prev[storyId]?.repliesByComment || {}),
-            [commentId]: {
-              ...createEmptyRepliesState(),
-              ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
-              loading: false,
-              error: "Unable to load replies.",
+
+      try {
+        const payload = await getCommentReplies(commentId, {
+          limit: 4,
+          cursor,
+        });
+        const replies = Array.isArray(payload?.replies) ? payload.replies : [];
+
+        setCommentsByStory((prev) => {
+          const existingReplyState =
+            prev[storyId]?.repliesByComment?.[commentId] ||
+            createEmptyRepliesState();
+          const mergedItems = append
+            ? [...(existingReplyState.items || []), ...replies]
+            : replies;
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...prev[storyId],
+              repliesByComment: {
+                ...(prev[storyId]?.repliesByComment || {}),
+                [commentId]: {
+                  ...createEmptyRepliesState(),
+                  ...existingReplyState,
+                  loading: false,
+                  loaded: true,
+                  open: true,
+                  error: "",
+                  items: mergedItems,
+                  nextCursor: payload?.nextCursor || null,
+                  hasMore: Boolean(payload?.hasMore),
+                },
+              },
+            },
+          };
+        });
+      } catch {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...prev[storyId],
+            repliesByComment: {
+              ...(prev[storyId]?.repliesByComment || {}),
+              [commentId]: {
+                ...createEmptyRepliesState(),
+                ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+                loading: false,
+                error: "Unable to load replies.",
+              },
             },
           },
-        },
-      }));
-    }
-  }, []);
+        }));
+      }
+    },
+    [],
+  );
 
   const handleToggleReplies = useCallback(
     (storyId, commentId) => {
@@ -1496,6 +1597,21 @@ export default function Home() {
       if (nextOpen && !currentReplyState.loaded && !currentReplyState.loading) {
         fetchReplies(storyId, commentId);
       }
+    },
+    [commentsByStory, fetchReplies],
+  );
+
+  const handleLoadMoreReplies = useCallback(
+    (storyId, commentId) => {
+      const currentReplyState =
+        commentsByStory[storyId]?.repliesByComment?.[commentId] ||
+        createEmptyRepliesState();
+
+      if (!currentReplyState.hasMore || !currentReplyState.nextCursor) {
+        return;
+      }
+
+      fetchReplies(storyId, commentId, currentReplyState.nextCursor, true);
     },
     [commentsByStory, fetchReplies],
   );
@@ -2159,6 +2275,14 @@ export default function Home() {
       }
     : null;
 
+  useEffect(() => {
+    if (!activeCommentStoryId || !commentInputRef.current) {
+      return;
+    }
+
+    resizeCommentTextarea(commentInputRef.current);
+  }, [activeCommentStoryId, activeCommentState?.input, resizeCommentTextarea]);
+
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       <Sidebar />
@@ -2410,16 +2534,46 @@ export default function Home() {
                 </div>
                 <button
                   onClick={() => setActiveCommentStoryId(null)}
-                  className="text-sm text-slate-500 hover:text-slate-700"
+                  className="text-sm text-slate-500 cursor-pointer hover:text-slate-700"
                 >
                   Close
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                {activeCommentState.loading && (
-                  <p className="text-xs text-slate-500">Loading comments...</p>
-                )}
+              <div
+                ref={commentListRef}
+                className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+              >
+                {activeCommentState.loading &&
+                  activeCommentState.items.length > 0 && (
+                    <p className="text-xs text-slate-500">
+                      Loading comments...
+                    </p>
+                  )}
+
+                {activeCommentState.loading &&
+                  activeCommentState.items.length === 0 && (
+                    <div className="space-y-3">
+                      {[...Array(3)].map((_, index) => (
+                        <div
+                          key={index}
+                          className="rounded-xl bg-slate-100 p-3 space-y-3 animate-pulse"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-8 w-8 rounded-full bg-slate-200" />
+                            <div className="space-y-2 flex-1">
+                              <div className="h-3 w-1/3 rounded-full bg-slate-200" />
+                              <div className="h-2 w-1/4 rounded-full bg-slate-200" />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="h-3 rounded-full bg-slate-200" />
+                            <div className="h-3 rounded-full bg-slate-200 w-5/6" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                 {!activeCommentState.loading && activeCommentState.error && (
                   <p className="text-xs text-red-500">
@@ -2435,8 +2589,7 @@ export default function Home() {
                     </p>
                   )}
 
-                {!activeCommentState.loading &&
-                  !activeCommentState.error &&
+                {!activeCommentState.error &&
                   activeCommentState.items.map((comment) => {
                     const commentId = String(comment._id);
                     const commentOwnerId = normalizeId(comment.userId);
@@ -2526,7 +2679,7 @@ export default function Home() {
                                   onClick={() =>
                                     handleToggleCommentMenu(commentId)
                                   }
-                                  className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+                                  className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
                                   aria-label="Comment actions"
                                 >
                                   <MoreHorizontal size={16} />
@@ -2544,7 +2697,7 @@ export default function Home() {
                                               comment,
                                             )
                                           }
-                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
                                         >
                                           Edit
                                         </button>
@@ -2556,7 +2709,7 @@ export default function Home() {
                                               commentId,
                                             )
                                           }
-                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
                                         >
                                           Delete
                                         </button>
@@ -2567,7 +2720,7 @@ export default function Home() {
                                         onClick={() =>
                                           handleReportComment(commentId)
                                         }
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
                                       >
                                         Report
                                       </button>
@@ -2624,7 +2777,7 @@ export default function Home() {
                                     comment,
                                   )
                                 }
-                                className="text-xs font-medium text-slate-500 transition-colors hover:text-slate-700"
+                                className="text-xs font-medium text-slate-500 cursor-pointer transition-colors hover:text-slate-700"
                               >
                                 Reply
                               </button>
@@ -2637,7 +2790,7 @@ export default function Home() {
                                       commentId,
                                     )
                                   }
-                                  className="text-xs font-medium text-slate-500 transition-colors hover:text-slate-700"
+                                  className="text-xs font-medium text-slate-500 cursor-pointer transition-colors hover:text-slate-700"
                                 >
                                   {replyState.open
                                     ? `Hide replies (${formatCount(replyCount)})`
@@ -2654,9 +2807,16 @@ export default function Home() {
 
                             {replyState.open && (
                               <div className="mt-3 space-y-2 border-l border-slate-200 pl-3">
-                                {replyState.loading && (
+                                {replyState.loading &&
+                                  replyState.items.length === 0 && (
+                                    <p className="text-[11px] text-slate-500">
+                                      Loading replies...
+                                    </p>
+                                  )}
+
+                                {replyState.loadingMore && (
                                   <p className="text-[11px] text-slate-500">
-                                    Loading replies...
+                                    Loading more replies...
                                   </p>
                                 )}
 
@@ -2772,7 +2932,7 @@ export default function Home() {
                                                       replyId,
                                                     )
                                                   }
-                                                  className="text-slate-400 hover:text-slate-600 transition-colors duration-200"
+                                                  className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
                                                   aria-label="Reply actions"
                                                 >
                                                   <MoreHorizontal size={14} />
@@ -2790,7 +2950,7 @@ export default function Home() {
                                                               reply,
                                                             )
                                                           }
-                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
                                                         >
                                                           Edit
                                                         </button>
@@ -2802,7 +2962,7 @@ export default function Home() {
                                                               replyId,
                                                             )
                                                           }
-                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
                                                         >
                                                           Delete
                                                         </button>
@@ -2815,7 +2975,7 @@ export default function Home() {
                                                             replyId,
                                                           )
                                                         }
-                                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 hover:bg-amber-50"
+                                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
                                                       >
                                                         Report
                                                       </button>
@@ -2883,6 +3043,27 @@ export default function Home() {
                                       </div>
                                     );
                                   })}
+
+                                {replyState.hasMore && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleLoadMoreReplies(
+                                        activeCommentStory.id,
+                                        commentId,
+                                      )
+                                    }
+                                    className="text-xs font-semibold text-rose-600 cursor-pointer hover:text-rose-700"
+                                  >
+                                    Replies(
+                                    {Math.max(
+                                      0,
+                                      replyCount -
+                                        (replyState.items || []).length,
+                                    )}
+                                    )
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -2890,6 +3071,14 @@ export default function Home() {
                       </div>
                     );
                   })}
+
+                <div ref={commentListSentinelRef} className="h-1" />
+
+                {activeCommentState.loadingMore && (
+                  <div className="text-center text-xs text-slate-500">
+                    Loading more comments...
+                  </div>
+                )}
               </div>
 
               <form
@@ -2922,31 +3111,34 @@ export default function Home() {
                         </p>
                       )}
                   </div>
-                  <p
-                    className={`shrink-0 text-[11px] font-medium ${
-                      (activeCommentState.input || "").length >=
-                      COMMENT_CHARACTER_LIMIT * 0.9
-                        ? "text-rose-600"
-                        : "text-slate-400"
-                    }`}
-                  >
-                    {(activeCommentState.input || "").length}/
-                    {COMMENT_CHARACTER_LIMIT}
-                  </p>
+                  {activeCommentState.input?.length > 0 && (
+                    <p
+                      className={`shrink-0 text-[11px] font-medium ${
+                        activeCommentState.input.length >=
+                        COMMENT_CHARACTER_LIMIT * 0.9
+                          ? "text-rose-600"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {activeCommentState.input.length}/
+                      {COMMENT_CHARACTER_LIMIT}
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <input
+                <div className="flex items-start gap-2">
+                  <textarea
                     ref={commentInputRef}
-                    type="text"
+                    rows={1}
                     maxLength={COMMENT_CHARACTER_LIMIT}
                     value={activeCommentState.input || ""}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      resizeCommentTextarea(event.target);
                       handleCommentInputChange(
                         activeCommentStory.id,
                         event.target.value,
-                      )
-                    }
+                      );
+                    }}
                     placeholder={
                       activeCommentState.editingCommentId
                         ? "Edit your comment..."
@@ -2954,37 +3146,46 @@ export default function Home() {
                           ? `Write a reply to ${activeCommentState.replyingToAuthor || "this comment"}...`
                           : "Write a comment..."
                     }
-                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-300"
+                    className={`flex-1 ${
+                      activeCommentState.editingCommentId
+                        ? "min-h-18"
+                        : "min-h-10"
+                    } md:min-h-10 max-h-40 overflow-y-auto rounded-xl border border-slate-200 pl-5 pr-2 py-2 text-sm outline-none focus:border-rose-300 custom-scrollbar`}
                   />
-                  {(activeCommentState.editingCommentId ||
-                    activeCommentState.replyingToCommentId) && (
+                  <div className="flex flex-col md:my-auto md:flex-row items-end gap-2">
+                    {(activeCommentState.editingCommentId ||
+                      activeCommentState.replyingToCommentId) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCancelCommentComposer(activeCommentStory.id)
+                        }
+                        className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs cursor-pointer font-semibold"
+                      >
+                        Cancel
+                      </button>
+                    )}
                     <button
-                      type="button"
-                      onClick={() =>
-                        handleCancelCommentComposer(activeCommentStory.id)
+                      type="submit"
+                      disabled={
+                        activeCommentState.submitting ||
+                        !activeCommentState.input?.trim()
                       }
-                      className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs font-semibold"
+                      className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold cursor-pointer disabled:bg-rose-300 disabled:text-white disabled:cursor-not-allowed"
                     >
-                      Cancel
+                      {activeCommentState.submitting
+                        ? activeCommentState.editingCommentId
+                          ? "Updating..."
+                          : activeCommentState.replyingToCommentId
+                            ? "Replying..."
+                            : "Posting..."
+                        : activeCommentState.editingCommentId
+                          ? "Update"
+                          : activeCommentState.replyingToCommentId
+                            ? "Reply"
+                            : "Post"}
                     </button>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={activeCommentState.submitting}
-                    className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold disabled:opacity-60"
-                  >
-                    {activeCommentState.submitting
-                      ? activeCommentState.editingCommentId
-                        ? "Updating..."
-                        : activeCommentState.replyingToCommentId
-                          ? "Replying..."
-                          : "Posting..."
-                      : activeCommentState.editingCommentId
-                        ? "Update"
-                        : activeCommentState.replyingToCommentId
-                          ? "Reply"
-                          : "Post"}
-                  </button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -3010,13 +3211,13 @@ export default function Home() {
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={() => setDeleteTargetStoryId(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 cursor-pointer hover:text-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmDeleteStory}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg cursor-pointer bg-rose-500 text-white hover:bg-rose-600"
                 >
                   Delete
                 </button>
@@ -3044,13 +3245,13 @@ export default function Home() {
               <div className="flex items-center justify-end gap-2">
                 <button
                   onClick={() => setDeleteTargetComment(null)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800"
+                  className="px-4 py-2 text-sm font-medium text-slate-600 cursor-pointer hover:text-slate-800"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleConfirmDeleteComment}
-                  className="px-4 py-2 text-sm font-semibold rounded-lg bg-rose-500 text-white hover:bg-rose-600"
+                  className="px-4 py-2 text-sm font-semibold rounded-lg cursor-pointer bg-rose-500 text-white hover:bg-rose-600"
                 >
                   Delete
                 </button>
