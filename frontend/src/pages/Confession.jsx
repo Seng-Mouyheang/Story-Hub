@@ -234,6 +234,7 @@ export default function Confession() {
     toast,
     isVisible: isToastVisible,
     isPaused: isToastPaused,
+    duration,
     showToast,
     hideToast,
     pauseToast,
@@ -1276,6 +1277,7 @@ export default function Confession() {
           toast={toast}
           isVisible={isToastVisible}
           isPaused={isToastPaused}
+          durationMs={duration}
           onClose={dismissToast}
           onPause={pauseToast}
           onResume={resumeToast}

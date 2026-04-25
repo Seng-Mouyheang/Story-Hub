@@ -43,6 +43,7 @@ export default function Toast({
   onClose,
   onPause,
   onResume,
+  durationMs = 3200,
 }) {
   if (!toast) {
     return null;
@@ -112,7 +113,7 @@ export default function Toast({
             key={toast.id}
             className={`h-full origin-left ${toastStyles.progress[toast.type]}`}
             style={{
-              animation: `toastCountDown 3200ms linear forwards`,
+              animation: `toastCountDown ${durationMs}ms linear forwards`,
               animationPlayState: isPaused ? "paused" : "running",
             }}
           />
@@ -138,4 +139,5 @@ Toast.propTypes = {
   onClose: PropTypes.func.isRequired,
   onPause: PropTypes.func.isRequired,
   onResume: PropTypes.func.isRequired,
+  durationMs: PropTypes.number,
 };
