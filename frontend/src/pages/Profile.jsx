@@ -257,6 +257,7 @@ export default function Profile() {
   const [activityItems, setActivityItems] = useState([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(true);
   const lastViewedUserIdRef = useRef("");
+  const scrollContainerRef = useRef(null);
   const FOLLOW_LIST_PAGE_SIZE = 15;
 
   const currentUser = useMemo(() => {
@@ -718,6 +719,12 @@ export default function Profile() {
   }, [isOwnProfile]);
 
   useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0 });
+    }
+  }, [viewedUserId]);
+
+  useEffect(() => {
     if (!viewedUserId) {
       return;
     }
@@ -999,7 +1006,7 @@ export default function Profile() {
         <Navbar title="User Profile" />
 
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div ref={scrollContainerRef} className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-6xl mx-auto">
               {!isOwnProfile ? (
                 <div className="mb-4 sm:mb-5 hidden sm:flex items-center gap-3">
