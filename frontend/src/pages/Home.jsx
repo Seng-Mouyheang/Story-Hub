@@ -26,6 +26,7 @@ import {
   removeStoryBookmark,
   getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
+import CommentSection from "../components/CommentSection";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -115,14 +116,13 @@ const createEmptyCommentState = () => ({
   nextCursor: null,
   hasMore: false,
   input: "",
+  originalInput: "",
   editingCommentId: null,
   replyingToCommentId: null,
   replyingToAuthor: "",
   submitting: false,
   repliesByComment: {},
 });
-
-const COMMENT_CHARACTER_LIMIT = 2200;
 
 /* -------------------- Story Circle -------------------- */
 const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
@@ -970,6 +970,48 @@ export default function Home() {
     }
   }, []);
 
+  const [currentUserProfilePicture, setCurrentUserProfilePicture] = useState(
+    () => {
+      try {
+        const currentUser = JSON.parse(
+          localStorage.getItem("currentUser") || "null",
+        );
+        return currentUser?.profilePicture || "";
+      } catch {
+        return "";
+      }
+    },
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!currentUserId) {
+      if (isMounted) setCurrentUserProfilePicture("");
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadCurrentUserProfile = async () => {
+      try {
+        const profilePayload = await getProfileByUserId(currentUserId);
+        if (isMounted) {
+          setCurrentUserProfilePicture(profilePayload?.profilePicture || "");
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentUserProfilePicture("");
+        }
+      }
+    };
+
+    loadCurrentUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
+
   const hideFeedToast = useCallback(() => {
     setIsFeedToastVisible(false);
 
@@ -1734,7 +1776,7 @@ export default function Home() {
             _id: payload.commentId || `${Date.now()}`,
             userId: currentUserId,
             authorDisplayName: currentUsername,
-            authorProfilePicture: "",
+            authorProfilePicture: currentUserProfilePicture,
             content,
             createdAt: new Date().toISOString(),
             likesCount: 0,
@@ -2141,6 +2183,7 @@ export default function Home() {
         ...createEmptyCommentState(),
         ...(prev[storyId] || {}),
         input: comment.content || "",
+        originalInput: comment.content || "",
         editingCommentId: commentId,
         replyingToCommentId: null,
         replyingToAuthor: "",
@@ -2632,702 +2675,29 @@ export default function Home() {
             to { transform: scaleX(0); }
           }
         `}</style>
-        {activeCommentStory && activeCommentState && (
-          <div
-            className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
-            onClick={() => setActiveCommentStoryId(null)}
-          >
-            <div
-              className="w-full max-w-xl bg-white rounded-2xl shadow-xl border border-slate-200 max-h-[85vh] flex flex-col"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <div>
-                  <h3 className="font-semibold text-slate-900">Comments</h3>
-                  <p className="text-xs text-slate-400 truncate max-w-[260px]">
-                    {activeCommentStory.title}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setActiveCommentStoryId(null)}
-                  className="text-sm text-slate-500 cursor-pointer hover:text-slate-700"
-                >
-                  Close
-                </button>
-              </div>
-
-              <div
-                ref={commentListRef}
-                className="flex-1 overflow-y-auto px-5 py-4 space-y-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-              >
-                {activeCommentState.loading &&
-                  activeCommentState.items.length > 0 && (
-                    <p className="text-xs text-slate-500">
-                      Loading comments...
-                    </p>
-                  )}
-
-                {activeCommentState.loading &&
-                  activeCommentState.items.length === 0 && (
-                    <div className="space-y-3">
-                      {[...Array(3)].map((_, index) => (
-                        <div
-                          key={index}
-                          className="rounded-xl bg-slate-100 p-3 space-y-3 animate-pulse"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="h-8 w-8 rounded-full bg-slate-200" />
-                            <div className="space-y-2 flex-1">
-                              <div className="h-3 w-1/3 rounded-full bg-slate-200" />
-                              <div className="h-2 w-1/4 rounded-full bg-slate-200" />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="h-3 rounded-full bg-slate-200" />
-                            <div className="h-3 rounded-full bg-slate-200 w-5/6" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                {!activeCommentState.loading && activeCommentState.error && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm shadow-rose-100 ring-1 ring-rose-100">
-                    <div className="flex items-start gap-2">
-                      <div className="mt-0.5 shrink-0 text-rose-500">
-                        <AlertTriangle size={16} />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-rose-700">
-                          Comment error
-                        </p>
-                        <p className="text-[11px] text-rose-600 mt-1">
-                          {activeCommentState.error}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {!activeCommentState.loading &&
-                  !activeCommentState.error &&
-                  activeCommentState.items.length === 0 && (
-                    <p className="text-xs text-gray-500">
-                      No comments yet. Be the first to comment.
-                    </p>
-                  )}
-
-                {activeCommentState.items.length > 0 &&
-                  activeCommentState.items.map((comment) => {
-                    const commentId = String(comment._id);
-                    const commentOwnerId = normalizeId(comment.userId);
-                    const canManageComment =
-                      Boolean(currentUserId) &&
-                      commentOwnerId === currentUserId;
-                    const isCommentLikePending = Boolean(
-                      pendingCommentLikeIds[commentId],
-                    );
-                    const commentLikesCount = Number(comment?.likesCount || 0);
-                    const replyCount = Number(comment?.replyCount || 0);
-                    const replyState =
-                      activeCommentState.repliesByComment?.[commentId] ||
-                      createEmptyRepliesState();
-
-                    return (
-                      <div
-                        key={comment._id}
-                        className="rounded-xl bg-gray-50 px-3 py-2"
-                      >
-                        <div className="flex items-start gap-3">
-                          {commentOwnerId ? (
-                            <Link
-                              to={`/profile/${commentOwnerId}`}
-                              className="w-8 h-8 shrink-0 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                              aria-label={`View ${comment.authorDisplayName || "user"} profile`}
-                            >
-                              {comment.authorProfilePicture ? (
-                                <img
-                                  src={comment.authorProfilePicture}
-                                  alt={comment.authorDisplayName || "User"}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                                  <User size={14} />
-                                </div>
-                              )}
-                            </Link>
-                          ) : (
-                            <div className="w-8 h-8 shrink-0 rounded-full bg-slate-200 overflow-hidden">
-                              {comment.authorProfilePicture ? (
-                                <img
-                                  src={comment.authorProfilePicture}
-                                  alt={comment.authorDisplayName || "User"}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                                  <User size={14} />
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="min-w-0 flex-1">
-                            <div className="mb-2 flex items-start justify-between gap-2">
-                              <div className="min-w-0">
-                                {commentOwnerId ? (
-                                  <Link
-                                    to={`/profile/${commentOwnerId}`}
-                                    className="text-xs font-semibold text-slate-700 truncate block rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                                  >
-                                    {comment.authorDisplayName || "Anonymous"}
-                                  </Link>
-                                ) : (
-                                  <span className="text-xs font-semibold text-slate-700 truncate block">
-                                    {comment.authorDisplayName || "Anonymous"}
-                                  </span>
-                                )}
-                                <span className="text-[11px] text-slate-400 shrink-0 inline-flex items-center gap-1">
-                                  <span>
-                                    {getRelativeTime(comment?.createdAt)}
-                                  </span>
-                                  {comment?.isEdited ? (
-                                    <span>• Edited</span>
-                                  ) : null}
-                                </span>
-                              </div>
-
-                              <div
-                                className="relative shrink-0"
-                                data-comment-menu
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleToggleCommentMenu(commentId)
-                                  }
-                                  className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
-                                  aria-label="Comment actions"
-                                >
-                                  <MoreHorizontal size={16} />
-                                </button>
-
-                                {menuCommentId === commentId && (
-                                  <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                                    {canManageComment ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleEditComment(
-                                              activeCommentStory.id,
-                                              comment,
-                                            )
-                                          }
-                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
-                                        >
-                                          Edit
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            handleDeleteComment(
-                                              activeCommentStory.id,
-                                              commentId,
-                                            )
-                                          }
-                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
-                                        >
-                                          Delete
-                                        </button>
-                                      </>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleReportComment(commentId)
-                                        }
-                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
-                                      >
-                                        Report
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <p className="text-sm text-slate-700 whitespace-pre-wrap mt-1">
-                              {comment?.content || "No comment content"}
-                            </p>
-
-                            <div className="mt-2 flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleToggleCommentLike(
-                                    activeCommentStory.id,
-                                    commentId,
-                                  )
-                                }
-                                disabled={isCommentLikePending}
-                                className={`inline-flex items-center gap-1.5 rounded-full py-1 text-xs font-medium transition-colors ${
-                                  comment?.likedByCurrentUser
-                                    ? "text-rose-600"
-                                    : "text-slate-500 hover:text-rose-500"
-                                } ${
-                                  isCommentLikePending
-                                    ? "cursor-not-allowed opacity-60"
-                                    : "cursor-pointer"
-                                }`}
-                                aria-label={
-                                  comment?.likedByCurrentUser
-                                    ? "Unlike comment"
-                                    : "Like comment"
-                                }
-                              >
-                                <Heart
-                                  size={14}
-                                  fill={
-                                    comment?.likedByCurrentUser
-                                      ? "currentColor"
-                                      : "none"
-                                  }
-                                />
-                                <span>{formatCount(commentLikesCount)}</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleStartReply(
-                                    activeCommentStory.id,
-                                    comment,
-                                  )
-                                }
-                                className="text-xs font-medium text-slate-500 cursor-pointer transition-colors hover:text-slate-700"
-                              >
-                                Reply
-                              </button>
-                              {replyCount > 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleToggleReplies(
-                                      activeCommentStory.id,
-                                      commentId,
-                                    )
-                                  }
-                                  className="text-xs font-medium text-slate-500 cursor-pointer transition-colors hover:text-slate-700"
-                                >
-                                  {replyState.open
-                                    ? `Hide replies (${formatCount(replyCount)})`
-                                    : `View replies (${formatCount(replyCount)})`}
-                                </button>
-                              )}
-                            </div>
-
-                            {commentActionFeedback[commentId] && (
-                              <p
-                                className={`text-[11px] mt-1 ${
-                                  commentActionFeedback[commentId]?.startsWith(
-                                    "Failed",
-                                  )
-                                    ? "text-rose-600"
-                                    : "text-emerald-600"
-                                }`}
-                              >
-                                {commentActionFeedback[commentId]}
-                              </p>
-                            )}
-
-                            {replyState.open && (
-                              <div className="mt-3 space-y-2 border-l border-slate-200 pl-3">
-                                {replyState.loading &&
-                                  replyState.items.length === 0 && (
-                                    <p className="text-[11px] text-slate-500">
-                                      Loading replies...
-                                    </p>
-                                  )}
-
-                                {replyState.loadingMore && (
-                                  <p className="text-[11px] text-slate-500">
-                                    Loading more replies...
-                                  </p>
-                                )}
-
-                                {!replyState.loading &&
-                                  (replyState.items || []).map((reply) => {
-                                    const replyId = String(
-                                      reply?._id || reply?.id,
-                                    );
-                                    const replyOwnerId = normalizeId(
-                                      reply?.userId,
-                                    );
-                                    const canManageReply =
-                                      Boolean(currentUserId) &&
-                                      replyOwnerId === currentUserId;
-                                    const isReplyLikePending = Boolean(
-                                      pendingCommentLikeIds[replyId],
-                                    );
-
-                                    return (
-                                      <div
-                                        key={replyId}
-                                        className="rounded-xl bg-white px-3 py-2"
-                                      >
-                                        <div className="flex items-start gap-3">
-                                          {replyOwnerId ? (
-                                            <Link
-                                              to={`/profile/${replyOwnerId}`}
-                                              className="w-7 h-7 shrink-0 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                                              aria-label={`View ${reply.authorDisplayName || "user"} profile`}
-                                            >
-                                              {reply.authorProfilePicture ? (
-                                                <img
-                                                  src={
-                                                    reply.authorProfilePicture
-                                                  }
-                                                  alt={
-                                                    reply.authorDisplayName ||
-                                                    "User"
-                                                  }
-                                                  className="w-full h-full object-cover"
-                                                />
-                                              ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                                                  <User size={12} />
-                                                </div>
-                                              )}
-                                            </Link>
-                                          ) : (
-                                            <div className="w-7 h-7 shrink-0 rounded-full bg-slate-200 overflow-hidden">
-                                              {reply.authorProfilePicture ? (
-                                                <img
-                                                  src={
-                                                    reply.authorProfilePicture
-                                                  }
-                                                  alt={
-                                                    reply.authorDisplayName ||
-                                                    "User"
-                                                  }
-                                                  className="w-full h-full object-cover"
-                                                />
-                                              ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                                                  <User size={12} />
-                                                </div>
-                                              )}
-                                            </div>
-                                          )}
-
-                                          <div className="min-w-0 flex-1">
-                                            <div className="flex items-start justify-between gap-2">
-                                              <div className="min-w-0">
-                                                {replyOwnerId ? (
-                                                  <Link
-                                                    to={`/profile/${replyOwnerId}`}
-                                                    className="text-xs font-semibold text-slate-700 truncate block rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                                                  >
-                                                    {reply.authorDisplayName ||
-                                                      "Anonymous"}
-                                                  </Link>
-                                                ) : (
-                                                  <span className="text-xs font-semibold text-slate-700 truncate block">
-                                                    {reply.authorDisplayName ||
-                                                      "Anonymous"}
-                                                  </span>
-                                                )}
-                                                <span className="text-[11px] text-slate-400 inline-flex items-center gap-1">
-                                                  <span>
-                                                    {getRelativeTime(
-                                                      reply?.createdAt,
-                                                    )}
-                                                  </span>
-                                                  {reply?.isEdited ? (
-                                                    <span>• Edited</span>
-                                                  ) : null}
-                                                </span>
-                                              </div>
-
-                                              <div
-                                                className="relative shrink-0"
-                                                data-comment-menu
-                                              >
-                                                <button
-                                                  type="button"
-                                                  onClick={() =>
-                                                    handleToggleCommentMenu(
-                                                      replyId,
-                                                    )
-                                                  }
-                                                  className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
-                                                  aria-label="Reply actions"
-                                                >
-                                                  <MoreHorizontal size={14} />
-                                                </button>
-
-                                                {menuCommentId === replyId && (
-                                                  <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                                                    {canManageReply ? (
-                                                      <>
-                                                        <button
-                                                          type="button"
-                                                          onClick={() =>
-                                                            handleEditComment(
-                                                              activeCommentStory.id,
-                                                              reply,
-                                                            )
-                                                          }
-                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
-                                                        >
-                                                          Edit
-                                                        </button>
-                                                        <button
-                                                          type="button"
-                                                          onClick={() =>
-                                                            handleDeleteComment(
-                                                              activeCommentStory.id,
-                                                              replyId,
-                                                            )
-                                                          }
-                                                          className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
-                                                        >
-                                                          Delete
-                                                        </button>
-                                                      </>
-                                                    ) : (
-                                                      <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                          handleReportComment(
-                                                            replyId,
-                                                          )
-                                                        }
-                                                        className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
-                                                      >
-                                                        Report
-                                                      </button>
-                                                    )}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </div>
-
-                                            <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
-                                              {reply?.content ||
-                                                "No reply content"}
-                                            </p>
-
-                                            <div className="mt-2 flex items-center gap-3">
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleToggleCommentLike(
-                                                    activeCommentStory.id,
-                                                    replyId,
-                                                  )
-                                                }
-                                                disabled={isReplyLikePending}
-                                                className={`inline-flex items-center gap-1.5 rounded-full py-1 text-xs font-medium transition-colors ${
-                                                  reply?.likedByCurrentUser
-                                                    ? "text-rose-600"
-                                                    : "text-slate-500 hover:text-rose-500"
-                                                } ${
-                                                  isReplyLikePending
-                                                    ? "cursor-not-allowed opacity-60"
-                                                    : "cursor-pointer"
-                                                }`}
-                                                aria-label={
-                                                  reply?.likedByCurrentUser
-                                                    ? "Unlike reply"
-                                                    : "Like reply"
-                                                }
-                                              >
-                                                <Heart
-                                                  size={14}
-                                                  fill={
-                                                    reply?.likedByCurrentUser
-                                                      ? "currentColor"
-                                                      : "none"
-                                                  }
-                                                />
-                                                <span>
-                                                  {formatCount(
-                                                    Number(
-                                                      reply?.likesCount || 0,
-                                                    ),
-                                                  )}
-                                                </span>
-                                              </button>
-                                            </div>
-
-                                            {commentActionFeedback[replyId] && (
-                                              <p
-                                                className={`text-[11px] mt-1 ${
-                                                  commentActionFeedback[
-                                                    replyId
-                                                  ]?.startsWith("Failed")
-                                                    ? "text-rose-600"
-                                                    : "text-emerald-600"
-                                                }`}
-                                              >
-                                                {commentActionFeedback[replyId]}
-                                              </p>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-
-                                {replyState.hasMore && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleLoadMoreReplies(
-                                        activeCommentStory.id,
-                                        commentId,
-                                      )
-                                    }
-                                    className="text-xs font-semibold text-rose-600 cursor-pointer hover:text-rose-700"
-                                  >
-                                    Replies(
-                                    {Math.max(
-                                      0,
-                                      replyCount -
-                                        (replyState.items || []).length,
-                                    )}
-                                    )
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                <div ref={commentListSentinelRef} className="h-1" />
-
-                {activeCommentState.loadingMore && (
-                  <div className="text-center text-xs text-slate-500">
-                    Loading more comments...
-                  </div>
-                )}
-              </div>
-
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  handleSubmitComment(activeCommentStory.id);
-                }}
-                className="px-5 py-4 border-t border-slate-100"
-              >
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    {activeCommentState.editingCommentId && (
-                      <p className="text-xs text-sky-600 whitespace-nowrap">
-                        Editing comment
-                      </p>
-                    )}
-                    {!activeCommentState.editingCommentId &&
-                      activeCommentState.replyingToCommentId && (
-                        <p className="text-xs text-rose-600 whitespace-nowrap">
-                          Replying to{" "}
-                          {activeCommentState.replyingToAuthor || "user"}
-                        </p>
-                      )}
-                    {!activeCommentState.editingCommentId &&
-                      !activeCommentState.replyingToCommentId &&
-                      activeCommentState.input.length ===
-                        COMMENT_CHARACTER_LIMIT && (
-                        <p className="text-xs text-rose-500">
-                          Comments can't be over 2200 characters.
-                        </p>
-                      )}
-                  </div>
-                  {activeCommentState.input?.length > 0 && (
-                    <p
-                      className={`shrink-0 text-[11px] font-medium ${
-                        activeCommentState.input.length >=
-                        COMMENT_CHARACTER_LIMIT * 0.9
-                          ? "text-rose-600"
-                          : "text-slate-400"
-                      }`}
-                    >
-                      {activeCommentState.input.length}/
-                      {COMMENT_CHARACTER_LIMIT}
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-start gap-2">
-                  <textarea
-                    ref={commentInputRef}
-                    rows={1}
-                    maxLength={COMMENT_CHARACTER_LIMIT}
-                    value={activeCommentState.input || ""}
-                    onChange={(event) => {
-                      resizeCommentTextarea(event.target);
-                      handleCommentInputChange(
-                        activeCommentStory.id,
-                        event.target.value,
-                      );
-                    }}
-                    placeholder={
-                      activeCommentState.editingCommentId
-                        ? "Edit your comment..."
-                        : activeCommentState.replyingToCommentId
-                          ? `Write a reply to ${activeCommentState.replyingToAuthor || "this comment"}...`
-                          : "Write a comment..."
-                    }
-                    className={`flex-1 ${
-                      activeCommentState.editingCommentId
-                        ? "min-h-18"
-                        : "min-h-10"
-                    } md:min-h-10 max-h-40 overflow-y-auto rounded-xl border border-slate-200 pl-5 pr-2 py-2 text-sm outline-none focus:border-rose-300 custom-scrollbar`}
-                  />
-                  <div className="flex flex-col md:my-auto md:flex-row items-end gap-2">
-                    {(activeCommentState.editingCommentId ||
-                      activeCommentState.replyingToCommentId) && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCancelCommentComposer(activeCommentStory.id)
-                        }
-                        className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs cursor-pointer font-semibold"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={
-                        activeCommentState.submitting ||
-                        !activeCommentState.input?.trim()
-                      }
-                      className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold cursor-pointer disabled:bg-rose-300 disabled:text-white disabled:cursor-not-allowed"
-                    >
-                      {activeCommentState.submitting
-                        ? activeCommentState.editingCommentId
-                          ? "Updating..."
-                          : activeCommentState.replyingToCommentId
-                            ? "Replying..."
-                            : "Posting..."
-                        : activeCommentState.editingCommentId
-                          ? "Update"
-                          : activeCommentState.replyingToCommentId
-                            ? "Reply"
-                            : "Post"}
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        <CommentSection
+          story={activeCommentStory}
+          commentState={activeCommentState}
+          activeMenuCommentId={menuCommentId}
+          currentUserId={currentUserId}
+          commentActionFeedback={commentActionFeedback}
+          pendingCommentLikeIds={pendingCommentLikeIds}
+          commentListRef={commentListRef}
+          commentListSentinelRef={commentListSentinelRef}
+          commentInputRef={commentInputRef}
+          onClose={() => setActiveCommentStoryId(null)}
+          onToggleCommentLike={handleToggleCommentLike}
+          onToggleCommentMenu={handleToggleCommentMenu}
+          onEditComment={handleEditComment}
+          onDeleteComment={handleDeleteComment}
+          onReportComment={handleReportComment}
+          onStartReply={handleStartReply}
+          onToggleReplies={handleToggleReplies}
+          onLoadMoreReplies={handleLoadMoreReplies}
+          onCancelCommentComposer={handleCancelCommentComposer}
+          onCommentInputChange={handleCommentInputChange}
+          onSubmitComment={handleSubmitComment}
+        />
 
         {deleteTargetStoryId && (
           <div
