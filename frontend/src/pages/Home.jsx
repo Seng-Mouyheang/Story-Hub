@@ -27,6 +27,8 @@ import {
   getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
 import CommentSection from "../components/CommentSection";
+import Toast from "../components/Toast";
+import { useToast } from "../lib/useToast";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -700,17 +702,23 @@ export default function Home() {
   const [pendingCommentLikeIds, setPendingCommentLikeIds] = useState({});
   const [commentLikePulseIds, setCommentLikePulseIds] = useState({});
   const [expandedStoryIds, setExpandedStoryIds] = useState({});
-  const [feedToast, setFeedToast] = useState(null);
-  const [isFeedToastVisible, setIsFeedToastVisible] = useState(false);
   const [isEndOfFeedVisible, setIsEndOfFeedVisible] = useState(false);
   const endOfFeedRef = useRef(null);
   const feedScrollRef = useRef(null);
   const commentInputRef = useRef(null);
   const commentListRef = useRef(null);
   const commentListSentinelRef = useRef(null);
-  const feedToastTimeoutRef = useRef(null);
-  const feedToastExitTimeoutRef = useRef(null);
   const hasShownEndToastRef = useRef(false);
+
+  const {
+    toast: feedToast,
+    isVisible: isFeedToastVisible,
+    isPaused: isFeedToastPaused,
+    showToast: showFeedToast,
+    hideToast: hideFeedToast,
+    pauseToast: pauseFeedToast,
+    resumeToast: resumeFeedToast,
+  } = useToast();
 
   const resizeCommentTextarea = useCallback((textarea) => {
     if (!textarea) return;
@@ -1002,54 +1010,6 @@ export default function Home() {
     };
   }, [currentUserId]);
 
-  const hideFeedToast = useCallback(() => {
-    setIsFeedToastVisible(false);
-
-    if (feedToastExitTimeoutRef.current) {
-      clearTimeout(feedToastExitTimeoutRef.current);
-    }
-
-    feedToastExitTimeoutRef.current = setTimeout(() => {
-      setFeedToast(null);
-      feedToastExitTimeoutRef.current = null;
-    }, 220);
-  }, []);
-
-  const showFeedToast = useCallback(
-    (message, type = "info") => {
-      if (!message) {
-        return;
-      }
-
-      if (feedToastTimeoutRef.current) {
-        clearTimeout(feedToastTimeoutRef.current);
-      }
-
-      if (feedToastExitTimeoutRef.current) {
-        clearTimeout(feedToastExitTimeoutRef.current);
-        feedToastExitTimeoutRef.current = null;
-      }
-
-      setFeedToast({
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        type,
-        message,
-      });
-
-      setIsFeedToastVisible(false);
-
-      requestAnimationFrame(() => {
-        setIsFeedToastVisible(true);
-      });
-
-      feedToastTimeoutRef.current = setTimeout(() => {
-        hideFeedToast();
-        feedToastTimeoutRef.current = null;
-      }, 3200);
-    },
-    [hideFeedToast],
-  );
-
   useEffect(() => {
     const handleFollowUpdated = (event) => {
       const followerId = normalizeId(event?.detail?.followerId || "");
@@ -1291,6 +1251,17 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [location, posts, navigate]);
 
+  const handleRefreshFeed = useCallback(() => {
+    hasShownEndToastRef.current = false;
+    hideFeedToast();
+    setIsEndOfFeedVisible(false);
+
+    feedScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+
+    const controller = new AbortController();
+    loadStories(controller.signal, null);
+  }, [hideFeedToast, loadStories]);
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -1308,7 +1279,13 @@ export default function Home() {
 
         if (!hasShownEndToastRef.current && posts.length > 0) {
           hasShownEndToastRef.current = true;
-          showFeedToast("You're all caught up. Scroll up to refresh.");
+          showFeedToast("You're all caught up. Scroll up to refresh.", "info", {
+            action: {
+              label: "Back to top & refresh",
+              icon: RefreshCcw,
+              onClick: handleRefreshFeed,
+            },
+          });
         }
       },
       { threshold: 0.1, rootMargin: "100px" },
@@ -1325,20 +1302,14 @@ export default function Home() {
         observer.unobserve(currentEndOfFeedRef);
       }
     };
-  }, [cursor, hasMore, loadStories, posts.length, showFeedToast]);
-
-  useEffect(
-    () => () => {
-      if (feedToastTimeoutRef.current) {
-        clearTimeout(feedToastTimeoutRef.current);
-      }
-
-      if (feedToastExitTimeoutRef.current) {
-        clearTimeout(feedToastExitTimeoutRef.current);
-      }
-    },
-    [],
-  );
+  }, [
+    cursor,
+    hasMore,
+    handleRefreshFeed,
+    loadStories,
+    posts.length,
+    showFeedToast,
+  ]);
 
   const fetchComments = useCallback(
     async (storyId, cursor = null, append = false) => {
@@ -1920,29 +1891,6 @@ export default function Home() {
       [storyId]: !previous[storyId],
     }));
   }, []);
-
-  const handleRefreshFeed = useCallback(() => {
-    hasShownEndToastRef.current = false;
-
-    if (feedToastTimeoutRef.current) {
-      clearTimeout(feedToastTimeoutRef.current);
-      feedToastTimeoutRef.current = null;
-    }
-
-    if (feedToastExitTimeoutRef.current) {
-      clearTimeout(feedToastExitTimeoutRef.current);
-      feedToastExitTimeoutRef.current = null;
-    }
-
-    setFeedToast(null);
-    setIsFeedToastVisible(false);
-    setIsEndOfFeedVisible(false);
-
-    feedScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-
-    const controller = new AbortController();
-    loadStories(controller.signal, null);
-  }, [loadStories]);
 
   const handleToggleFollowAuthor = useCallback(
     async (authorId) => {
@@ -2623,109 +2571,15 @@ export default function Home() {
           </div>
         </main>
         {feedToast && (isEndOfFeedVisible || isFeedToastVisible) && (
-          <div className="pointer-events-none fixed right-4 top-4 z-9999 w-[min(92vw,360px)]">
-            <div
-              className={`pointer-events-auto overflow-hidden rounded-2xl border bg-white/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out ${
-                isFeedToastVisible
-                  ? "translate-x-0 opacity-100"
-                  : "translate-x-8 opacity-0"
-              } ${
-                {
-                  success: "border-emerald-200",
-                  error: "border-rose-200",
-                  info: "border-slate-200",
-                }[feedToast.type]
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              <div className="px-4 py-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`mt-0.5 shrink-0 ${
-                      feedToast.type === "error"
-                        ? "text-rose-500"
-                        : feedToast.type === "success"
-                          ? "text-emerald-500"
-                          : "text-slate-500"
-                    }`}
-                  >
-                    {feedToast.type === "error" ? (
-                      <AlertTriangle size={18} />
-                    ) : feedToast.type === "success" ? (
-                      <CheckCircle2 size={18} />
-                    ) : (
-                      <RefreshCcw size={18} />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p
-                          className={`text-[13px] font-semibold ${
-                            feedToast.type === "error"
-                              ? "text-rose-600"
-                              : feedToast.type === "success"
-                                ? "text-emerald-600"
-                                : "text-slate-900"
-                          }`}
-                        >
-                          {feedToast.type === "error"
-                            ? "Error"
-                            : feedToast.type === "success"
-                              ? "Success"
-                              : "Feed updated"}
-                        </p>
-                        <p className="mt-0.5 text-sm leading-snug text-slate-600">
-                          {feedToast.message}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={hideFeedToast}
-                        className="shrink-0 rounded-full cursor-pointer p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                        aria-label="Dismiss notification"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                    {feedToast.type === "info" && (
-                      <button
-                        type="button"
-                        onClick={handleRefreshFeed}
-                        className="mt-3 cursor-pointer inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
-                      >
-                        <RefreshCcw size={12} />
-                        Back to top & refresh
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="h-1 overflow-hidden bg-slate-100">
-                <div
-                  key={feedToast.id}
-                  className={`h-full origin-left ${
-                    feedToast.type === "error"
-                      ? "bg-rose-500/70"
-                      : feedToast.type === "success"
-                        ? "bg-emerald-500/70"
-                        : "bg-slate-900/70"
-                  }`}
-                  style={{
-                    animation: `toastCountDown 3200ms linear forwards`,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+          <Toast
+            toast={feedToast}
+            isVisible={isFeedToastVisible}
+            isPaused={isFeedToastPaused}
+            onClose={hideFeedToast}
+            onPause={pauseFeedToast}
+            onResume={resumeFeedToast}
+          />
         )}
-        <style>{`
-          @keyframes toastCountDown {
-            from { transform: scaleX(1); }
-            to { transform: scaleX(0); }
-          }
-        `}</style>
         <CommentSection
           story={activeCommentStory}
           commentState={activeCommentState}
