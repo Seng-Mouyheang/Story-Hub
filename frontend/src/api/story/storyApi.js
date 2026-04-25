@@ -79,6 +79,19 @@ export async function deleteStory(storyId) {
   return parseJsonResponse(response, "Failed to delete story.");
 }
 
+export async function restoreStory(storyId) {
+  if (!storyId) {
+    throw new Error("Story ID is required");
+  }
+
+  const response = await fetch(`/api/stories/${storyId}/restore`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  return parseJsonResponse(response, "Failed to restore story.");
+}
+
 export async function getStoriesByTag(
   tag,
   { limit = 10, cursor = null, signal } = {},

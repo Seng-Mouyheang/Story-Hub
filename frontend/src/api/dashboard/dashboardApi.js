@@ -64,6 +64,8 @@ export async function getDashboardStories({
 }
 
 export async function getDashboardConfessions({
+  deleted = "active",
+  visibility = "all",
   sortBy = "date",
   order = "desc",
   page = 1,
@@ -71,6 +73,8 @@ export async function getDashboardConfessions({
   limit = 5,
 } = {}) {
   const queryString = buildQueryString({
+    deleted,
+    visibility,
     sortBy,
     order,
     page,

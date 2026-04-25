@@ -4,12 +4,13 @@ import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
 import { Filter, PenTool, Clock3, FileText, Trash2 } from "lucide-react";
+
 import {
   getDashboardStats,
   getDashboardStories,
   getDashboardConfessions,
 } from "../api/dashboard/dashboardApi";
-import { deleteStory } from "../api/story/storyApi";
+import { deleteStory, restoreStory } from "../api/story/storyApi";
 import ActivityFiltersPanel from "../features/dashboard/ActivityFiltersPanel";
 import {
   DEFAULT_ACTIVITY_FILTERS,
@@ -62,7 +63,7 @@ const formatRelativeTime = (dateString) => {
   return date.toLocaleDateString();
 };
 
-const DashboardStoryCard = ({ story, onDelete }) => {
+const DashboardStoryCard = ({ story, onDelete, onRecover }) => {
   const id = story?.id || story?._id;
   const title =
     story?.title ||
@@ -76,6 +77,7 @@ const DashboardStoryCard = ({ story, onDelete }) => {
     ? `${story.visibility.charAt(0).toUpperCase()}${story.visibility.slice(1)}`
     : "Public";
   const wordCount = Number(story?.wordCount || 0);
+  const isDeleted = !!story.deletedAt;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5 hover:bg-white hover:shadow-sm transition-all">
@@ -99,25 +101,37 @@ const DashboardStoryCard = ({ story, onDelete }) => {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Link
-            to={
-              story?._type === "confession"
-                ? `/confession?editId=${id}&returnTo=dashboard`
-                : `/write?storyId=${id}&returnTo=dashboard`
-            }
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
-          >
-            <FileText className="h-4 w-4" />
-            Edit
-          </Link>
-          <button
-            type="button"
-            onClick={() => onDelete && onDelete(story)}
-            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete
-          </button>
+          {isDeleted ? (
+            <button
+              type="button"
+              onClick={() => onRecover && onRecover(story)}
+              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-green-600 hover:bg-green-50 transition-colors"
+            >
+              Recover
+            </button>
+          ) : (
+            <>
+              <Link
+                to={
+                  story?._type === "confession"
+                    ? `/confession?editId=${id}&returnTo=dashboard`
+                    : `/write?storyId=${id}&returnTo=dashboard`
+                }
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                <FileText className="h-4 w-4" />
+                Edit
+              </Link>
+              <button
+                type="button"
+                onClick={() => onDelete && onDelete(story)}
+                className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -132,10 +146,10 @@ const DashboardStoryCard = ({ story, onDelete }) => {
     </div>
   );
 };
-
 export default function Dashboard() {
   const [dashboardStats, setDashboardStats] = useState(null);
   const [activities, setActivities] = useState([]);
+  const [isStatsLoading, setIsStatsLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [activityFilters, setActivityFilters] = useState(() =>
@@ -143,14 +157,29 @@ export default function Dashboard() {
   );
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const filterButtonRef = useRef(null);
   const filterPanelRef = useRef(null);
+
+  useEffect(() => {
+    if (!showFilters) return;
+    const handleClickOutside = (e) => {
+      if (
+        filterButtonRef.current?.contains(e.target) ||
+        filterPanelRef.current?.contains(e.target)
+      )
+        return;
+      setShowFilters(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showFilters]);
 
   useEffect(() => {
     const controller = new AbortController();
     let isMounted = true;
 
     const loadDashboard = async () => {
-      setIsLoading(true);
+      setIsStatsLoading(true);
       setErrorMessage("");
 
       try {
@@ -163,6 +192,8 @@ export default function Dashboard() {
         if (error.name !== "AbortError" && isMounted) {
           setErrorMessage(error.message || "Failed to load dashboard stats.");
         }
+      } finally {
+        if (isMounted) setIsStatsLoading(false);
       }
     };
 
@@ -186,7 +217,10 @@ export default function Dashboard() {
         const { apiSortBy, order } = getSortConfig(activityFilters.sortBy);
 
         if (activityFilters.contentType === "confession") {
+          const confessionFilters = getStoryQueryFilters(activityFilters);
           const payload = await getDashboardConfessions({
+            deleted: confessionFilters.deleted,
+            visibility: confessionFilters.visibility,
             sortBy: apiSortBy,
             order,
             page,
@@ -285,7 +319,16 @@ export default function Dashboard() {
       if (item._type === "story") {
         await deleteStory(id);
       } else if (item._type === "confession") {
-        await fetch(`/api/confessions/${id}`, { method: "DELETE" });
+        // Send Authorization header with token
+        const token = localStorage.getItem("token");
+        const res = await fetch(`/api/confessions/${id}`, {
+          method: "DELETE",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.message || "Failed to delete confession");
+        }
       }
 
       setActivities((prev) =>
@@ -294,7 +337,36 @@ export default function Dashboard() {
         ),
       );
     } catch (err) {
+      setErrorMessage(err.message || "Failed to delete activity");
       console.error("Failed to delete activity", err);
+    }
+  };
+
+  const handleRecoverActivity = async (item) => {
+    try {
+      const id = item.id || item._id || item.storyId || item.confessionId;
+      if (item._type === "story") {
+        await restoreStory(id);
+      } else if (item._type === "confession") {
+        const token = localStorage.getItem("token");
+        const res = await fetch(`/api/confessions/${id}/restore`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          throw new Error(payload?.message || "Failed to restore confession");
+        }
+      }
+
+      setActivities((prev) =>
+        prev.filter(
+          (a) => (a.id || a._id || a.storyId || a.confessionId) !== id,
+        ),
+      );
+    } catch (err) {
+      setErrorMessage(err.message || "Failed to recover activity");
+      console.error("Failed to recover activity", err);
     }
   };
 
@@ -371,7 +443,7 @@ export default function Dashboard() {
                     <button
                       className="hidden sm:inline-flex p-2 hover:bg-slate-100 rounded-full transition-colors group"
                       onClick={() => setShowFilters((v) => !v)}
-                      ref={filterPanelRef}
+                      ref={filterButtonRef}
                     >
                       <Filter className="w-5 h-5 text-slate-400 group-hover:text-slate-600" />
                     </button>
@@ -403,7 +475,7 @@ export default function Dashboard() {
                     title={card.title}
                     value={card.value}
                     subtitle={card.subtitle}
-                    loading={isLoading}
+                    loading={isStatsLoading}
                   />
                 ))}
               </div>
@@ -446,11 +518,13 @@ export default function Dashboard() {
                             visibility: item.visibility,
                             updatedAt: item.updatedAt,
                             createdAt: item.createdAt,
+                            deletedAt: item.deletedAt,
                             wordCount: item.wordCount,
                             likesCount: item.likesCount,
                             _type: item._type,
                           }}
                           onDelete={handleDeleteActivity}
+                          onRecover={handleRecoverActivity}
                         />
                       ))}
                     </div>
