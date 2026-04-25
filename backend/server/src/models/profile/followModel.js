@@ -264,25 +264,60 @@ const isFollowingUser = async (followerId, followingId) => {
   return Boolean(follow);
 };
 
+const buildActiveProfileLookup = (localField) => ({
+  $lookup: {
+    from: "profiles",
+    let: { uid: `$${localField}` },
+    pipeline: [
+      {
+        $match: {
+          $expr: { $eq: ["$userId", "$$uid"] },
+          deletedAt: null,
+        },
+      },
+      { $project: { _id: 1 } },
+    ],
+    as: "_activeProfile",
+  },
+});
+
 const getFollowerUserIds = async (
   userId,
   { cursor = null, limit = 20 } = {},
 ) => {
   assertValidObjectId(userId, "user id");
 
-  const filter = { followingId: new ObjectId(userId) };
-  if (cursor) {
-    assertValidObjectId(cursor, "cursor");
-    filter._id = { $lt: new ObjectId(cursor) };
-  }
-
   const db = await connectToDatabase();
-  const rows = await db
-    .collection(COLLECTION_NAME)
-    .find(filter, { projection: { followerId: 1 } })
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .toArray();
+  const userObjectId = new ObjectId(userId);
+
+  const cursorMatch =
+    cursor && ObjectId.isValid(cursor)
+      ? { _id: { $lt: new ObjectId(cursor) } }
+      : {};
+
+  const baseStages = [
+    { $match: { followingId: userObjectId } },
+    { $sort: { _id: -1 } },
+    buildActiveProfileLookup("followerId"),
+    { $match: { "_activeProfile.0": { $exists: true } } },
+  ];
+
+  const [rows, countResult] = await Promise.all([
+    db
+      .collection(COLLECTION_NAME)
+      .aggregate([
+        { $match: { followingId: userObjectId, ...cursorMatch } },
+        { $sort: { _id: -1 } },
+        buildActiveProfileLookup("followerId"),
+        { $match: { "_activeProfile.0": { $exists: true } } },
+        { $limit: limit + 1 },
+      ])
+      .toArray(),
+    db
+      .collection(COLLECTION_NAME)
+      .aggregate([...baseStages, { $count: "total" }])
+      .next(),
+  ]);
 
   const hasMore = rows.length > limit;
   const pagedRows = hasMore ? rows.slice(0, limit) : rows;
@@ -294,6 +329,7 @@ const getFollowerUserIds = async (
     data: pagedRows.map((row) => row.followerId.toString()),
     nextCursor,
     hasMore,
+    total: countResult?.total ?? 0,
   };
 };
 
@@ -303,19 +339,37 @@ const getFollowingUserIds = async (
 ) => {
   assertValidObjectId(userId, "user id");
 
-  const filter = { followerId: new ObjectId(userId) };
-  if (cursor) {
-    assertValidObjectId(cursor, "cursor");
-    filter._id = { $lt: new ObjectId(cursor) };
-  }
-
   const db = await connectToDatabase();
-  const rows = await db
-    .collection(COLLECTION_NAME)
-    .find(filter, { projection: { followingId: 1 } })
-    .sort({ _id: -1 })
-    .limit(limit + 1)
-    .toArray();
+  const userObjectId = new ObjectId(userId);
+
+  const cursorMatch =
+    cursor && ObjectId.isValid(cursor)
+      ? { _id: { $lt: new ObjectId(cursor) } }
+      : {};
+
+  const baseStages = [
+    { $match: { followerId: userObjectId } },
+    { $sort: { _id: -1 } },
+    buildActiveProfileLookup("followingId"),
+    { $match: { "_activeProfile.0": { $exists: true } } },
+  ];
+
+  const [rows, countResult] = await Promise.all([
+    db
+      .collection(COLLECTION_NAME)
+      .aggregate([
+        { $match: { followerId: userObjectId, ...cursorMatch } },
+        { $sort: { _id: -1 } },
+        buildActiveProfileLookup("followingId"),
+        { $match: { "_activeProfile.0": { $exists: true } } },
+        { $limit: limit + 1 },
+      ])
+      .toArray(),
+    db
+      .collection(COLLECTION_NAME)
+      .aggregate([...baseStages, { $count: "total" }])
+      .next(),
+  ]);
 
   const hasMore = rows.length > limit;
   const pagedRows = hasMore ? rows.slice(0, limit) : rows;
@@ -327,6 +381,7 @@ const getFollowingUserIds = async (
     data: pagedRows.map((row) => row.followingId.toString()),
     nextCursor,
     hasMore,
+    total: countResult?.total ?? 0,
   };
 };
 

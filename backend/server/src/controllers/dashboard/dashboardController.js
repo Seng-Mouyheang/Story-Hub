@@ -30,11 +30,6 @@ const getSortField = (sortBy) => {
 const getTitleCollation = (sortBy) =>
   sortBy === "title" ? { locale: "en", strength: 2 } : undefined;
 
-const applySortCollation = (cursor, sortBy) => {
-  const collation = getTitleCollation(sortBy);
-  return collation ? cursor.collation(collation) : cursor;
-};
-
 const buildActivityProjection = (type) => ({
   $project: {
     title: 1,
@@ -167,16 +162,54 @@ const getDashboardStories = async (req, res) => {
 
     const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
+    const collation = getTitleCollation(sortBy);
 
     const [stories, total] = await Promise.all([
-      applySortCollation(
-        storiesCollection
-          .find(matchStage)
-          .sort({ [sortField]: sortDirection, _id: sortDirection })
-          .skip(skip)
-          .limit(parsedLimit),
-        sortBy,
-      ).toArray(),
+      storiesCollection
+        .aggregate(
+          [
+            { $match: matchStage },
+            { $sort: { [sortField]: sortDirection, _id: sortDirection } },
+            { $skip: skip },
+            { $limit: parsedLimit },
+            {
+              $lookup: {
+                from: "storyBookmarks",
+                localField: "_id",
+                foreignField: "storyId",
+                as: "_bookmarks",
+              },
+            },
+            { $addFields: { bookmarkCount: { $size: "$_bookmarks" } } },
+            { $project: { _bookmarks: 0 } },
+            {
+              $lookup: {
+                from: "profiles",
+                let: { authorId: "$authorId" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$userId", "$$authorId"] },
+                      deletedAt: null,
+                    },
+                  },
+                  { $project: { displayName: 1 } },
+                ],
+                as: "_authorProfile",
+              },
+            },
+            {
+              $addFields: {
+                authorDisplayName: {
+                  $arrayElemAt: ["$_authorProfile.displayName", 0],
+                },
+              },
+            },
+            { $project: { _authorProfile: 0 } },
+          ],
+          collation ? { collation } : {},
+        )
+        .toArray(),
       storiesCollection.countDocuments(matchStage),
     ]);
 
@@ -240,16 +273,44 @@ const getDashboardConfessions = async (req, res) => {
 
     const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
+    const collation = getTitleCollation(sortBy);
 
     const [confessions, total] = await Promise.all([
-      applySortCollation(
-        confessionsCollection
-          .find(matchStage)
-          .sort({ [sortField]: sortDirection, _id: sortDirection })
-          .skip(skip)
-          .limit(parsedLimit),
-        sortBy,
-      ).toArray(),
+      confessionsCollection
+        .aggregate(
+          [
+            { $match: matchStage },
+            { $sort: { [sortField]: sortDirection, _id: sortDirection } },
+            { $skip: skip },
+            { $limit: parsedLimit },
+            {
+              $lookup: {
+                from: "profiles",
+                let: { authorId: "$authorId" },
+                pipeline: [
+                  {
+                    $match: {
+                      $expr: { $eq: ["$userId", "$$authorId"] },
+                      deletedAt: null,
+                    },
+                  },
+                  { $project: { displayName: 1 } },
+                ],
+                as: "_authorProfile",
+              },
+            },
+            {
+              $addFields: {
+                authorDisplayName: {
+                  $arrayElemAt: ["$_authorProfile.displayName", 0],
+                },
+              },
+            },
+            { $project: { _authorProfile: 0 } },
+          ],
+          collation ? { collation } : {},
+        )
+        .toArray(),
       confessionsCollection.countDocuments(matchStage),
     ]);
 
