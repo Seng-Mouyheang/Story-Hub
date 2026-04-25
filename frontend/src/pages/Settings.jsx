@@ -159,7 +159,7 @@ export default function Settings() {
 
                 {/* Change Password */}
                 <div className="w-full mb-8">
-                  <h3 className="font-semibold text-sm mb-3 flex items-center justify-center gap-2">
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
                     <Shield className="w-4 h-4" /> Change Password
                   </h3>
 
@@ -244,21 +244,19 @@ export default function Settings() {
                       </button>
                     </div>
 
-                    <div className="flex justify-center">
-                      <button
-                        onClick={handleChangePassword}
-                        disabled={isSaving}
-                        className="px-6 py-2 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-colors disabled:opacity-60"
-                      >
-                        {isSaving ? "Saving..." : "Change Password"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={isSaving}
+                      className="w-full py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-colors disabled:opacity-60"
+                    >
+                      {isSaving ? "Saving..." : "Change Password"}
+                    </button>
                   </div>
                 </div>
 
                 {/* Delete Account */}
                 <div className="w-full border-t border-slate-100 pt-6">
-                  <h3 className="font-semibold text-sm mb-3 flex items-center justify-center gap-2">
+                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
                     <Trash2 className="w-4 h-4 text-rose-600" /> Delete Account
                   </h3>
 
@@ -288,15 +286,13 @@ export default function Settings() {
                       </button>
                     </div>
 
-                    <div className="flex justify-center">
-                      <button
-                        onClick={handleDeleteAccount}
-                        disabled={isDeleting}
-                        className="px-6 py-2 bg-white text-rose-600 border border-rose-600 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-60"
-                      >
-                        {isDeleting ? "Deleting..." : "Delete Account"}
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleDeleteAccount}
+                      disabled={isDeleting}
+                      className="w-full py-3 bg-white text-rose-600 border border-rose-600 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-60"
+                    >
+                      {isDeleting ? "Deleting..." : "Delete Account"}
+                    </button>
                   </div>
                 </div>
 
