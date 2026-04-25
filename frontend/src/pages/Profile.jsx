@@ -73,10 +73,7 @@ const getRelativeTime = (dateString) => {
 const mapStoryToCard = (story, overrides = {}) => ({
   id: String(story._id),
   title: story.title || "Untitled Story",
-  excerpt:
-    story.summary ||
-    story.content?.slice(0, 160) ||
-    "No preview is available for this story.",
+  fullContent: story.content || story.summary || "",
   likes: formatCount(Number(story.likesCount || 0)),
   saves: formatCount(Number(story.bookmarkCount || 0)),
   date: getRelativeTime(story.publishedAt || story.createdAt),
@@ -85,11 +82,19 @@ const mapStoryToCard = (story, overrides = {}) => ({
       ? story.genres.map((g) => String(g).toUpperCase())
       : ["GENERAL"],
   sortTs: new Date(story.publishedAt || story.createdAt || 0).getTime() || 0,
+  author: story.authorDisplayName || null,
+  authorId: story.authorId ? String(story.authorId) : null,
   ...overrides,
 });
 
-const StoryCard = ({ story, actionLabel, actionHref, onClick }) => {
+const COLLAPSED_CONTENT_HEIGHT = 120;
+
+const StoryCard = ({ story, actionLabel, actionHref }) => {
   const [areGenresExpanded, setAreGenresExpanded] = useState(false);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [isContentOverflowing, setIsContentOverflowing] = useState(false);
+  const contentRef = useRef(null);
+
   const genreDisplayLimit = 5;
   const storyGenres =
     Array.isArray(story.genres) && story.genres.length > 0
@@ -102,18 +107,42 @@ const StoryCard = ({ story, actionLabel, actionHref, onClick }) => {
     : storyGenres.slice(0, genreDisplayLimit);
   const hiddenGenreCount = Math.max(storyGenres.length - genreDisplayLimit, 0);
 
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    const measure = () =>
+      setIsContentOverflowing(el.scrollHeight > COLLAPSED_CONTENT_HEIGHT + 1);
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [story.fullContent]);
+
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && typeof onClick === "function") onClick();
-      }}
-      onClick={onClick}
-      className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-    >
+    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
       <div className="mb-2 flex items-start justify-between gap-3">
-        <h3 className="text-xl font-semibold text-slate-900">{story.title}</h3>
+        <div>
+          <h3 className="text-xl font-semibold text-slate-900">{story.title}</h3>
+          {story.author && (
+            <p className="text-xs text-slate-400 mt-0.5">
+              by{" "}
+              {story.authorId ? (
+                <Link
+                  to={`/profile/${story.authorId}`}
+                  className="hover:text-rose-500 transition-colors"
+                >
+                  {story.author}
+                </Link>
+              ) : (
+                story.author
+              )}
+            </p>
+          )}
+        </div>
         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
           {visibleGenres.map((genre, idx) => (
             <span
@@ -137,10 +166,7 @@ const StoryCard = ({ story, actionLabel, actionHref, onClick }) => {
           {hiddenGenreCount > 0 && !areGenresExpanded && (
             <button
               type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setAreGenresExpanded(true);
-              }}
+              onClick={() => setAreGenresExpanded(true)}
               className="text-[10px] font-semibold uppercase tracking-wider text-rose-600 transition-colors hover:text-rose-700"
               aria-label={`Show ${hiddenGenreCount} more genres`}
             >
@@ -151,10 +177,7 @@ const StoryCard = ({ story, actionLabel, actionHref, onClick }) => {
           {hiddenGenreCount > 0 && areGenresExpanded && (
             <button
               type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setAreGenresExpanded(false);
-              }}
+              onClick={() => setAreGenresExpanded(false)}
               className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-700"
               aria-label="Collapse genres"
             >
@@ -163,7 +186,29 @@ const StoryCard = ({ story, actionLabel, actionHref, onClick }) => {
           )}
         </div>
       </div>
-      <p className="text-sm text-slate-500 italic mb-6">{story.excerpt}</p>
+
+      <p
+        ref={contentRef}
+        className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap mb-2"
+        style={
+          isContentExpanded
+            ? undefined
+            : { maxHeight: `${COLLAPSED_CONTENT_HEIGHT}px`, overflow: "hidden" }
+        }
+      >
+        {story.fullContent || "No preview is available for this story."}
+      </p>
+
+      {isContentOverflowing && (
+        <button
+          type="button"
+          onClick={() => setIsContentExpanded((v) => !v)}
+          className="text-xs font-semibold text-rose-500 hover:text-rose-600 mb-4"
+        >
+          {isContentExpanded ? "Show less" : "Read more"}
+        </button>
+      )}
+
       <div className="flex flex-wrap items-center justify-end gap-4 sm:gap-6 text-[10px] font-semibold text-slate-500 uppercase tracking-tighter">
         <div className="flex items-center gap-1">
           <span>{story.likes} likes</span>
@@ -173,8 +218,9 @@ const StoryCard = ({ story, actionLabel, actionHref, onClick }) => {
         </div>
         <div>{story.date}</div>
       </div>
+
       {actionHref && actionLabel ? (
-        <div className="mt-5 flex justify-end">
+        <div className="mt-4 flex justify-end">
           <Link
             to={actionHref}
             className="text-xs font-semibold text-rose-500 hover:text-rose-600"
@@ -211,6 +257,7 @@ export default function Profile() {
   const [activityItems, setActivityItems] = useState([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(true);
   const lastViewedUserIdRef = useRef("");
+  const scrollContainerRef = useRef(null);
   const FOLLOW_LIST_PAGE_SIZE = 15;
 
   const currentUser = useMemo(() => {
@@ -236,12 +283,10 @@ export default function Profile() {
     (value) => {
       const id = normalizeId(value);
       if (!id) return false;
-      // Accept common Mongo ObjectId (24 hex chars) or UUID patterns; reject URLs/localhost strings
       const objectIdRegex = /^[0-9a-fA-F]{24}$/;
       const uuidRegex =
         /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-      if (objectIdRegex.test(id) || uuidRegex.test(id)) return true;
-      return false;
+      return objectIdRegex.test(id) || uuidRegex.test(id);
     },
     [normalizeId],
   );
@@ -466,15 +511,22 @@ export default function Profile() {
         setFollowListCursor(payload?.nextCursor || null);
         setFollowListHasMore(Boolean(payload?.hasMore));
 
-        // Update profile counts to reflect sanitized list lengths so UI matches list
-        if (targetListType === "following") {
-          setProfileData((previous) =>
-            previous ? { ...previous, following: ids.length } : previous,
-          );
-        } else {
-          setProfileData((previous) =>
-            previous ? { ...previous, followers: ids.length } : previous,
-          );
+        if (reset) {
+          const trueCount =
+            targetListType === "following"
+              ? payload?.totalFollowing
+              : payload?.totalFollowers;
+          if (typeof trueCount === "number") {
+            if (targetListType === "following") {
+              setProfileData((prev) =>
+                prev ? { ...prev, following: trueCount } : prev,
+              );
+            } else {
+              setProfileData((prev) =>
+                prev ? { ...prev, followers: trueCount } : prev,
+              );
+            }
+          }
         }
       } catch (error) {
         setFollowListError(
@@ -490,13 +542,7 @@ export default function Profile() {
         setIsLoadingFollowList(false);
       }
     },
-    [
-      viewedUserId,
-      followListCursor,
-      buildFollowListAccounts,
-      normalizeId,
-      isValidUserId,
-    ],
+    [viewedUserId, followListCursor, buildFollowListAccounts, normalizeId, isValidUserId],
   );
 
   const openFollowList = (listType) => {
@@ -625,13 +671,26 @@ export default function Profile() {
       }
 
       try {
-        const [payload, statsPayload] = await Promise.all([
-          getProfileByUserId(viewedUserId),
-          getUserStats(viewedUserId).catch(() => null),
-        ]);
+        const [payload, statsPayload, followersData, followingData] =
+          await Promise.all([
+            getProfileByUserId(viewedUserId),
+            getUserStats(viewedUserId).catch(() => null),
+            getFollowers(viewedUserId, { limit: 1 }).catch(() => null),
+            getFollowing(viewedUserId, { limit: 1 }).catch(() => null),
+          ]);
 
         if (isMounted) {
-          setProfileData(payload);
+          setProfileData(
+            payload
+              ? {
+                  ...payload,
+                  followers:
+                    followersData?.totalFollowers ?? payload.followers,
+                  following:
+                    followingData?.totalFollowing ?? payload.following,
+                }
+              : payload,
+          );
           setProfileStats(statsPayload);
         }
       } catch {
@@ -648,69 +707,22 @@ export default function Profile() {
 
     loadProfile();
 
-    // Also sanitize follow counts by paging through follow lists and removing invalid IDs.
-    let sanitizeAbort = { aborted: false };
-    const sanitizeFollowCounts = async () => {
-      if (!viewedUserId) return;
-
-      try {
-        // Helper to page through follow lists
-        const pageFollowIds = async (listFn) => {
-          const collected = [];
-          let cursor = null;
-          while (!sanitizeAbort.aborted) {
-            const res = await listFn(viewedUserId, {
-              cursor,
-              limit: FOLLOW_LIST_PAGE_SIZE,
-            });
-            const raw = Array.isArray(res?.followers)
-              ? res.followers
-              : Array.isArray(res?.following)
-                ? res.following
-                : [];
-            collected.push(...raw.map((v) => normalizeId(v)).filter(Boolean));
-            cursor = res?.nextCursor || null;
-            if (!cursor) break;
-          }
-          return collected.filter((v) => isValidUserId(v));
-        };
-
-        // Fetch followers and following (in parallel)
-        const [followersIds, followingIds] = await Promise.all([
-          pageFollowIds(getFollowers).catch(() => []),
-          pageFollowIds(getFollowing).catch(() => []),
-        ]);
-
-        if (sanitizeAbort.aborted) return;
-
-        setProfileData((previous) =>
-          previous
-            ? {
-                ...previous,
-                followers: Number(followersIds.length || 0),
-                following: Number(followingIds.length || 0),
-              }
-            : previous,
-        );
-        // eslint-disable-next-line no-unused-vars
-      } catch (e) {
-        // ignore transient errors
-      }
-    };
-
-    sanitizeFollowCounts();
-
     return () => {
       isMounted = false;
-      sanitizeAbort.aborted = true;
     };
-  }, [profileRefreshToken, viewedUserId, normalizeId, isValidUserId]);
+  }, [profileRefreshToken, viewedUserId]);
 
   useEffect(() => {
     if (!isOwnProfile) {
       setActiveTab("Stories");
     }
   }, [isOwnProfile]);
+
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({ top: 0 });
+    }
+  }, [viewedUserId]);
 
   useEffect(() => {
     if (!viewedUserId) {
@@ -792,8 +804,7 @@ export default function Profile() {
 
         const savedCards = bookmarkedStories.map((story) =>
           mapStoryToCard(story, {
-            saves: "1",
-            savesLabel: "Saved",
+            saves: formatCount(Number(story.bookmarkCount || 0)),
           }),
         );
 
@@ -801,23 +812,22 @@ export default function Profile() {
           ...dashboardStories.map((story) => ({
             id: `story-${story._id}`,
             title: story.title || "Untitled Story",
-            excerpt:
-              story.status === "draft"
-                ? "Updated a draft story"
-                : "Updated a story",
+            fullContent: story.content || story.summary || "",
             likes: formatCount(Number(story.likesCount || 0)),
             saves: formatCount(Number(story.bookmarkCount || 0)),
             date: getRelativeTime(story.updatedAt || story.createdAt),
             genre: story.status === "draft" ? "Draft" : "Story",
             sortTs:
               new Date(story.updatedAt || story.createdAt || 0).getTime() || 0,
+            author: story.authorDisplayName || null,
+            authorId: story.authorId ? String(story.authorId) : null,
             actionLabel: "Edit story",
             actionHref: `/write?storyId=${story._id}&returnTo=/profile`,
           })),
           ...dashboardConfessions.map((confession) => ({
             id: `confession-${confession._id}`,
             title: confession.title || "Untitled Confession",
-            excerpt: "Updated a confession",
+            fullContent: confession.content || "",
             likes: formatCount(Number(confession.likesCount || 0)),
             saves: formatCount(Number(confession.bookmarkCount || 0)),
             date: getRelativeTime(confession.updatedAt || confession.createdAt),
@@ -826,6 +836,8 @@ export default function Profile() {
               new Date(
                 confession.updatedAt || confession.createdAt || 0,
               ).getTime() || 0,
+            author: confession.authorDisplayName || null,
+            authorId: confession.authorId ? String(confession.authorId) : null,
             actionLabel: "View dashboard",
             actionHref: "/dashboard",
           })),
@@ -994,7 +1006,7 @@ export default function Profile() {
         <Navbar title="User Profile" />
 
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div ref={scrollContainerRef} className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-6xl mx-auto">
               {!isOwnProfile ? (
                 <div className="mb-4 sm:mb-5 hidden sm:flex items-center gap-3">
@@ -1204,11 +1216,6 @@ export default function Profile() {
                           story={story}
                           actionLabel={story.actionLabel}
                           actionHref={story.actionHref}
-                          onClick={() =>
-                            navigate("/", {
-                              state: { focusedPostId: story.id },
-                            })
-                          }
                         />
                       ))
                     ) : (

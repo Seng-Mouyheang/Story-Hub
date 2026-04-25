@@ -3,13 +3,32 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Shield, Trash2 } from "lucide-react";
+import { Shield, Trash2, LogOut } from "lucide-react";
 import { changePassword, deleteAccount } from "../api/auth/authApi";
 
 import { Eye, EyeOff } from "lucide-react";
 
 export default function Settings() {
   const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem("token");
+    try {
+      if (token) {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {
+      // Clear local auth state even if the network request fails.
+    } finally {
+      localStorage.removeItem("token");
+      localStorage.removeItem("currentUser");
+      localStorage.removeItem("rememberLogin");
+      navigate("/login", { replace: true });
+    }
+  };
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -133,16 +152,18 @@ export default function Settings() {
 
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
-            <div className="max-w-3xl mx-auto">
-              <div className="bg-white p-4 sm:p-8 rounded-2xl border border-slate-200">
-                <h2 className="text-lg font-semibold mb-4">Account Settings</h2>
+            <div className="flex justify-center">
+              <div className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 flex flex-col items-center">
 
-                <div className="mb-8">
-                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                <h2 className="text-lg font-semibold mb-6 text-center">Account Settings</h2>
+
+                {/* Change Password */}
+                <div className="w-full mb-8">
+                  <h3 className="font-semibold text-sm mb-3 flex items-center justify-center gap-2">
                     <Shield className="w-4 h-4" /> Change Password
                   </h3>
 
-                  <div className="space-y-3 max-w-md">
+                  <div className="space-y-3">
                     <div className="relative">
                       <input
                         type={showCurrent ? "text" : "password"}
@@ -157,7 +178,7 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {currentFieldError && (
-                        <p className="mt-1 text-sm text-rose-600">
+                        <p className="mt-1 text-sm text-rose-600 text-center">
                           {currentFieldError}
                         </p>
                       )}
@@ -165,17 +186,9 @@ export default function Settings() {
                         type="button"
                         onClick={() => setShowCurrent((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={
-                          showCurrent
-                            ? "Hide current password"
-                            : "Show current password"
-                        }
+                        aria-label={showCurrent ? "Hide current password" : "Show current password"}
                       >
-                        {showCurrent ? (
-                          <EyeOff className="w-5 h-5" />
-                        ) : (
-                          <Eye className="w-5 h-5" />
-                        )}
+                        {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
 
@@ -193,23 +206,15 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {newFieldError && (
-                        <p className="mt-1 text-sm text-rose-600">
-                          {newFieldError}
-                        </p>
+                        <p className="mt-1 text-sm text-rose-600 text-center">{newFieldError}</p>
                       )}
                       <button
                         type="button"
                         onClick={() => setShowNew((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={
-                          showNew ? "Hide new password" : "Show new password"
-                        }
+                        aria-label={showNew ? "Hide new password" : "Show new password"}
                       >
-                        {showNew ? (
-                          <EyeOff className="w-5 h-5" />
-                        ) : (
-                          <Eye className="w-5 h-5" />
-                        )}
+                        {showNew ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
 
@@ -227,32 +232,23 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {confirmFieldError && (
-                        <p className="mt-1 text-sm text-rose-600">
-                          {confirmFieldError}
-                        </p>
+                        <p className="mt-1 text-sm text-rose-600 text-center">{confirmFieldError}</p>
                       )}
                       <button
                         type="button"
                         onClick={() => setShowConfirm((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={
-                          showConfirm
-                            ? "Hide confirm password"
-                            : "Show confirm password"
-                        }
+                        aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}
                       >
-                        {showConfirm ? (
-                          <EyeOff className="w-5 h-5" />
-                        ) : (
-                          <Eye className="w-5 h-5" />
-                        )}
+                        {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
-                    <div className="flex gap-3">
+
+                    <div className="flex justify-center">
                       <button
                         onClick={handleChangePassword}
                         disabled={isSaving}
-                        className="px-4 py-2 bg-rose-500 text-white rounded-xl"
+                        className="px-6 py-2 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-colors disabled:opacity-60"
                       >
                         {isSaving ? "Saving..." : "Change Password"}
                       </button>
@@ -260,12 +256,13 @@ export default function Settings() {
                   </div>
                 </div>
 
-                <div className="border-t border-slate-100 pt-6">
-                  <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                {/* Delete Account */}
+                <div className="w-full border-t border-slate-100 pt-6">
+                  <h3 className="font-semibold text-sm mb-3 flex items-center justify-center gap-2">
                     <Trash2 className="w-4 h-4 text-rose-600" /> Delete Account
                   </h3>
 
-                  <div className="space-y-3 max-w-md">
+                  <div className="space-y-3">
                     <div className="relative">
                       <input
                         type={showCurrent ? "text" : "password"}
@@ -279,30 +276,23 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {deleteFieldError && (
-                        <p className="mt-1 text-sm text-rose-600">
-                          {deleteFieldError}
-                        </p>
+                        <p className="mt-1 text-sm text-rose-600 text-center">{deleteFieldError}</p>
                       )}
                       <button
                         type="button"
                         onClick={() => setShowCurrent((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={
-                          showCurrent ? "Hide password" : "Show password"
-                        }
+                        aria-label={showCurrent ? "Hide password" : "Show password"}
                       >
-                        {showCurrent ? (
-                          <EyeOff className="w-5 h-5" />
-                        ) : (
-                          <Eye className="w-5 h-5" />
-                        )}
+                        {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
                     </div>
-                    <div className="flex gap-3">
+
+                    <div className="flex justify-center">
                       <button
                         onClick={handleDeleteAccount}
                         disabled={isDeleting}
-                        className="px-4 py-2 bg-white text-rose-600 border border-rose-600 rounded-xl"
+                        className="px-6 py-2 bg-white text-rose-600 border border-rose-600 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-60"
                       >
                         {isDeleting ? "Deleting..." : "Delete Account"}
                       </button>
@@ -310,10 +300,25 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {error && <p className="mt-4 text-sm text-rose-600">{error}</p>}
-                {message && (
-                  <p className="mt-4 text-sm text-emerald-600">{message}</p>
+                {error && (
+                  <p className="mt-4 text-sm text-rose-600 text-center">{error}</p>
                 )}
+                {message && (
+                  <p className="mt-4 text-sm text-emerald-600 text-center">{message}</p>
+                )}
+
+                {/* Logout — mobile only, stays left-aligned */}
+                <div className="lg:hidden w-full border-t border-slate-100 pt-6 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-rose-500 hover:border-rose-200 transition-colors text-sm font-medium"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </div>
+
               </div>
             </div>
             <SiteFooter />

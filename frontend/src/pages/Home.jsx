@@ -223,7 +223,7 @@ const PostCard = ({
   const storyContent = content || excerpt || "";
   const storyGenres =
     Array.isArray(genres) && genres.length > 0 ? genres : ["GENERAL"];
-  const storyTags = Array.isArray(tags) ? tags : [];
+  const storyTags = useMemo(() => (Array.isArray(tags) ? tags : []), [tags]);
   const visibleGenres = areGenresExpanded
     ? storyGenres
     : storyGenres.slice(0, genreDisplayLimit);
@@ -1848,6 +1848,7 @@ export default function Home() {
       navigate,
       showCommentActionFeedback,
       showFeedToast,
+      fetchReplies,
     ],
   );
 

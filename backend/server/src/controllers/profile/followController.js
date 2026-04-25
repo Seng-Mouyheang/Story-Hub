@@ -189,7 +189,7 @@ const getFollowers = async (req, res) => {
     res.json({
       userId: req.params.userId,
       followers: followerResult.data,
-      totalFollowers: profile.followers || 0,
+      totalFollowers: followerResult.total,
       limit: listOptions.limit,
       nextCursor: followerResult.nextCursor,
       hasMore: followerResult.hasMore,
@@ -221,7 +221,7 @@ const getFollowing = async (req, res) => {
     res.json({
       userId: req.params.userId,
       following: followingResult.data,
-      totalFollowing: profile.following || 0,
+      totalFollowing: followingResult.total,
       limit: listOptions.limit,
       nextCursor: followingResult.nextCursor,
       hasMore: followingResult.hasMore,

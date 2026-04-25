@@ -156,7 +156,8 @@ const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
 
   if (hasMore) {
     const lastStory = data[data.length - 1];
-    nextCursor = `${lastStory.publishedAt.toISOString()}_${lastStory._id}`;
+    const cursorDate = lastStory.publishedAt || lastStory.createdAt || new Date();
+    nextCursor = `${cursorDate.toISOString()}_${lastStory._id}`;
   }
 
   return {
@@ -433,34 +434,25 @@ const getStoryById = async (id, currentUserId = null) => {
     let likedByCurrentUser = false;
 
     if (currentUserId && ObjectId.isValid(currentUserId)) {
-      const follow = await db.collection("follows").findOne(
-        {
-          followerId: new ObjectId(currentUserId),
-          followingId: story.authorId,
-        },
-        { projection: { _id: 1 } },
-      );
+      const currentUserObjectId = new ObjectId(currentUserId);
+
+      const [follow, bookmark, like] = await Promise.all([
+        db.collection("follows").findOne(
+          { followerId: currentUserObjectId, followingId: story.authorId },
+          { projection: { _id: 1 } },
+        ),
+        db.collection("storyBookmarks").findOne(
+          { userId: currentUserObjectId, storyId: story._id },
+          { projection: { _id: 1 } },
+        ),
+        db.collection("storyLikes").findOne(
+          { userId: currentUserObjectId, storyId: story._id },
+          { projection: { _id: 1 } },
+        ),
+      ]);
 
       followedByCurrentUser = Boolean(follow);
-
-      const bookmark = await db.collection("storyBookmarks").findOne(
-        {
-          userId: new ObjectId(currentUserId),
-          storyId: story._id,
-        },
-        { projection: { _id: 1 } },
-      );
-
       savedByCurrentUser = Boolean(bookmark);
-
-      const like = await db.collection("storyLikes").findOne(
-        {
-          userId: new ObjectId(currentUserId),
-          storyId: story._id,
-        },
-        { projection: { _id: 1 } },
-      );
-
       likedByCurrentUser = Boolean(like);
     }
 
@@ -513,8 +505,8 @@ const updateStory = async (id, userId, updateData) => {
     updateData.publishedAt = new Date();
   }
 
-  return collection.updateOne(
-    { _id: new ObjectId(id) },
+  const result = await collection.updateOne(
+    { _id: new ObjectId(id), deletedAt: null },
     {
       $set: {
         ...updateData,
@@ -522,6 +514,12 @@ const updateStory = async (id, userId, updateData) => {
       },
     },
   );
+
+  if (result.matchedCount === 0) {
+    throw new Error("not found");
+  }
+
+  return result;
 };
 
 const incrementViews = async (id) => {
@@ -690,9 +688,7 @@ const getUserStories = async (userId, cursor, limit) => {
               deletedAt: null,
             },
           },
-          {
-            $project: { displayName: 1 },
-          },
+          { $project: { displayName: 1 } },
         ],
         as: "author",
       },
@@ -702,6 +698,22 @@ const getUserStories = async (userId, cursor, limit) => {
         path: "$author",
         preserveNullAndEmptyArrays: true,
       },
+    },
+    {
+      $lookup: {
+        from: "storyBookmarks",
+        localField: "_id",
+        foreignField: "storyId",
+        as: "_bookmarks",
+      },
+    },
+    {
+      $addFields: {
+        bookmarkCount: { $size: "$_bookmarks" },
+      },
+    },
+    {
+      $project: { _bookmarks: 0 },
     },
   ];
 
