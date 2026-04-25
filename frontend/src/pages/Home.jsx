@@ -154,14 +154,14 @@ const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
         )}
       </div>
 
-      <span className="text-[11px] mx-auto sm:text-xs font-medium text-slate-700 whitespace-nowrap rounded-md px-1.5 py-0.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
+      <span className="block w-full max-w-16 sm:max-w-20 text-center text-[11px] sm:text-xs font-medium text-slate-700 truncate rounded-md px-1.5 py-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
         {name}
       </span>
     </>
   );
 
   return (
-    <div className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5">
+    <div className="flex flex-col items-center gap-2 shrink-0 p-2 cursor-pointer group transition duration-300 ease-out hover:scale-[1.04]">
       {isAdd ? (
         content
       ) : (
@@ -196,7 +196,6 @@ const PostCard = ({
   onToggleSave,
   onDoubleTapLike,
   onToggleMenu,
-  onReportStory,
   onEditStory,
   onDeleteStory,
   onToggleFollowAuthor,
@@ -423,21 +422,21 @@ const PostCard = ({
             </button>
           ) : null}
 
-          <button
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleMenu(id);
-            }}
-            className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
-            aria-label="Story actions"
-          >
-            <MoreHorizontal size={20} />
-          </button>
+          {canManage ? (
+            <>
+              <button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleMenu(id);
+                }}
+                className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
+                aria-label="Story actions"
+              >
+                <MoreHorizontal size={20} />
+              </button>
 
-          {isMenuOpen && (
-            <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
-              {canManage ? (
-                <>
+              {isMenuOpen && (
+                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
@@ -456,20 +455,10 @@ const PostCard = ({
                   >
                     Delete
                   </button>
-                </>
-              ) : (
-                <button
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onReportStory(id);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
-                >
-                  Report
-                </button>
+                </div>
               )}
-            </div>
-          )}
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -709,6 +698,7 @@ export default function Home() {
   const [deleteTargetComment, setDeleteTargetComment] = useState(null);
   const [commentActionFeedback, setCommentActionFeedback] = useState({});
   const [pendingCommentLikeIds, setPendingCommentLikeIds] = useState({});
+  const [commentLikePulseIds, setCommentLikePulseIds] = useState({});
   const [expandedStoryIds, setExpandedStoryIds] = useState({});
   const [feedToast, setFeedToast] = useState(null);
   const [isFeedToastVisible, setIsFeedToastVisible] = useState(false);
@@ -911,7 +901,7 @@ export default function Home() {
       isMounted = false;
       abortController.abort();
     };
-  }, [currentUserId]);
+  }, [currentUserId, followingAccountsRefreshToken]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -1767,6 +1757,7 @@ export default function Home() {
           }));
 
           showCommentActionFeedback(editingCommentId, "Comment updated");
+          showFeedToast("Comment updated.", "success");
         } else {
           const payload = await addStoryComment(storyId, {
             content,
@@ -1846,6 +1837,8 @@ export default function Home() {
                 : post,
             ),
           );
+
+          showFeedToast("Comment posted.", "success");
         }
       } catch {
         setCommentsByStory((prev) => ({
@@ -1869,6 +1862,7 @@ export default function Home() {
       currentUsername,
       navigate,
       showCommentActionFeedback,
+      showFeedToast,
     ],
   );
 
@@ -1900,6 +1894,13 @@ export default function Home() {
 
           return next;
         });
+
+        showFeedToast(
+          isAlreadySaved
+            ? "Removed story from saved items."
+            : "Story saved successfully.",
+          "success",
+        );
       } catch (error) {
         console.error("Failed to toggle bookmark:", error);
         showFeedToast("Failed to update bookmark. Please try again.", "error");
@@ -1999,6 +2000,13 @@ export default function Home() {
           ...previous,
           [normalizedTargetUserId]: confirmedFollowing,
         }));
+
+        showFeedToast(
+          confirmedFollowing
+            ? "You are now following this author."
+            : "You have unfollowed this author.",
+          "success",
+        );
       } catch {
         showFeedToast(
           "Unable to update follow status. Please try again.",
@@ -2081,6 +2089,7 @@ export default function Home() {
         return;
       }
 
+      setCommentLikePulseIds((prev) => ({ ...prev, [commentId]: true }));
       setPendingCommentLikeIds((prev) => ({ ...prev, [commentId]: true }));
 
       try {
@@ -2134,6 +2143,14 @@ export default function Home() {
           delete next[commentId];
           return next;
         });
+
+        setTimeout(() => {
+          setCommentLikePulseIds((prev) => {
+            const next = { ...prev };
+            delete next[commentId];
+            return next;
+          });
+        }, 220);
       }
     },
     [pendingCommentLikeIds, navigate, showCommentActionFeedback],
@@ -2345,13 +2362,15 @@ export default function Home() {
             : post,
         ),
       );
+
+      showFeedToast("Comment deleted.", "success");
     } catch (error) {
       showCommentActionFeedback(
         commentId,
         error.message || "Failed to delete comment.",
       );
     }
-  }, [deleteTargetComment, navigate, showCommentActionFeedback]);
+  }, [deleteTargetComment, navigate, showCommentActionFeedback, showFeedToast]);
 
   const accountCircles = useMemo(() => followingAccounts, [followingAccounts]);
 
@@ -2391,7 +2410,7 @@ export default function Home() {
                   Following accounts
                 </h2>
 
-                <div className="flex gap-4 sm:gap-6 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div className="flex md:gap-2 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {followingAccountsLoading ? (
                     <div className="text-sm text-slate-500 px-2 py-4">
                       Loading accounts...
@@ -2405,7 +2424,7 @@ export default function Home() {
                   ) : (
                     <Link
                       to="/explore"
-                      className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition-transform duration-300 hover:-translate-y-0.5"
+                      className="flex flex-col items-center gap-2 shrink-0 cursor-pointer group transition duration-300 ease-out hover:scale-[1.04]"
                     >
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 border-slate-300 border-dashed p-1 relative bg-slate-50/80">
                         <div className="w-full h-full rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-slate-400">
@@ -2572,7 +2591,7 @@ export default function Home() {
           </div>
         </main>
         {feedToast && (isEndOfFeedVisible || isFeedToastVisible) && (
-          <div className="pointer-events-none fixed right-4 top-4 z-50 w-[min(92vw,360px)]">
+          <div className="pointer-events-none fixed right-4 top-4 z-9999 w-[min(92vw,360px)]">
             <div
               className={`pointer-events-auto overflow-hidden rounded-2xl border bg-white/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out ${
                 isFeedToastVisible
@@ -2632,7 +2651,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={hideFeedToast}
-                        className="shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                        className="shrink-0 rounded-full cursor-pointer p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
                         aria-label="Dismiss notification"
                       >
                         <X size={16} />
@@ -2642,7 +2661,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={handleRefreshFeed}
-                        className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
+                        className="mt-3 cursor-pointer inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
                       >
                         <RefreshCcw size={12} />
                         Back to top & refresh
@@ -2682,6 +2701,7 @@ export default function Home() {
           currentUserId={currentUserId}
           commentActionFeedback={commentActionFeedback}
           pendingCommentLikeIds={pendingCommentLikeIds}
+          commentLikePulseIds={commentLikePulseIds}
           commentListRef={commentListRef}
           commentListSentinelRef={commentListSentinelRef}
           commentInputRef={commentInputRef}
