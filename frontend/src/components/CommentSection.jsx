@@ -76,6 +76,7 @@ const CommentSection = ({
   currentUserId,
   commentActionFeedback,
   pendingCommentLikeIds,
+  commentLikePulseIds,
   commentListRef,
   commentListSentinelRef,
   commentInputRef,
@@ -253,51 +254,39 @@ const CommentSection = ({
                         </span>
                       </div>
 
-                      <div className="relative shrink-0" data-comment-menu>
-                        <button
-                          type="button"
-                          onClick={() => onToggleCommentMenu(commentId)}
-                          className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
-                          aria-label="Comment actions"
-                        >
-                          <MoreHorizontal size={16} />
-                        </button>
+                      {canManageComment ? (
+                        <div className="relative shrink-0" data-comment-menu>
+                          <button
+                            type="button"
+                            onClick={() => onToggleCommentMenu(commentId)}
+                            className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
+                            aria-label="Comment actions"
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
 
-                        {activeMenuCommentId === commentId && (
-                          <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                            {canManageComment ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onEditComment(story.id, comment)
-                                  }
-                                  className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    onDeleteComment(story.id, commentId)
-                                  }
-                                  className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            ) : (
+                          {activeMenuCommentId === commentId && (
+                            <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
                               <button
                                 type="button"
-                                onClick={() => onReportComment(commentId)}
-                                className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
+                                onClick={() => onEditComment(story.id, comment)}
+                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
                               >
-                                Report
+                                Edit
                               </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onDeleteComment(story.id, commentId)
+                                }
+                                className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
                     </div>
 
                     <p className="text-sm text-slate-700 whitespace-pre-wrap mt-1">
@@ -308,15 +297,16 @@ const CommentSection = ({
                       <button
                         type="button"
                         onClick={() => onToggleCommentLike(story.id, commentId)}
-                        disabled={isCommentLikePending}
-                        className={`inline-flex items-center gap-1.5 rounded-full py-1 text-xs font-medium transition-colors ${
+                        className={`inline-flex items-center cursor-pointer gap-1.5 rounded-full py-1 text-xs font-medium transition-transform duration-200 ease-out ${
                           comment?.likedByCurrentUser
                             ? "text-rose-600"
                             : "text-slate-500 hover:text-rose-500"
                         } ${
                           isCommentLikePending
-                            ? "cursor-not-allowed opacity-60"
-                            : "cursor-pointer"
+                            ? "scale-110"
+                            : commentLikePulseIds[commentId]
+                              ? "scale-110"
+                              : "scale-100"
                         }`}
                         aria-label={
                           comment?.likedByCurrentUser
@@ -458,61 +448,49 @@ const CommentSection = ({
                                       </span>
                                     </div>
 
-                                    <div
-                                      className="relative shrink-0"
-                                      data-comment-menu
-                                    >
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          onToggleCommentMenu(replyId)
-                                        }
-                                        className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
-                                        aria-label="Reply actions"
+                                    {canManageReply ? (
+                                      <div
+                                        className="relative shrink-0"
+                                        data-comment-menu
                                       >
-                                        <MoreHorizontal size={14} />
-                                      </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            onToggleCommentMenu(replyId)
+                                          }
+                                          className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
+                                          aria-label="Reply actions"
+                                        >
+                                          <MoreHorizontal size={14} />
+                                        </button>
 
-                                      {activeMenuCommentId === replyId && (
-                                        <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
-                                          {canManageReply ? (
-                                            <>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  onEditComment(story.id, reply)
-                                                }
-                                                className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
-                                              >
-                                                Edit
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  onDeleteComment(
-                                                    story.id,
-                                                    replyId,
-                                                  )
-                                                }
-                                                className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
-                                              >
-                                                Delete
-                                              </button>
-                                            </>
-                                          ) : (
+                                        {activeMenuCommentId === replyId && (
+                                          <div className="absolute right-0 top-6 z-10 w-28 rounded-lg border border-slate-200 bg-white shadow-lg py-1">
                                             <button
                                               type="button"
                                               onClick={() =>
-                                                onReportComment(replyId)
+                                                onEditComment(story.id, reply)
                                               }
-                                              className="w-full text-left px-3 py-2 text-xs font-medium text-amber-700 cursor-pointer hover:bg-amber-50"
+                                              className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
                                             >
-                                              Report
+                                              Edit
                                             </button>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                onDeleteComment(
+                                                  story.id,
+                                                  replyId,
+                                                )
+                                              }
+                                              className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 cursor-pointer hover:bg-rose-50"
+                                            >
+                                              Delete
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : null}
                                   </div>
 
                                   <p className="mt-1 text-sm text-slate-700 whitespace-pre-wrap">
@@ -525,15 +503,16 @@ const CommentSection = ({
                                       onClick={() =>
                                         onToggleCommentLike(story.id, replyId)
                                       }
-                                      disabled={isReplyLikePending}
-                                      className={`inline-flex items-center gap-1.5 rounded-full py-1 text-xs font-medium transition-colors ${
+                                      className={`inline-flex items-center cursor-pointer gap-1.5 rounded-full py-1 text-xs font-medium transition-transform duration-200 ease-out ${
                                         reply?.likedByCurrentUser
                                           ? "text-rose-600"
                                           : "text-slate-500 hover:text-rose-500"
                                       } ${
                                         isReplyLikePending
-                                          ? "cursor-not-allowed opacity-60"
-                                          : "cursor-pointer"
+                                          ? "scale-110"
+                                          : commentLikePulseIds[replyId]
+                                            ? "scale-110"
+                                            : "scale-100"
                                       }`}
                                       aria-label={
                                         reply?.likedByCurrentUser
