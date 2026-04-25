@@ -88,12 +88,15 @@ export default function Sidebar() {
       {/* Logo + Toggle */}
       <div className="p-4 flex items-center justify-between">
         {!isCollapsed && (
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <Link
+            to="/"
+            className="text-lg font-bold text-slate-900 flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
             <div className="w-8 h-8 bg-rose-500 rounded-lg flex items-center justify-center text-white shadow-sm">
               <BookOpen className="w-5 h-5" />
             </div>
             Story-Hub
-          </h1>
+          </Link>
         )}
 
         <button
@@ -191,12 +194,16 @@ export default function Sidebar() {
       >
         {/* Drawer header */}
         <div className="p-4 flex items-center justify-between border-b border-slate-200 shrink-0">
-          <h1 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <Link
+            to="/"
+            onClick={() => setIsMobileOpen(false)}
+            className="text-lg font-bold text-slate-900 flex items-center gap-2 hover:opacity-80 transition-opacity"
+          >
             <div className="w-8 h-8 bg-rose-500 rounded-lg flex items-center justify-center text-white shadow-sm">
               <BookOpen className="w-5 h-5" />
             </div>
             Story-Hub
-          </h1>
+          </Link>
           <button
             type="button"
             onClick={() => setIsMobileOpen(false)}
