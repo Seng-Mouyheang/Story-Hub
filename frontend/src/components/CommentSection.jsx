@@ -85,7 +85,6 @@ const CommentSection = ({
   onToggleCommentMenu,
   onEditComment,
   onDeleteComment,
-  onReportComment,
   onStartReply,
   onToggleReplies,
   onLoadMoreReplies,

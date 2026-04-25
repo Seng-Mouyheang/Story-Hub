@@ -25,7 +25,7 @@ import {
 import { useOutsideClickCloser } from "./confession/useOutsideClickCloser";
 import { useConfessionComments } from "./confession/useConfessionComments";
 import ConfessionFeedCard from "./confession/ConfessionFeedCard";
-import ConfessionModalCommentItem from "./confession/ConfessionModalCommentItem";
+import CommentSection from "../components/CommentSection";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -240,7 +240,6 @@ export default function Confession() {
     pauseToast,
     resumeToast,
   } = useToast();
-  const commentDialogTitleId = "confession-comments-dialog-title";
   const editDialogTitleId = "confession-edit-dialog-title";
   const deleteDialogTitleId = "confession-delete-dialog-title";
 
@@ -263,6 +262,10 @@ export default function Confession() {
   );
 
   const [currentUserId, setCurrentUserId] = React.useState("");
+  const commentListRef = useRef(null);
+  const commentListSentinelRef = useRef(null);
+  const commentInputRef = useRef(null);
+  const [commentOriginalInput, setCommentOriginalInput] = React.useState("");
 
   const location = useLocation();
 
@@ -350,26 +353,175 @@ export default function Confession() {
     editCommentContent,
     setEditCommentContent,
     isSavingEditedComment,
-    deleteTargetCommentId,
-    setDeleteTargetCommentId,
     isDeletingComment,
     isLoadingModalComments,
     modalCommentsError,
     modalCommentsHasMore,
+    modalCommentsNextCursor,
+    replyingToCommentId,
+    replyingToAuthor,
+    repliesByComment,
+    pendingCommentLikeIds,
+    commentLikePulseIds,
+    commentActionFeedback,
     closeCommentModal: closeCommentModalState,
     openCommentModal: openCommentModalState,
-    loadMoreModalComments,
     handleAddComment,
     handleToggleCommentMenu,
+    handleStartReply,
+    handleToggleReplies,
+    loadMoreModalComments,
+    handleLoadMoreReplies,
     handleStartEditComment,
-    handleCancelEditComment,
     handleSaveEditedComment,
-    handleDeleteComment,
+    handleCancelCommentComposer,
+    handleToggleCommentLike,
+    handleDeleteComment: handleDeleteCommentHook,
+    deleteTargetCommentId,
+    setDeleteTargetCommentId,
     handleConfirmDeleteComment,
   } = useConfessionComments({ setConfessionFeed });
 
+  const handleStartEditCommentWithOriginal = React.useCallback(
+    (comment) => {
+      setCommentOriginalInput(comment?.content || "");
+      handleStartEditComment(comment);
+    },
+    [handleStartEditComment],
+  );
+
+  const handleCommentInputChange = React.useCallback(
+    (...args) => {
+      const value = args[1];
+
+      if (editingCommentId) {
+        setEditCommentContent(value);
+      } else {
+        setNewCommentContent(value);
+      }
+    },
+    [editingCommentId, setEditCommentContent, setNewCommentContent],
+  );
+
+  const handleSubmitComment = React.useCallback(() => {
+    if (editingCommentId) {
+      handleSaveEditedComment();
+    } else {
+      handleAddComment();
+    }
+  }, [editingCommentId, handleAddComment, handleSaveEditedComment]);
+
+  const handleDeleteComment = React.useCallback(
+    (_storyId, commentId) => {
+      handleDeleteCommentHook(commentId);
+    },
+    [handleDeleteCommentHook],
+  );
+
+  const handleToggleCommentLikeWrapper = React.useCallback(
+    (_storyId, commentId) => {
+      handleToggleCommentLike(commentId);
+    },
+    [handleToggleCommentLike],
+  );
+
+  const handleStartReplyWrapper = React.useCallback(
+    (_storyId, comment) => {
+      handleStartReply(comment);
+    },
+    [handleStartReply],
+  );
+
+  const handleToggleRepliesWrapper = React.useCallback(
+    (_storyId, commentId) => {
+      handleToggleReplies(commentId);
+    },
+    [handleToggleReplies],
+  );
+
+  const handleLoadMoreRepliesWrapper = React.useCallback(
+    (_storyId, commentId) => {
+      handleLoadMoreReplies(commentId);
+    },
+    [handleLoadMoreReplies],
+  );
+
+  const closeDeleteCommentDialog = React.useCallback(() => {
+    setDeleteTargetCommentId("");
+  }, [setDeleteTargetCommentId]);
+
+  React.useEffect(() => {
+    const sentinel = commentListSentinelRef.current;
+    const root = commentListRef.current;
+
+    if (
+      !activeCommentConfessionId ||
+      !sentinel ||
+      !root ||
+      !modalCommentsHasMore ||
+      isLoadingModalComments
+    ) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadMoreModalComments().catch(() => {});
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 120px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [
+    activeCommentConfessionId,
+    isLoadingModalComments,
+    loadMoreModalComments,
+    modalCommentsHasMore,
+  ]);
+
+  const activeCommentState = {
+    open: Boolean(activeCommentConfessionId),
+    loaded:
+      !isLoadingModalComments &&
+      (modalComments.length > 0 || Boolean(modalCommentsError)),
+    loading: isLoadingModalComments,
+    loadingMore: isLoadingModalComments && modalComments.length > 0,
+    error: modalCommentsError,
+    items: modalComments,
+    nextCursor: modalCommentsNextCursor,
+    hasMore: modalCommentsHasMore,
+    input: editingCommentId
+      ? editCommentContent || ""
+      : newCommentContent || "",
+    originalInput: commentOriginalInput,
+    editingCommentId,
+    replyingToCommentId,
+    replyingToAuthor,
+    submitting:
+      isSubmittingComment || isSavingEditedComment || isDeletingComment,
+    repliesByComment,
+  };
+
+  const activeCommentStory = activeCommentConfessionId
+    ? {
+        id: activeCommentConfessionId,
+        title: commentModalTitle,
+      }
+    : null;
+
   const closeCommentModal = React.useCallback(() => {
     closeCommentModalState();
+    setCommentOriginalInput("");
   }, [closeCommentModalState]);
 
   const openCommentModal = React.useCallback(
@@ -930,8 +1082,6 @@ export default function Confession() {
   ]);
 
   let feedContent = null;
-  const isCommentModalOpen = Boolean(activeCommentConfessionId);
-
   if (isLoadingFeed) {
     feedContent = (
       <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
@@ -1068,95 +1218,66 @@ export default function Confession() {
           </div>
         </main>
 
-        <ModalDialog
-          isOpen={isCommentModalOpen}
+        <CommentSection
+          story={activeCommentStory}
+          commentState={activeCommentState}
+          activeMenuCommentId={activeCommentMenuId}
+          currentUserId={currentUserId}
+          commentActionFeedback={commentActionFeedback}
+          pendingCommentLikeIds={pendingCommentLikeIds}
+          commentLikePulseIds={commentLikePulseIds}
+          commentListRef={commentListRef}
+          commentListSentinelRef={commentListSentinelRef}
+          commentInputRef={commentInputRef}
           onClose={closeCommentModal}
-          title={`Comments - ${commentModalTitle}`}
-          titleId={commentDialogTitleId}
-          closeLabel="Close comments modal"
-          widthClassName="max-w-xl"
-        >
-          <div className="max-h-[65vh] overflow-y-auto px-4 py-4 space-y-3">
-            {isLoadingModalComments && modalComments.length === 0 && (
-              <p className="text-sm text-slate-500">Loading comments...</p>
-            )}
+          onToggleCommentLike={handleToggleCommentLikeWrapper}
+          onToggleCommentMenu={handleToggleCommentMenu}
+          onEditComment={(_, comment) =>
+            handleStartEditCommentWithOriginal(comment)
+          }
+          onDeleteComment={handleDeleteComment}
+          onStartReply={handleStartReplyWrapper}
+          onToggleReplies={handleToggleRepliesWrapper}
+          onLoadMoreReplies={handleLoadMoreRepliesWrapper}
+          onCancelCommentComposer={handleCancelCommentComposer}
+          onCommentInputChange={handleCommentInputChange}
+          onSubmitComment={handleSubmitComment}
+        />
 
-            {modalCommentsError && (
-              <p className="text-sm text-rose-600">{modalCommentsError}</p>
-            )}
+        {deleteTargetCommentId && (
+          <ModalDialog
+            isOpen={Boolean(deleteTargetCommentId)}
+            onClose={closeDeleteCommentDialog}
+            title="Delete this comment?"
+            titleId="confession-delete-comment-dialog-title"
+            closeLabel="Close delete comment modal"
+            widthClassName="max-w-sm"
+          >
+            <div className="p-5">
+              <p className="text-sm text-slate-500 mb-5">
+                This action cannot be undone.
+              </p>
 
-            {!isLoadingModalComments &&
-              !modalCommentsError &&
-              modalComments.length === 0 && (
-                <p className="text-sm text-slate-500">No comments yet.</p>
-              )}
-
-            {!modalCommentsError &&
-              modalComments.map((comment, index) => {
-                return (
-                  <ConfessionModalCommentItem
-                    key={String(
-                      comment?._id || comment?.id || `comment-${index}`,
-                    )}
-                    comment={comment}
-                    currentUserId={currentUserId}
-                    activeCommentMenuId={activeCommentMenuId}
-                    editingCommentId={editingCommentId}
-                    editCommentContent={editCommentContent}
-                    isSavingEditedComment={isSavingEditedComment}
-                    deleteTargetCommentId={deleteTargetCommentId}
-                    isDeletingComment={isDeletingComment}
-                    onToggleMenu={handleToggleCommentMenu}
-                    onStartEdit={handleStartEditComment}
-                    onDelete={handleDeleteComment}
-                    onCancelEdit={handleCancelEditComment}
-                    onEditContentChange={setEditCommentContent}
-                    onSaveEdit={handleSaveEditedComment}
-                    onCancelDelete={() => setDeleteTargetCommentId("")}
-                    onConfirmDelete={handleConfirmDeleteComment}
-                  />
-                );
-              })}
-
-            {modalCommentsHasMore && !modalCommentsError && (
-              <div className="flex justify-center pt-1">
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={loadMoreModalComments}
-                  disabled={isLoadingModalComments}
-                  className="rounded-full border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={closeDeleteCommentDialog}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
                 >
-                  {isLoadingModalComments ? "Loading..." : "Load more"}
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteComment}
+                  disabled={isDeletingComment}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                >
+                  {isDeletingComment ? "Deleting..." : "Delete"}
                 </button>
               </div>
-            )}
-          </div>
-
-          <div className="border-t border-slate-100 px-4 py-3">
-            <div className="flex items-end gap-2">
-              <textarea
-                value={newCommentContent}
-                onChange={(event) => setNewCommentContent(event.target.value)}
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-rose-300 resize-none"
-                rows={2}
-                placeholder="Write a comment..."
-              />
-              <button
-                type="button"
-                onClick={handleAddComment}
-                disabled={isSubmittingComment}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-500 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-600 transition-colors cursor-pointer disabled:opacity-60"
-              >
-                {isSubmittingComment ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <SendHorizontal className="h-3.5 w-3.5" />
-                )}
-                {isSubmittingComment ? "Posting..." : "Post"}
-              </button>
             </div>
-          </div>
-        </ModalDialog>
+          </ModalDialog>
+        )}
 
         <ModalDialog
           isOpen={Boolean(editingConfessionId)}
