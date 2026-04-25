@@ -1848,6 +1848,7 @@ export default function Home() {
       navigate,
       showCommentActionFeedback,
       showFeedToast,
+      fetchReplies,
     ],
   );
 
