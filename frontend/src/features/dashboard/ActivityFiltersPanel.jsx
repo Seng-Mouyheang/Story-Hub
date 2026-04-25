@@ -34,18 +34,21 @@ export default function ActivityFiltersPanel({
           htmlFor="dashboard-story-status"
           className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
         >
-          Story Status
+          Status
         </label>
         <select
           id="dashboard-story-status"
           value={activityFilters.storyStatus}
           onChange={(event) => updateFilter("storyStatus", event.target.value)}
           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-          disabled={activityFilters.contentType === "confession"}
         >
           <option value="all">All</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
+          {activityFilters.contentType !== "confession" && (
+            <option value="published">Published</option>
+          )}
+          {activityFilters.contentType !== "confession" && (
+            <option value="draft">Draft</option>
+          )}
           <option value="deleted">Deleted</option>
         </select>
 
@@ -53,7 +56,7 @@ export default function ActivityFiltersPanel({
           htmlFor="dashboard-story-visibility"
           className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
         >
-          Story Visibility
+          Visibility
         </label>
         <select
           id="dashboard-story-visibility"
@@ -62,7 +65,6 @@ export default function ActivityFiltersPanel({
             updateFilter("storyVisibility", event.target.value)
           }
           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
-          disabled={activityFilters.contentType === "confession"}
         >
           <option value="all">All</option>
           <option value="public">Public</option>

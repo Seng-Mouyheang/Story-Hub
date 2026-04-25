@@ -210,7 +210,14 @@ const getDashboardConfessions = async (req, res) => {
       return;
     }
 
-    const { sortBy = "date", order = "desc", page = 1, limit = 20 } = req.query;
+    const {
+      deleted = "active",
+      visibility = "all",
+      sortBy = "date",
+      order = "desc",
+      page = 1,
+      limit = 20,
+    } = req.query;
 
     const parsedPage = Number.parseInt(page, 10) || 1;
     const parsedLimit = Number.parseInt(limit, 10) || 20;
@@ -219,10 +226,17 @@ const getDashboardConfessions = async (req, res) => {
     const db = await connectToDatabase();
     const confessionsCollection = db.collection("confessions");
 
-    const matchStage = {
-      authorId: userObjectId,
-      deletedAt: null,
-    };
+    const matchStage = { authorId: userObjectId };
+
+    if (deleted === "active") {
+      matchStage.deletedAt = null;
+    } else if (deleted === "deleted") {
+      matchStage.deletedAt = { $ne: null };
+    }
+
+    if (visibility !== "all") {
+      matchStage.visibility = visibility;
+    }
 
     const sortField = getSortField(sortBy);
     const sortDirection = order === "asc" ? 1 : -1;
@@ -248,6 +262,8 @@ const getDashboardConfessions = async (req, res) => {
         totalPages: Math.ceil(total / parsedLimit),
       },
       filters: {
+        deleted,
+        visibility,
         sortBy,
         order,
       },
