@@ -27,6 +27,8 @@ import {
   getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
 import {
+  AlertTriangle,
+  CheckCircle2,
   Heart,
   MessageCircle,
   Bookmark,
@@ -34,6 +36,7 @@ import {
   User,
   Plus,
   RefreshCcw,
+  X,
 } from "lucide-react";
 
 const formatCount = (value) => {
@@ -981,7 +984,7 @@ export default function Home() {
   }, []);
 
   const showFeedToast = useCallback(
-    (message) => {
+    (message, type = "info") => {
       if (!message) {
         return;
       }
@@ -997,6 +1000,7 @@ export default function Home() {
 
       setFeedToast({
         id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type,
         message,
       });
 
@@ -1206,11 +1210,14 @@ export default function Home() {
         setHasMore(hasMoreStories);
       } catch (error) {
         if (error.name !== "AbortError") {
+          const errorMessage =
+            "Unable to load stories right now. Please try again.";
+
           if (isInitial) {
-            setPostsError(
-              "Unable to load stories right now. Please try again.",
-            );
+            setPostsError(errorMessage);
           }
+
+          showFeedToast(errorMessage, "error");
         }
       } finally {
         if (!signal?.aborted) {
@@ -1222,7 +1229,7 @@ export default function Home() {
         }
       }
     },
-    [currentUserId],
+    [currentUserId, showFeedToast],
   );
 
   useEffect(() => {
@@ -1346,52 +1353,66 @@ export default function Home() {
           };
         });
       } catch {
-        setCommentsByStory((prev) => ({
-          ...prev,
-          [storyId]: {
-            ...createEmptyCommentState(),
-            ...prev[storyId],
-            loading: false,
-            loadingMore: false,
-            error: "Unable to load comments.",
-          },
-        }));
+        setCommentsByStory((prev) => {
+          const existingState = prev[storyId] || createEmptyCommentState();
+          const shouldShowInlineError = Boolean(existingState.loaded);
+
+          if (!shouldShowInlineError) {
+            showFeedToast("Unable to load comments.", "error");
+          }
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...existingState,
+              loading: false,
+              loadingMore: false,
+              error: "Unable to load comments.",
+            },
+          };
+        });
       }
     },
-    [],
+    [showFeedToast],
   );
 
-  const handleToggleLike = useCallback(async (storyId) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setPostsError("Please login to react to stories.");
-      return;
-    }
+  const handleToggleLike = useCallback(
+    async (storyId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login", { replace: true });
+        return;
+      }
 
-    setLikePulseStoryId(storyId);
-    setTimeout(() => {
-      setLikePulseStoryId((currentId) =>
-        currentId === storyId ? null : currentId,
-      );
-    }, 220);
+      setLikePulseStoryId(storyId);
+      setTimeout(() => {
+        setLikePulseStoryId((currentId) =>
+          currentId === storyId ? null : currentId,
+        );
+      }, 220);
 
-    try {
-      const payload = await toggleStoryLike(storyId);
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === storyId
-            ? {
-                ...post,
-                likedByCurrentUser: Boolean(payload.likedByCurrentUser),
-                likesCount: Number(payload.likesCount || 0),
-              }
-            : post,
-        ),
-      );
-    } catch {
-      setPostsError("Failed to update reaction. Please try again.");
-    }
-  }, []);
+      try {
+        const payload = await toggleStoryLike(storyId);
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === storyId
+              ? {
+                  ...post,
+                  likedByCurrentUser: Boolean(payload.likedByCurrentUser),
+                  likesCount: Number(payload.likesCount || 0),
+                }
+              : post,
+          ),
+        );
+      } catch {
+        const errorMessage = "Failed to update reaction. Please try again.";
+        setPostsError(errorMessage);
+        showFeedToast(errorMessage, "error");
+      }
+    },
+    [navigate, showFeedToast],
+  );
 
   const handleToggleComments = useCallback(
     (storyId) => {
@@ -1551,6 +1572,8 @@ export default function Home() {
           };
         });
       } catch {
+        showFeedToast("Unable to load replies.", "error");
+
         setCommentsByStory((prev) => ({
           ...prev,
           [storyId]: {
@@ -1569,7 +1592,7 @@ export default function Home() {
         }));
       }
     },
-    [],
+    [showFeedToast],
   );
 
   const handleToggleReplies = useCallback(
@@ -1643,7 +1666,7 @@ export default function Home() {
     async (storyId) => {
       const token = localStorage.getItem("token");
       if (!token) {
-        setPostsError("Please login to comment.");
+        navigate("/login", { replace: true });
         return;
       }
 
@@ -1802,12 +1825,19 @@ export default function Home() {
       commentsByStory,
       currentUserId,
       currentUsername,
+      navigate,
       showCommentActionFeedback,
     ],
   );
 
   const handleToggleSave = useCallback(
     async (storyId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
       try {
         const isAlreadySaved = savedStoryIds.has(storyId);
 
@@ -1830,9 +1860,10 @@ export default function Home() {
         });
       } catch (error) {
         console.error("Failed to toggle bookmark:", error);
+        showFeedToast("Failed to update bookmark. Please try again.", "error");
       }
     },
-    [savedStoryIds],
+    [savedStoryIds, navigate, showFeedToast],
   );
 
   const handleToggleMenu = useCallback((storyId) => {
@@ -1873,11 +1904,16 @@ export default function Home() {
     async (authorId) => {
       const normalizedTargetUserId = normalizeId(authorId);
 
-      if (
-        !normalizedTargetUserId ||
-        !currentUserId ||
-        normalizedTargetUserId === currentUserId
-      ) {
+      if (!normalizedTargetUserId) {
+        return;
+      }
+
+      if (!currentUserId) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      if (normalizedTargetUserId === currentUserId) {
         return;
       }
 
@@ -1922,7 +1958,10 @@ export default function Home() {
           [normalizedTargetUserId]: confirmedFollowing,
         }));
       } catch {
-        // Keep current state when request fails.
+        showFeedToast(
+          "Unable to update follow status. Please try again.",
+          "error",
+        );
       } finally {
         setBusyFollowIds((previous) => ({
           ...previous,
@@ -1930,16 +1969,16 @@ export default function Home() {
         }));
       }
     },
-    [currentUserId, followStateByUserId],
+    [currentUserId, followStateByUserId, navigate, showFeedToast],
   );
 
-  const handleReportStory = useCallback((storyId) => {
-    setMenuStoryId(null);
-
-    setFeedToast({ message: `Report submitted for ${storyId}` });
-    setIsFeedToastVisible(true);
-    setTimeout(() => setIsFeedToastVisible(false), 1800);
-  }, []);
+  const handleReportStory = useCallback(
+    (storyId) => {
+      setMenuStoryId(null);
+      showFeedToast(`Report submitted for ${storyId}`, "success");
+    },
+    [showFeedToast],
+  );
 
   const handleEditStory = useCallback(
     (storyId) => {
@@ -1964,7 +2003,7 @@ export default function Home() {
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setPostsError("Please login to delete stories.");
+      navigate("/login", { replace: true });
       return;
     }
 
@@ -1976,9 +2015,11 @@ export default function Home() {
         setActiveCommentStoryId(null);
       }
     } catch (error) {
-      setPostsError(error.message || "Failed to delete story.");
+      const errorMessage = error.message || "Failed to delete story.";
+      setPostsError(errorMessage);
+      showFeedToast(errorMessage, "error");
     }
-  }, [activeCommentStoryId, deleteTargetStoryId]);
+  }, [activeCommentStoryId, deleteTargetStoryId, navigate, showFeedToast]);
 
   const handleToggleCommentMenu = useCallback((commentId) => {
     setMenuCommentId((currentId) =>
@@ -1994,7 +2035,7 @@ export default function Home() {
 
       const token = localStorage.getItem("token");
       if (!token) {
-        setPostsError("Please login to like comments.");
+        navigate("/login", { replace: true });
         return;
       }
 
@@ -2041,7 +2082,10 @@ export default function Home() {
           },
         }));
       } catch (error) {
-        setPostsError(error.message || "Failed to update comment like.");
+        showCommentActionFeedback(
+          commentId,
+          error.message || "Failed to update comment like.",
+        );
       } finally {
         setPendingCommentLikeIds((prev) => {
           const next = { ...prev };
@@ -2050,7 +2094,7 @@ export default function Home() {
         });
       }
     },
-    [pendingCommentLikeIds],
+    [pendingCommentLikeIds, navigate, showCommentActionFeedback],
   );
 
   const handleStartReply = useCallback((storyId, comment) => {
@@ -2170,7 +2214,7 @@ export default function Home() {
 
     const token = localStorage.getItem("token");
     if (!token) {
-      setPostsError("Please login to delete comments.");
+      navigate("/login", { replace: true });
       return;
     }
 
@@ -2259,9 +2303,12 @@ export default function Home() {
         ),
       );
     } catch (error) {
-      setPostsError(error.message || "Failed to delete comment.");
+      showCommentActionFeedback(
+        commentId,
+        error.message || "Failed to delete comment.",
+      );
     }
-  }, [deleteTargetComment]);
+  }, [deleteTargetComment, navigate, showCommentActionFeedback]);
 
   const accountCircles = useMemo(() => followingAccounts, [followingAccounts]);
 
@@ -2482,40 +2529,109 @@ export default function Home() {
           </div>
         </main>
         {feedToast && (isEndOfFeedVisible || isFeedToastVisible) && (
-          <div className="pointer-events-none fixed right-4 bottom-4 z-50 w-[min(92vw,360px)]">
+          <div className="pointer-events-none fixed right-4 top-4 z-50 w-[min(92vw,360px)]">
             <div
-              className={`pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur px-4 py-3 transition-all duration-200 ease-out ${
+              className={`pointer-events-auto overflow-hidden rounded-2xl border bg-white/95 shadow-2xl backdrop-blur transition-all duration-200 ease-out ${
                 isFeedToastVisible
-                  ? "translate-y-0 opacity-100"
-                  : "translate-y-4 opacity-0"
+                  ? "translate-x-0 opacity-100"
+                  : "translate-x-8 opacity-0"
+              } ${
+                {
+                  success: "border-emerald-200",
+                  error: "border-rose-200",
+                  info: "border-slate-200",
+                }[feedToast.type]
               }`}
               role="status"
               aria-live="polite"
             >
-              <div className="flex items-start gap-3">
-                <div className="mt-0.5 shrink-0 text-slate-500">
-                  <RefreshCcw size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-slate-900">
-                    Feed updated
-                  </p>
-                  <p className="mt-0.5 text-sm leading-snug text-slate-600">
-                    {feedToast.message}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleRefreshFeed}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
+              <div className="px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`mt-0.5 shrink-0 ${
+                      feedToast.type === "error"
+                        ? "text-rose-500"
+                        : feedToast.type === "success"
+                          ? "text-emerald-500"
+                          : "text-slate-500"
+                    }`}
                   >
-                    <RefreshCcw size={12} />
-                    Back to top & refresh
-                  </button>
+                    {feedToast.type === "error" ? (
+                      <AlertTriangle size={18} />
+                    ) : feedToast.type === "success" ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <RefreshCcw size={18} />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p
+                          className={`text-[13px] font-semibold ${
+                            feedToast.type === "error"
+                              ? "text-rose-600"
+                              : feedToast.type === "success"
+                                ? "text-emerald-600"
+                                : "text-slate-900"
+                          }`}
+                        >
+                          {feedToast.type === "error"
+                            ? "Error"
+                            : feedToast.type === "success"
+                              ? "Success"
+                              : "Feed updated"}
+                        </p>
+                        <p className="mt-0.5 text-sm leading-snug text-slate-600">
+                          {feedToast.message}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={hideFeedToast}
+                        className="shrink-0 rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                        aria-label="Dismiss notification"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    {feedToast.type === "info" && (
+                      <button
+                        type="button"
+                        onClick={handleRefreshFeed}
+                        className="mt-3 inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-slate-800"
+                      >
+                        <RefreshCcw size={12} />
+                        Back to top & refresh
+                      </button>
+                    )}
+                  </div>
                 </div>
+              </div>
+              <div className="h-1 overflow-hidden bg-slate-100">
+                <div
+                  key={feedToast.id}
+                  className={`h-full origin-left ${
+                    feedToast.type === "error"
+                      ? "bg-rose-500/70"
+                      : feedToast.type === "success"
+                        ? "bg-emerald-500/70"
+                        : "bg-slate-900/70"
+                  }`}
+                  style={{
+                    animation: `toastCountDown 3200ms linear forwards`,
+                  }}
+                />
               </div>
             </div>
           </div>
         )}
+        <style>{`
+          @keyframes toastCountDown {
+            from { transform: scaleX(1); }
+            to { transform: scaleX(0); }
+          }
+        `}</style>
         {activeCommentStory && activeCommentState && (
           <div
             className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
@@ -2576,9 +2692,21 @@ export default function Home() {
                   )}
 
                 {!activeCommentState.loading && activeCommentState.error && (
-                  <p className="text-xs text-red-500">
-                    {activeCommentState.error}
-                  </p>
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm shadow-rose-100 ring-1 ring-rose-100">
+                    <div className="flex items-start gap-2">
+                      <div className="mt-0.5 shrink-0 text-rose-500">
+                        <AlertTriangle size={16} />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-rose-700">
+                          Comment error
+                        </p>
+                        <p className="text-[11px] text-rose-600 mt-1">
+                          {activeCommentState.error}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 {!activeCommentState.loading &&
@@ -2589,7 +2717,7 @@ export default function Home() {
                     </p>
                   )}
 
-                {!activeCommentState.error &&
+                {activeCommentState.items.length > 0 &&
                   activeCommentState.items.map((comment) => {
                     const commentId = String(comment._id);
                     const commentOwnerId = normalizeId(comment.userId);
@@ -2800,7 +2928,15 @@ export default function Home() {
                             </div>
 
                             {commentActionFeedback[commentId] && (
-                              <p className="text-[11px] text-emerald-600 mt-1">
+                              <p
+                                className={`text-[11px] mt-1 ${
+                                  commentActionFeedback[commentId]?.startsWith(
+                                    "Failed",
+                                  )
+                                    ? "text-rose-600"
+                                    : "text-emerald-600"
+                                }`}
+                              >
                                 {commentActionFeedback[commentId]}
                               </p>
                             )}
@@ -2820,14 +2956,7 @@ export default function Home() {
                                   </p>
                                 )}
 
-                                {!replyState.loading && replyState.error && (
-                                  <p className="text-[11px] text-rose-500">
-                                    {replyState.error}
-                                  </p>
-                                )}
-
                                 {!replyState.loading &&
-                                  !replyState.error &&
                                   (replyState.items || []).map((reply) => {
                                     const replyId = String(
                                       reply?._id || reply?.id,
@@ -3034,7 +3163,15 @@ export default function Home() {
                                             </div>
 
                                             {commentActionFeedback[replyId] && (
-                                              <p className="text-[11px] text-emerald-600 mt-1">
+                                              <p
+                                                className={`text-[11px] mt-1 ${
+                                                  commentActionFeedback[
+                                                    replyId
+                                                  ]?.startsWith("Failed")
+                                                    ? "text-rose-600"
+                                                    : "text-emerald-600"
+                                                }`}
+                                              >
                                                 {commentActionFeedback[replyId]}
                                               </p>
                                             )}
