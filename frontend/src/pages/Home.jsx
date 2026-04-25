@@ -1272,23 +1272,24 @@ export default function Home() {
   }, [loadStories]);
 
   useEffect(() => {
-    const initialFocused =
-      location && location.state && location.state.focusedPostId;
+    const initialFocused = location?.state?.focusedPostId;
     if (!initialFocused) return;
-    // wait for posts to load and then scroll
+
     const tryScroll = () => {
       const el = document.getElementById(`post-${initialFocused}`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!el) {
+        return;
       }
+
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      navigate(location.pathname, { replace: true, state: {} });
     };
 
-    // attempt after a frame in case posts are still rendering
     requestAnimationFrame(tryScroll);
     const t = setTimeout(tryScroll, 500);
 
     return () => clearTimeout(t);
-  }, [location, posts]);
+  }, [location, posts, navigate]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -2412,8 +2413,16 @@ export default function Home() {
 
                 <div className="flex md:gap-2 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                   {followingAccountsLoading ? (
-                    <div className="text-sm text-slate-500 px-2 py-4">
-                      Loading accounts...
+                    <div className="flex gap-4 sm:gap-5">
+                      {[...Array(3)].map((_, index) => (
+                        <div
+                          key={index}
+                          className="snap-start flex flex-col items-center gap-2 shrink-0 animate-pulse"
+                        >
+                          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-slate-200" />
+                          <div className="h-3 w-12 rounded-full bg-slate-200" />
+                        </div>
+                      ))}
                     </div>
                   ) : accountCircles.length > 0 ? (
                     accountCircles.map((account, i) => (
@@ -2441,8 +2450,31 @@ export default function Home() {
 
               <section className="flex-1 min-h-0 flex flex-col py-4">
                 {isLoadingPosts && (
-                  <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                    Loading stories...
+                  <div className="space-y-5">
+                    {[...Array(3)].map((_, index) => (
+                      <div
+                        key={index}
+                        className="rounded-2xl bg-slate-100 p-5 sm:p-6 animate-pulse"
+                      >
+                        <div className="flex items-start gap-3 mb-4">
+                          <div className="h-10 w-10 rounded-full bg-slate-200" />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="h-4 w-1/3 rounded-full bg-slate-200" />
+                            <div className="h-3 w-1/4 rounded-full bg-slate-200" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="h-5 rounded-full bg-slate-200 w-5/6" />
+                          <div className="h-5 rounded-full bg-slate-200 w-full" />
+                          <div className="h-5 rounded-full bg-slate-200 w-2/3" />
+                          <div className="flex items-center gap-3 pt-4">
+                            <div className="h-9 w-20 rounded-full bg-slate-200" />
+                            <div className="h-9 w-16 rounded-full bg-slate-200" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 
