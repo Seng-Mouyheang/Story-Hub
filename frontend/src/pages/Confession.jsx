@@ -24,6 +24,7 @@ import {
 } from "./confession/confessionUtils";
 import { useOutsideClickCloser } from "./confession/useOutsideClickCloser";
 import { useConfessionComments } from "./confession/useConfessionComments";
+import { getProfileByUserId } from "../api/profile/profileApi";
 import ConfessionFeedCard from "./confession/ConfessionFeedCard";
 import CommentSection from "../components/CommentSection";
 
@@ -262,12 +263,65 @@ export default function Confession() {
   );
 
   const [currentUserId, setCurrentUserId] = React.useState("");
+  const currentUsername = React.useMemo(() => {
+    try {
+      const currentUser = JSON.parse(
+        localStorage.getItem("currentUser") || "null",
+      );
+      return currentUser?.username || "You";
+    } catch {
+      return "You";
+    }
+  }, []);
+
+  const [currentUserProfilePicture, setCurrentUserProfilePicture] =
+    React.useState(() => {
+      try {
+        const currentUser = JSON.parse(
+          localStorage.getItem("currentUser") || "null",
+        );
+        return currentUser?.profilePicture || "";
+      } catch {
+        return "";
+      }
+    });
+
   const commentListRef = useRef(null);
   const commentListSentinelRef = useRef(null);
   const commentInputRef = useRef(null);
   const [commentOriginalInput, setCommentOriginalInput] = React.useState("");
 
   const location = useLocation();
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    if (!currentUserId) {
+      setCurrentUserProfilePicture("");
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const loadCurrentUserProfile = async () => {
+      try {
+        const profilePayload = await getProfileByUserId(currentUserId);
+        if (isMounted) {
+          setCurrentUserProfilePicture(profilePayload?.profilePicture || "");
+        }
+      } catch {
+        if (isMounted) {
+          setCurrentUserProfilePicture("");
+        }
+      }
+    };
+
+    loadCurrentUserProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUserId]);
 
   React.useEffect(() => {
     try {
@@ -380,7 +434,14 @@ export default function Confession() {
     deleteTargetCommentId,
     setDeleteTargetCommentId,
     handleConfirmDeleteComment,
-  } = useConfessionComments({ setConfessionFeed });
+  } = useConfessionComments({
+    setConfessionFeed,
+    showError,
+    showSuccess,
+    currentUserId,
+    currentUsername,
+    currentUserProfilePicture,
+  });
 
   const handleStartEditCommentWithOriginal = React.useCallback(
     (comment) => {

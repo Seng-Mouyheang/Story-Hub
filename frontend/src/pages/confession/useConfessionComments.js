@@ -3,7 +3,14 @@ import React from "react";
 import { parseResponse } from "./confessionUtils";
 import { useOutsideClickCloser } from "./useOutsideClickCloser";
 
-export const useConfessionComments = ({ setConfessionFeed }) => {
+export const useConfessionComments = ({
+  setConfessionFeed,
+  showError,
+  showSuccess,
+  currentUserId,
+  currentUsername,
+  currentUserProfilePicture,
+}) => {
   const [activeCommentConfessionId, setActiveCommentConfessionId] =
     React.useState("");
   const [commentModalTitle, setCommentModalTitle] = React.useState("");
@@ -29,6 +36,24 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   const [pendingCommentLikeIds, setPendingCommentLikeIds] = React.useState({});
   const [commentLikePulseIds, setCommentLikePulseIds] = React.useState({});
   const [commentActionFeedback, setCommentActionFeedback] = React.useState({});
+
+  const showErrorMessage = React.useCallback(
+    (message) => {
+      if (typeof showError === "function" && message) {
+        showError(message);
+      }
+    },
+    [showError],
+  );
+
+  const showSuccessMessage = React.useCallback(
+    (message) => {
+      if (typeof showSuccess === "function" && message) {
+        showSuccess(message);
+      }
+    },
+    [showSuccess],
+  );
 
   const getCommentId = React.useCallback(
     (comment) => String(comment?._id || comment?.id || ""),
@@ -127,7 +152,7 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
         const payload = await parseResponse(response);
 
         if (!response.ok) {
-          throw new Error(payload?.message || "Failed to load comments.");
+          throw new Error(payload?.message || "Unable to load comments.");
         }
 
         const comments = Array.isArray(payload?.comments)
@@ -145,12 +170,17 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
         setModalCommentsNextCursor(nextCursor);
         setModalCommentsHasMore(hasMore);
       } catch (error) {
-        setModalCommentsError(error.message || "Failed to load comments.");
+        showErrorMessage("Unable to load comments.");
+        setModalCommentsError(
+          error?.message === "Failed to fetch"
+            ? "Unable to load comments."
+            : error?.message || "Unable to load comments.",
+        );
       } finally {
         setIsLoadingModalComments(false);
       }
     },
-    [mergeCommentsById],
+    [mergeCommentsById, showErrorMessage],
   );
 
   const loadMoreModalComments = React.useCallback(async () => {
@@ -249,15 +279,76 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
         throw new Error(payload?.message || "Failed to add comment.");
       }
 
+      const authorDisplayName = currentUsername || "Anonymous";
+      const authorProfilePicture = currentUserProfilePicture || "";
+
+      if (replyingToCommentId) {
+        const existingReplyState =
+          repliesByComment[replyingToCommentId] || createEmptyRepliesState();
+        const replyStateLoaded = existingReplyState.loaded === true;
+
+        setModalComments((prev) =>
+          prev.map((comment) => {
+            const currentId = String(comment?._id || comment?.id || "");
+            if (currentId !== replyingToCommentId) {
+              return comment;
+            }
+            return {
+              ...comment,
+              replyCount: Math.max(0, Number(comment?.replyCount || 0) + 1),
+            };
+          }),
+        );
+
+        const newReply = {
+          _id: payload?.commentId || `${Date.now()}`,
+          id: payload?.commentId || `${Date.now()}`,
+          userId: currentUserId || "",
+          authorDisplayName,
+          authorProfilePicture,
+          content: cleanedContent,
+          createdAt: new Date().toISOString(),
+          likesCount: 0,
+          likedByCurrentUser: false,
+          isEdited: false,
+          parentId: replyingToCommentId,
+        };
+
+        setRepliesByComment((prev) => ({
+          ...prev,
+          [replyingToCommentId]: {
+            ...createEmptyRepliesState(),
+            ...existingReplyState,
+            open: true,
+            loaded: replyStateLoaded,
+            loading: false,
+            items: [...(existingReplyState.items || []), newReply],
+            error: "",
+            nextCursor: existingReplyState.nextCursor,
+            hasMore: existingReplyState.hasMore,
+          },
+        }));
+
+        if (!replyStateLoaded) {
+          await fetchReplies(replyingToCommentId);
+        }
+      } else {
+        await loadModalComments(activeCommentConfessionId, "", {
+          preservePagination: true,
+        });
+      }
+
       setNewCommentContent("");
       setReplyingToCommentId("");
       setReplyingToAuthor("");
-      await loadModalComments(activeCommentConfessionId, "", {
-        preservePagination: true,
-      });
       updateConfessionCommentCount(activeCommentConfessionId, 1);
-    } catch (error) {
-      setModalCommentsError(error.message || "Failed to add comment.");
+      showSuccessMessage("Comment posted.");
+    } catch {
+      const message = replyingToCommentId
+        ? "Failed to post reply."
+        : "Failed to post comment.";
+      showErrorMessage(message);
+      setModalCommentsError(message);
     } finally {
       setIsSubmittingComment(false);
     }
@@ -322,6 +413,7 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
               ...createEmptyRepliesState(),
               ...existingReplyState,
               loading: false,
+              loadingMore: false,
               loaded: true,
               open: true,
               error: "",
@@ -334,10 +426,9 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
           };
         });
       } catch (error) {
-        showCommentActionFeedback(
-          commentId,
-          error.message || "Unable to load replies.",
-        );
+        const message = "Unable to load replies.";
+        showErrorMessage(message);
+        showCommentActionFeedback(commentId, error.message || message);
 
         setRepliesByComment((prev) => ({
           ...prev,
@@ -345,12 +436,13 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
             ...createEmptyRepliesState(),
             ...(prev[commentId] || {}),
             loading: false,
+            loadingMore: false,
             error: error.message || "Unable to load replies.",
           },
         }));
       }
     },
-    [showCommentActionFeedback],
+    [showCommentActionFeedback, showErrorMessage],
   );
 
   const handleToggleReplies = React.useCallback(
@@ -582,10 +674,34 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
         }),
       );
 
+      setRepliesByComment((prev) =>
+        Object.fromEntries(
+          Object.entries(prev).map(([parentId, replyState]) => [
+            parentId,
+            {
+              ...replyState,
+              items: (replyState.items || []).map((reply) => {
+                const currentId = String(reply?._id || reply?.id || "");
+                if (currentId !== targetCommentId) {
+                  return reply;
+                }
+                return {
+                  ...reply,
+                  ...(updatedComment || {}),
+                };
+              }),
+            },
+          ]),
+        ),
+      );
+
       setEditingCommentId("");
       setEditCommentContent("");
-    } catch (error) {
-      setModalCommentsError(error.message || "Failed to edit comment.");
+      showSuccessMessage("Comment updated.");
+    } catch {
+      const message = "Failed to update comment.";
+      showErrorMessage(message);
+      setModalCommentsError(message);
     } finally {
       setIsSavingEditedComment(false);
     }
@@ -682,8 +798,11 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
         activeCommentConfessionId,
         commentCountDelta,
       );
-    } catch (error) {
-      setModalCommentsError(error.message || "Failed to delete comment.");
+      showSuccessMessage("Comment deleted.");
+    } catch {
+      const message = "Failed to delete comment.";
+      showErrorMessage(message);
+      setModalCommentsError(message);
     } finally {
       setIsDeletingComment(false);
       setDeleteTargetCommentId("");
@@ -692,6 +811,8 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     activeCommentConfessionId,
     deleteTargetCommentId,
     isDeletingComment,
+    showErrorMessage,
+    showSuccessMessage,
     updateConfessionCommentCount,
   ]);
 
