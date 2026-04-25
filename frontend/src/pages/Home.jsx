@@ -714,6 +714,7 @@ export default function Home() {
     toast: feedToast,
     isVisible: isFeedToastVisible,
     isPaused: isFeedToastPaused,
+    duration,
     showToast: showFeedToast,
     hideToast: hideFeedToast,
     pauseToast: pauseFeedToast,
@@ -1735,6 +1736,11 @@ export default function Home() {
             content,
             parentId: replyingToCommentId,
           });
+          const previousReplyState =
+            current?.repliesByComment?.[replyingToCommentId] ||
+            createEmptyRepliesState();
+          const didLoadReplies = Boolean(previousReplyState.loaded);
+
           const newComment = {
             _id: payload.commentId || `${Date.now()}`,
             userId: currentUserId,
@@ -1749,51 +1755,57 @@ export default function Home() {
             replyCount: 0,
           };
 
-          setCommentsByStory((prev) => ({
-            ...prev,
-            [storyId]: {
-              ...createEmptyCommentState(),
-              ...prev[storyId],
-              submitting: false,
-              input: "",
-              editingCommentId: null,
-              replyingToCommentId: null,
-              replyingToAuthor: "",
-              loaded: true,
-              items: replyingToCommentId
-                ? (prev[storyId]?.items || []).map((item) =>
-                    String(item?._id || item?.id) ===
-                    String(replyingToCommentId)
-                      ? {
-                          ...item,
-                          replyCount: Number(item?.replyCount || 0) + 1,
-                        }
-                      : item,
-                  )
-                : [newComment, ...(prev[storyId]?.items || [])],
-              repliesByComment: replyingToCommentId
-                ? {
-                    ...(prev[storyId]?.repliesByComment || {}),
-                    [replyingToCommentId]: {
-                      ...createEmptyRepliesState(),
-                      ...(prev[storyId]?.repliesByComment?.[
-                        replyingToCommentId
-                      ] || {}),
-                      open: true,
-                      loaded: true,
-                      loading: false,
-                      error: "",
-                      items: [
-                        ...(prev[storyId]?.repliesByComment?.[
-                          replyingToCommentId
-                        ]?.items || []),
-                        newComment,
-                      ],
-                    },
-                  }
-                : prev[storyId]?.repliesByComment || {},
-            },
-          }));
+          setCommentsByStory((prev) => {
+            const existingReplyState =
+              prev[storyId]?.repliesByComment?.[replyingToCommentId] || {};
+            const replyStateLoaded = existingReplyState.loaded === true;
+
+            return {
+              ...prev,
+              [storyId]: {
+                ...createEmptyCommentState(),
+                ...prev[storyId],
+                submitting: false,
+                input: "",
+                editingCommentId: null,
+                replyingToCommentId: null,
+                replyingToAuthor: "",
+                loaded: true,
+                items: replyingToCommentId
+                  ? (prev[storyId]?.items || []).map((item) =>
+                      String(item?._id || item?.id) ===
+                      String(replyingToCommentId)
+                        ? {
+                            ...item,
+                            replyCount: Number(item?.replyCount || 0) + 1,
+                          }
+                        : item,
+                    )
+                  : [newComment, ...(prev[storyId]?.items || [])],
+                repliesByComment: replyingToCommentId
+                  ? {
+                      ...(prev[storyId]?.repliesByComment || {}),
+                      [replyingToCommentId]: {
+                        ...createEmptyRepliesState(),
+                        ...existingReplyState,
+                        open: true,
+                        loaded: replyStateLoaded,
+                        loading: false,
+                        error: "",
+                        items: [
+                          ...(existingReplyState?.items || []),
+                          newComment,
+                        ],
+                      },
+                    }
+                  : prev[storyId]?.repliesByComment || {},
+              },
+            };
+          });
+
+          if (replyingToCommentId && !didLoadReplies) {
+            fetchReplies(storyId, replyingToCommentId);
+          }
 
           setCommentCountPulseStoryId(storyId);
           setTimeout(() => {
@@ -1832,6 +1844,7 @@ export default function Home() {
       commentsByStory,
       currentUserId,
       currentUsername,
+      currentUserProfilePicture,
       navigate,
       showCommentActionFeedback,
       showFeedToast,
@@ -2575,6 +2588,7 @@ export default function Home() {
             toast={feedToast}
             isVisible={isFeedToastVisible}
             isPaused={isFeedToastPaused}
+            durationMs={duration}
             onClose={hideFeedToast}
             onPause={pauseFeedToast}
             onResume={resumeFeedToast}

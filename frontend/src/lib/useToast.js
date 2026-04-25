@@ -122,6 +122,7 @@ export function useToast({
     toast,
     isVisible,
     isPaused,
+    duration,
     showToast,
     hideToast,
     pauseToast,
