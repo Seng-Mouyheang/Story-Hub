@@ -23,6 +23,12 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
   const [modalCommentsNextCursor, setModalCommentsNextCursor] =
     React.useState("");
   const [modalCommentsHasMore, setModalCommentsHasMore] = React.useState(false);
+  const [replyingToCommentId, setReplyingToCommentId] = React.useState("");
+  const [replyingToAuthor, setReplyingToAuthor] = React.useState("");
+  const [repliesByComment, setRepliesByComment] = React.useState({});
+  const [pendingCommentLikeIds, setPendingCommentLikeIds] = React.useState({});
+  const [commentLikePulseIds, setCommentLikePulseIds] = React.useState({});
+  const [commentActionFeedback, setCommentActionFeedback] = React.useState({});
 
   const getCommentId = React.useCallback(
     (comment) => String(comment?._id || comment?.id || ""),
@@ -49,6 +55,36 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     },
     [getCommentId],
   );
+
+  const createEmptyRepliesState = () => ({
+    open: false,
+    loaded: false,
+    loading: false,
+    loadingMore: false,
+    error: "",
+    items: [],
+    nextCursor: null,
+    hasMore: false,
+  });
+
+  const showCommentActionFeedback = React.useCallback((commentId, message) => {
+    if (!commentId || !message) {
+      return;
+    }
+
+    setCommentActionFeedback((prev) => ({
+      ...prev,
+      [commentId]: message,
+    }));
+
+    setTimeout(() => {
+      setCommentActionFeedback((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
+    }, 2600);
+  }, []);
 
   const updateConfessionCommentCount = React.useCallback(
     (confessionId, by) => {
@@ -146,7 +182,10 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     setActiveCommentMenuId("");
     setEditingCommentId("");
     setEditCommentContent("");
-    setDeleteTargetCommentId("");
+    setReplyingToCommentId("");
+    setReplyingToAuthor("");
+    setRepliesByComment({});
+    setCommentActionFeedback({});
     setModalCommentsError("");
     setIsLoadingModalComments(false);
   };
@@ -161,7 +200,10 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     setActiveCommentMenuId("");
     setEditingCommentId("");
     setEditCommentContent("");
-    setDeleteTargetCommentId("");
+    setReplyingToCommentId("");
+    setReplyingToAuthor("");
+    setRepliesByComment({});
+    setCommentActionFeedback({});
     await loadModalComments(confessionId);
   };
 
@@ -195,7 +237,10 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ content: cleanedContent }),
+          body: JSON.stringify({
+            content: cleanedContent,
+            ...(replyingToCommentId ? { parentId: replyingToCommentId } : {}),
+          }),
         },
       );
       const payload = await parseResponse(response);
@@ -205,6 +250,8 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       }
 
       setNewCommentContent("");
+      setReplyingToCommentId("");
+      setReplyingToAuthor("");
       await loadModalComments(activeCommentConfessionId, "", {
         preservePagination: true,
       });
@@ -222,10 +269,245 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     );
   };
 
+  const handleDeleteComment = React.useCallback((commentId) => {
+    if (!commentId) {
+      return;
+    }
+
+    setActiveCommentMenuId("");
+    setEditingCommentId("");
+    setDeleteTargetCommentId(commentId);
+  }, []);
+
+  const fetchReplies = React.useCallback(
+    async (commentId, cursor = null, append = false) => {
+      setRepliesByComment((prev) => ({
+        ...prev,
+        [commentId]: {
+          ...createEmptyRepliesState(),
+          ...(prev[commentId] || {}),
+          loading: !append,
+          loadingMore: append,
+          error: "",
+        },
+      }));
+
+      try {
+        const token = localStorage.getItem("token");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const params = new URLSearchParams({ limit: "4" });
+
+        if (cursor) {
+          params.set("cursor", cursor);
+        }
+
+        const response = await fetch(
+          `/api/confessions/comments/${commentId}/replies?${params.toString()}`,
+          { headers },
+        );
+        const payload = await parseResponse(response);
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Failed to load replies.");
+        }
+
+        const replies = Array.isArray(payload?.replies) ? payload.replies : [];
+
+        setRepliesByComment((prev) => {
+          const existingReplyState =
+            prev[commentId] || createEmptyRepliesState();
+          return {
+            ...prev,
+            [commentId]: {
+              ...createEmptyRepliesState(),
+              ...existingReplyState,
+              loading: false,
+              loaded: true,
+              open: true,
+              error: "",
+              items: append
+                ? [...(existingReplyState.items || []), ...replies]
+                : replies,
+              nextCursor: payload?.nextCursor || null,
+              hasMore: Boolean(payload?.hasMore),
+            },
+          };
+        });
+      } catch (error) {
+        showCommentActionFeedback(
+          commentId,
+          error.message || "Unable to load replies.",
+        );
+
+        setRepliesByComment((prev) => ({
+          ...prev,
+          [commentId]: {
+            ...createEmptyRepliesState(),
+            ...(prev[commentId] || {}),
+            loading: false,
+            error: error.message || "Unable to load replies.",
+          },
+        }));
+      }
+    },
+    [showCommentActionFeedback],
+  );
+
+  const handleToggleReplies = React.useCallback(
+    (commentId) => {
+      const currentReplyState =
+        repliesByComment[commentId] || createEmptyRepliesState();
+      const nextOpen = !currentReplyState.open;
+
+      setRepliesByComment((prev) => ({
+        ...prev,
+        [commentId]: {
+          ...currentReplyState,
+          open: nextOpen,
+        },
+      }));
+
+      if (nextOpen && !currentReplyState.loaded && !currentReplyState.loading) {
+        fetchReplies(commentId);
+      }
+    },
+    [fetchReplies, repliesByComment],
+  );
+
+  const handleLoadMoreReplies = React.useCallback(
+    (commentId) => {
+      const currentReplyState =
+        repliesByComment[commentId] || createEmptyRepliesState();
+
+      if (!currentReplyState.hasMore || !currentReplyState.nextCursor) {
+        return;
+      }
+
+      fetchReplies(commentId, currentReplyState.nextCursor, true);
+    },
+    [fetchReplies, repliesByComment],
+  );
+
+  const handleStartReply = React.useCallback((comment) => {
+    setActiveCommentMenuId("");
+    const commentId = String(comment?._id || comment?.id || "");
+    const replyAuthor = comment?.authorDisplayName || "Anonymous";
+
+    setEditingCommentId("");
+    setNewCommentContent("");
+    setReplyingToCommentId(commentId);
+    setReplyingToAuthor(replyAuthor);
+  }, []);
+
+  const handleToggleCommentLike = React.useCallback(
+    async (commentId) => {
+      if (!commentId || pendingCommentLikeIds[commentId]) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showCommentActionFeedback(commentId, "Please log in to like comments.");
+        return;
+      }
+
+      setCommentLikePulseIds((prev) => ({
+        ...prev,
+        [commentId]: true,
+      }));
+      setPendingCommentLikeIds((prev) => ({
+        ...prev,
+        [commentId]: true,
+      }));
+
+      try {
+        const response = await fetch(
+          `/api/confessions/comments/${commentId}/toggle-like`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+        const payload = await parseResponse(response);
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Failed to update comment like.");
+        }
+
+        const nextLikes = Number(payload?.likesCount || 0);
+        const likedByCurrentUser = Boolean(payload?.likedByCurrentUser);
+
+        setModalComments((prev) =>
+          prev.map((comment) => {
+            const currentId = String(comment?._id || comment?.id || "");
+            if (currentId !== commentId) {
+              return comment;
+            }
+            return {
+              ...comment,
+              likedByCurrentUser,
+              likesCount: nextLikes,
+            };
+          }),
+        );
+
+        setRepliesByComment((prev) =>
+          Object.fromEntries(
+            Object.entries(prev).map(([parentId, replyState]) => [
+              parentId,
+              {
+                ...replyState,
+                items: (replyState.items || []).map((reply) => {
+                  const currentId = String(reply?._id || reply?.id || "");
+                  if (currentId !== commentId) {
+                    return reply;
+                  }
+                  return {
+                    ...reply,
+                    likedByCurrentUser,
+                    likesCount: nextLikes,
+                  };
+                }),
+              },
+            ]),
+          ),
+        );
+      } catch (error) {
+        showCommentActionFeedback(
+          commentId,
+          error.message || "Failed to update comment like.",
+        );
+      } finally {
+        setPendingCommentLikeIds((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
+        setTimeout(() => {
+          setCommentLikePulseIds((prev) => {
+            const next = { ...prev };
+            delete next[commentId];
+            return next;
+          });
+        }, 220);
+      }
+    },
+    [pendingCommentLikeIds, showCommentActionFeedback],
+  );
+
+  const handleCancelCommentComposer = React.useCallback(() => {
+    setEditingCommentId("");
+    setEditCommentContent("");
+    setReplyingToCommentId("");
+    setReplyingToAuthor("");
+    setNewCommentContent("");
+  }, []);
+
   const handleStartEditComment = (comment) => {
     const commentId = String(comment?._id || comment?.id || "");
     setActiveCommentMenuId("");
-    setDeleteTargetCommentId("");
     setEditingCommentId(commentId);
     setEditCommentContent(comment?.content || "");
   };
@@ -309,14 +591,7 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     }
   };
 
-  const handleDeleteComment = (commentId) => {
-    setActiveCommentMenuId("");
-    setEditingCommentId("");
-    setEditCommentContent("");
-    setDeleteTargetCommentId(commentId);
-  };
-
-  const handleConfirmDeleteComment = async () => {
+  const handleConfirmDeleteComment = React.useCallback(async () => {
     if (
       !deleteTargetCommentId ||
       !activeCommentConfessionId ||
@@ -325,6 +600,7 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       return;
     }
 
+    const commentId = deleteTargetCommentId;
     const token = localStorage.getItem("token");
 
     if (!token) {
@@ -332,35 +608,76 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       return;
     }
 
+    setActiveCommentMenuId("");
+    setEditingCommentId("");
+    setEditCommentContent("");
     setIsDeletingComment(true);
     setModalCommentsError("");
 
     try {
-      const response = await fetch(
-        `/api/confessions/comments/${deleteTargetCommentId}`,
-        {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+      const response = await fetch(`/api/confessions/comments/${commentId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
         },
-      );
+      });
       const payload = await parseResponse(response);
 
       if (!response.ok) {
         throw new Error(payload?.message || "Failed to delete comment.");
       }
 
-      const deletedId = deleteTargetCommentId;
       const removedCount = Number(payload?.removedCount);
       const commentCountDelta =
         Number.isFinite(removedCount) && removedCount > 0 ? -removedCount : -1;
-      setDeleteTargetCommentId("");
+
       setModalComments((prev) =>
         prev.filter(
-          (comment) => String(comment?._id || comment?.id || "") !== deletedId,
+          (comment) => String(comment?._id || comment?.id || "") !== commentId,
         ),
       );
+
+      setRepliesByComment((prev) => {
+        const matchedParent = Object.entries(prev).find(([, replyState]) =>
+          (replyState.items || []).some(
+            (reply) => String(reply?._id || reply?.id || "") === commentId,
+          ),
+        );
+
+        const next = Object.fromEntries(
+          Object.entries(prev)
+            .map(([parentId, replyState]) => [
+              parentId,
+              {
+                ...replyState,
+                items: (replyState.items || []).filter(
+                  (reply) =>
+                    String(reply?._id || reply?.id || "") !== commentId,
+                ),
+              },
+            ])
+            .filter(([parentId]) => parentId !== commentId),
+        );
+
+        if (matchedParent) {
+          const parentId = matchedParent[0];
+          setModalComments((commentsPrev) =>
+            commentsPrev.map((comment) => {
+              const currentId = String(comment?._id || comment?.id || "");
+              if (currentId !== parentId) {
+                return comment;
+              }
+              return {
+                ...comment,
+                replyCount: Math.max(0, Number(comment?.replyCount || 0) - 1),
+              };
+            }),
+          );
+        }
+
+        return next;
+      });
+
       updateConfessionCommentCount(
         activeCommentConfessionId,
         commentCountDelta,
@@ -369,8 +686,14 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
       setModalCommentsError(error.message || "Failed to delete comment.");
     } finally {
       setIsDeletingComment(false);
+      setDeleteTargetCommentId("");
     }
-  };
+  }, [
+    activeCommentConfessionId,
+    deleteTargetCommentId,
+    isDeletingComment,
+    updateConfessionCommentCount,
+  ]);
 
   const closeCommentMenu = React.useCallback(() => {
     setActiveCommentMenuId("");
@@ -394,21 +717,33 @@ export const useConfessionComments = ({ setConfessionFeed }) => {
     editCommentContent,
     setEditCommentContent,
     isSavingEditedComment,
-    deleteTargetCommentId,
-    setDeleteTargetCommentId,
     isDeletingComment,
     isLoadingModalComments,
     modalCommentsError,
     modalCommentsHasMore,
+    modalCommentsNextCursor,
+    replyingToCommentId,
+    replyingToAuthor,
+    repliesByComment,
+    pendingCommentLikeIds,
+    commentLikePulseIds,
+    commentActionFeedback,
     closeCommentModal,
     openCommentModal,
     loadMoreModalComments,
     handleAddComment,
     handleToggleCommentMenu,
+    handleStartReply,
+    handleToggleReplies,
+    handleLoadMoreReplies,
     handleStartEditComment,
     handleCancelEditComment,
     handleSaveEditedComment,
+    handleCancelCommentComposer,
+    handleToggleCommentLike,
     handleDeleteComment,
+    deleteTargetCommentId,
+    setDeleteTargetCommentId,
     handleConfirmDeleteComment,
   };
 };
