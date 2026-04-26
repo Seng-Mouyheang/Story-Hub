@@ -44,6 +44,9 @@ export default function Signup() {
     if (!password) {
       setPasswordError("Password is required.");
       valid = false;
+    } else if (password.length < 8) {
+      setPasswordError("Password is too short, must be at least 8 characters.");
+      valid = false;
     } else {
       setPasswordError("");
     }

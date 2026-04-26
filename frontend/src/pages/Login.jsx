@@ -12,6 +12,7 @@ export default function Login() {
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [loginSuccess, setLoginSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -71,11 +72,14 @@ export default function Login() {
         localStorage.setItem("currentUser", JSON.stringify(payload.user));
       }
 
-      if (localStorage.getItem("needsProfileSetup") === "true") {
-        navigate("/edit-profile", { replace: true });
-      } else {
-        navigate("/");
-      }
+      setLoginSuccess(true);
+      setTimeout(() => {
+        if (localStorage.getItem("needsProfileSetup") === "true") {
+          navigate("/edit-profile", { replace: true });
+        } else {
+          navigate("/");
+        }
+      }, 1500);
     } catch (error) {
       setErrorMessage(error.message || "Unable to login right now.");
     } finally {
@@ -193,6 +197,15 @@ export default function Login() {
                     <p className="text-xs text-rose-600">{passwordError}</p>
                   )}
                 </div>
+
+                {loginSuccess && (
+                  <p
+                    role="status"
+                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
+                  >
+                    Credential verified. Login successful.
+                  </p>
+                )}
 
                 {errorMessage && (
                   <p
