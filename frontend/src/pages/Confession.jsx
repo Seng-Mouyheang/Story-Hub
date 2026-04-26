@@ -3,7 +3,6 @@ import { useLocation } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
-import SiteFooter from "../components/SiteFooter";
 import Toast from "../components/Toast";
 import { useToast } from "../lib/useToast";
 import {
@@ -13,6 +12,7 @@ import {
   EyeOff,
   Loader2,
   SendHorizontal,
+  RefreshCcw,
   X,
 } from "lucide-react";
 import {
@@ -24,6 +24,7 @@ import {
 } from "./confession/confessionUtils";
 import { useOutsideClickCloser } from "./confession/useOutsideClickCloser";
 import { useConfessionComments } from "./confession/useConfessionComments";
+import { followUser, getFollowStatus, unfollowUser } from "../api/profile";
 import { getProfileByUserId } from "../api/profile/profileApi";
 import ConfessionFeedCard from "./confession/ConfessionFeedCard";
 import CommentSection from "../components/CommentSection";
@@ -209,6 +210,8 @@ export default function Confession() {
   const [isLoadingMoreFeed, setIsLoadingMoreFeed] = useState(false);
   const [feedError, setFeedError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [followStateByUserId, setFollowStateByUserId] = useState({});
+  const [busyFollowIds, setBusyFollowIds] = useState({});
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
   const [pendingLikeIds, setPendingLikeIds] = useState(() => new Set());
@@ -225,6 +228,8 @@ export default function Confession() {
   const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
   const [isDeletingConfession, setIsDeletingConfession] = useState(false);
   const sentinelRef = useRef(null);
+  const feedScrollRef = useRef(null);
+  const hasShownEndToastRef = useRef(false);
   const lastTapRef = useRef({ confessionId: "", time: 0 });
   const pendingLikeIdsRef = useRef(new Set());
   const pendingBookmarkIdsRef = useRef(new Set());
@@ -263,6 +268,21 @@ export default function Confession() {
   );
 
   const [currentUserId, setCurrentUserId] = React.useState("");
+
+  const followableAuthorIds = React.useMemo(() => {
+    const authorIds = confessionFeed
+      .filter(
+        (item) =>
+          !item?.isAnonymous &&
+          item?.visibility === "public" &&
+          normalizeId(item?.authorId) !== currentUserId,
+      )
+      .map((item) => normalizeId(item?.authorId))
+      .filter(Boolean);
+
+    return [...new Set(authorIds)];
+  }, [confessionFeed, currentUserId]);
+
   const currentUsername = React.useMemo(() => {
     try {
       const currentUser = JSON.parse(
@@ -292,6 +312,118 @@ export default function Confession() {
   const [commentOriginalInput, setCommentOriginalInput] = React.useState("");
 
   const location = useLocation();
+
+  React.useEffect(() => {
+    let isMounted = true;
+
+    const unresolvedAuthorIds = followableAuthorIds.filter(
+      (authorId) => typeof followStateByUserId[authorId] !== "boolean",
+    );
+
+    if (unresolvedAuthorIds.length === 0) {
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const resolveFollowStatuses = async () => {
+      const statusEntries = await Promise.all(
+        unresolvedAuthorIds.map(async (authorId) => {
+          try {
+            const payload = await getFollowStatus(authorId);
+            return [authorId, Boolean(payload?.following)];
+          } catch {
+            return [authorId, false];
+          }
+        }),
+      );
+
+      if (!isMounted) {
+        return;
+      }
+
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        ...Object.fromEntries(statusEntries),
+      }));
+    };
+
+    resolveFollowStatuses().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [followStateByUserId, followableAuthorIds]);
+
+  const handleToggleFollowAuthor = React.useCallback(
+    async (authorId) => {
+      const normalizedTargetAuthorId = normalizeId(authorId);
+
+      if (
+        !normalizedTargetAuthorId ||
+        normalizedTargetAuthorId === currentUserId ||
+        busyFollowIds[normalizedTargetAuthorId]
+      ) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showError("Please log in to follow authors.");
+        return;
+      }
+
+      const currentlyFollowing = Boolean(
+        followStateByUserId[normalizedTargetAuthorId],
+      );
+
+      setBusyFollowIds((previous) => ({
+        ...previous,
+        [normalizedTargetAuthorId]: true,
+      }));
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        [normalizedTargetAuthorId]: !currentlyFollowing,
+      }));
+
+      try {
+        const payload = currentlyFollowing
+          ? await unfollowUser(normalizedTargetAuthorId)
+          : await followUser(normalizedTargetAuthorId);
+
+        const nextFollowState =
+          typeof payload?.following === "boolean"
+            ? payload.following
+            : !currentlyFollowing;
+
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          [normalizedTargetAuthorId]: nextFollowState,
+        }));
+
+        showSuccess(
+          nextFollowState
+            ? "You are now following this author."
+            : "You have unfollowed this author.",
+        );
+      } catch (error) {
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          [normalizedTargetAuthorId]: currentlyFollowing,
+        }));
+        showError(
+          error.message || "Unable to update follow status. Please try again.",
+        );
+      } finally {
+        setBusyFollowIds((previous) => {
+          const next = { ...previous };
+          delete next[normalizedTargetAuthorId];
+          return next;
+        });
+      }
+    },
+    [busyFollowIds, currentUserId, followStateByUserId, showError, showSuccess],
+  );
 
   React.useEffect(() => {
     let isMounted = true;
@@ -594,6 +726,10 @@ export default function Confession() {
 
   const loadConfessions = React.useCallback(
     async ({ cursor = "", append = false } = {}) => {
+      if (!append) {
+        hasShownEndToastRef.current = false;
+      }
+
       if (append) {
         setIsLoadingMoreFeed(true);
       } else {
@@ -637,6 +773,13 @@ export default function Confession() {
     },
     [showError],
   );
+
+  const handleRefreshConfessions = React.useCallback(() => {
+    hasShownEndToastRef.current = false;
+    hideToast();
+    feedScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    loadConfessions().catch(() => {});
+  }, [hideToast, loadConfessions]);
 
   const handleSubmit = async () => {
     dismissToast();
@@ -873,16 +1016,23 @@ export default function Confession() {
       }
 
       const payload = await parseResponse(response);
+      const savedByCurrentUser = Boolean(payload.savedByCurrentUser);
 
       setConfessionFeed((prev) =>
         prev.map((item) =>
           item._id === confessionId || item.id === confessionId
             ? {
                 ...item,
-                savedByCurrentUser: Boolean(payload.savedByCurrentUser),
+                savedByCurrentUser,
               }
             : item,
         ),
+      );
+
+      showSuccess(
+        savedByCurrentUser
+          ? "Confession saved successfully."
+          : "Confession removed from saved items.",
       );
     } catch (error) {
       showError(error.message || "Failed to toggle bookmark.");
@@ -1111,13 +1261,30 @@ export default function Confession() {
   React.useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (
-          entries[0].isIntersecting &&
-          hasMoreFeed &&
-          !isLoadingMoreFeed &&
-          !isLoadingFeed
-        ) {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) {
+          return;
+        }
+
+        if (hasMoreFeed && !isLoadingMoreFeed && !isLoadingFeed) {
           loadConfessions({ cursor: nextCursor, append: true }).catch(() => {});
+          return;
+        }
+
+        if (
+          !hasMoreFeed &&
+          confessionFeed.length > 0 &&
+          !isLoadingFeed &&
+          !hasShownEndToastRef.current
+        ) {
+          hasShownEndToastRef.current = true;
+          showToast("You're all caught up. Scroll up to refresh.", "info", {
+            action: {
+              label: "Back to top & refresh",
+              icon: RefreshCcw,
+              onClick: handleRefreshConfessions,
+            },
+          });
         }
       },
       { threshold: 0.1 },
@@ -1140,13 +1307,39 @@ export default function Confession() {
     isLoadingMoreFeed,
     isLoadingFeed,
     loadConfessions,
+    confessionFeed.length,
+    showToast,
+    handleRefreshConfessions,
   ]);
 
   let feedContent = null;
   if (isLoadingFeed) {
     feedContent = (
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-        Loading confessions...
+      <div className="space-y-5">
+        {[...Array(3)].map((_, index) => (
+          <div
+            key={index}
+            className="rounded-2xl bg-slate-100 p-5 sm:p-6 animate-pulse"
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="h-10 w-10 rounded-full bg-slate-200" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-1/3 rounded-full bg-slate-200" />
+                <div className="h-3 w-1/4 rounded-full bg-slate-200" />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="h-5 rounded-full bg-slate-200 w-5/6" />
+              <div className="h-5 rounded-full bg-slate-200 w-full" />
+              <div className="h-5 rounded-full bg-slate-200 w-2/3" />
+              <div className="flex items-center gap-3 pt-4">
+                <div className="h-9 w-20 rounded-full bg-slate-200" />
+                <div className="h-9 w-16 rounded-full bg-slate-200" />
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   } else if (feedError) {
@@ -1189,6 +1382,11 @@ export default function Confession() {
         onToggleLike={handleToggleLike}
         onOpenCommentModal={openCommentModal}
         onToggleBookmark={handleToggleBookmark}
+        onToggleFollowAuthor={handleToggleFollowAuthor}
+        followingAuthor={Boolean(
+          followStateByUserId[normalizeId(item?.authorId)],
+        )}
+        followBusy={Boolean(busyFollowIds[normalizeId(item?.authorId)])}
       />
     ));
   }
@@ -1201,7 +1399,10 @@ export default function Confession() {
         <Navbar title="Confession Wall" />
 
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            ref={feedScrollRef}
+            className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-4 sm:pb-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
             <div className="max-w-4xl mx-auto flex flex-col items-center justify-start">
               <div className="bg-slate-900 text-white p-8 rounded-3xl sm:rounded-[40px] text-left relative overflow-hidden w-full shadow-sm">
                 <div className="absolute top-0 right-0 w-32 h-32 bg-rose-500/20 blur-3xl"></div>
@@ -1272,10 +1473,18 @@ export default function Confession() {
                   </div>
                 )}
 
-                <div ref={sentinelRef} className="h-10" />
+                {!hasMoreFeed && confessionFeed.length > 0 && (
+                  <div className="flex items-center justify-center py-4">
+                    <div
+                      className="h-3 w-3 rounded-full bg-slate-300 shadow-sm ring-4 ring-slate-100"
+                      aria-hidden="true"
+                    />
+                  </div>
+                )}
+
+                <div ref={sentinelRef} className="h-1" />
               </div>
             </div>
-            <SiteFooter />
           </div>
         </main>
 
