@@ -4,6 +4,7 @@ export const DEFAULT_ACTIVITY_FILTERS = {
   contentType: "all",
   sortBy: "updated_desc",
   storyStatus: "all",
+  storyShow: "active",
   storyVisibility: "all",
 };
 
@@ -220,13 +221,14 @@ export const getSortConfig = (sortBy) => {
 
 export const getStoryQueryFilters = (activityFilters) => {
   const storyStatus = activityFilters?.storyStatus || "all";
+  const storyShow = activityFilters?.storyShow || "active";
 
   return {
     status:
       storyStatus === "published" || storyStatus === "draft"
         ? storyStatus
         : "all",
-    deleted: storyStatus === "deleted" ? "deleted" : "active",
+    deleted: storyShow === "deleted" ? "deleted" : "active",
     visibility: activityFilters?.storyVisibility || "all",
   };
 };

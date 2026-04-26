@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Feather } from "lucide-react";
+import { Eye, EyeOff, Feather, ArrowRight } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 export default function Signup() {
   const [name, setName] = useState("");
@@ -11,19 +13,62 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
+  const [usernameError, setUsernameError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [confirmPasswordError, setConfirmPasswordError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
 
+  const validate = () => {
+    let valid = true;
+
+    if (!name.trim()) {
+      setUsernameError("Username is required.");
+      valid = false;
+    } else {
+      setUsernameError("");
+    }
+
+    if (!email.trim()) {
+      setEmailError("Email address is required.");
+      valid = false;
+    } else if (!isValidEmail(email.trim())) {
+      setEmailError("Please enter a valid email address.");
+      valid = false;
+    } else {
+      setEmailError("");
+    }
+
+    if (!password) {
+      setPasswordError("Password is required.");
+      valid = false;
+    } else if (password.length < 8) {
+      setPasswordError("Password is too short, must be at least 8 characters.");
+      valid = false;
+    } else {
+      setPasswordError("");
+    }
+
+    if (!confirmPassword) {
+      setConfirmPasswordError("Please confirm your password.");
+      valid = false;
+    } else if (password && confirmPassword !== password) {
+      setConfirmPasswordError("Passwords do not match.");
+      valid = false;
+    } else {
+      setConfirmPasswordError("");
+    }
+
+    return valid;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     setErrorMessage("");
 
-    if (password !== confirmPassword) {
-      setErrorMessage("Passwords do not match.");
-      return;
-    }
+    if (!validate()) return;
 
     setIsSubmitting(true);
 
@@ -104,8 +149,8 @@ export default function Signup() {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="space-y-2">
+              <form onSubmit={handleSubmit} noValidate className="space-y-5">
+                <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">
                     Username
                   </label>
@@ -113,13 +158,23 @@ export default function Signup() {
                     type="text"
                     placeholder="username"
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                    required
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setUsernameError("");
+                      setErrorMessage("");
+                    }}
+                    className={`h-12 w-full rounded-xl border bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 ${
+                      usernameError
+                        ? "border-rose-400 focus:border-rose-400 focus:ring-rose-100"
+                        : "border-slate-300 focus:border-rose-400 focus:ring-rose-100"
+                    }`}
                   />
+                  {usernameError && (
+                    <p className="text-xs text-rose-600">{usernameError}</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">
                     Email Address
                   </label>
@@ -127,13 +182,23 @@ export default function Signup() {
                     type="email"
                     placeholder="name@gmail.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                    required
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError("");
+                      setErrorMessage("");
+                    }}
+                    className={`h-12 w-full rounded-xl border bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 ${
+                      emailError
+                        ? "border-rose-400 focus:border-rose-400 focus:ring-rose-100"
+                        : "border-slate-300 focus:border-rose-400 focus:ring-rose-100"
+                    }`}
                   />
+                  {emailError && (
+                    <p className="text-xs text-rose-600">{emailError}</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">
                     Password
                   </label>
@@ -142,9 +207,16 @@ export default function Signup() {
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-11 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                      required
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setPasswordError("");
+                        setErrorMessage("");
+                      }}
+                      className={`h-12 w-full rounded-xl border bg-white px-4 pr-11 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 ${
+                        passwordError
+                          ? "border-rose-400 focus:border-rose-400 focus:ring-rose-100"
+                          : "border-slate-300 focus:border-rose-400 focus:ring-rose-100"
+                      }`}
                     />
                     <button
                       type="button"
@@ -154,9 +226,12 @@ export default function Signup() {
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
+                  {passwordError && (
+                    <p className="text-xs text-rose-600">{passwordError}</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">
                     Confirm Password
                   </label>
@@ -165,24 +240,28 @@ export default function Signup() {
                       type={showConfirmPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-11 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                      required
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        setConfirmPasswordError("");
+                        setErrorMessage("");
+                      }}
+                      className={`h-12 w-full rounded-xl border bg-white px-4 pr-11 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 ${
+                        confirmPasswordError
+                          ? "border-rose-400 focus:border-rose-400 focus:ring-rose-100"
+                          : "border-slate-300 focus:border-rose-400 focus:ring-rose-100"
+                      }`}
                     />
                     <button
                       type="button"
-                      onClick={() =>
-                        setShowConfirmPassword(!showConfirmPassword)
-                      }
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
                     >
-                      {showConfirmPassword ? (
-                        <EyeOff size={18} />
-                      ) : (
-                        <Eye size={18} />
-                      )}
+                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
+                  {confirmPasswordError && (
+                    <p className="text-xs text-rose-600">{confirmPasswordError}</p>
+                  )}
                 </div>
 
                 {errorMessage && (
@@ -197,9 +276,10 @@ export default function Signup() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? "Creating Account..." : "Create Account"}
+                  {!isSubmitting && <ArrowRight className="w-4 h-4 text-white" />}
                 </button>
               </form>
 

@@ -254,8 +254,10 @@ export default function Dashboard() {
         }
 
         // contentType === 'all' -> fetch both and merge
+        const allFilters = getStoryQueryFilters(activityFilters);
         const [storiesRes, confessionsRes] = await Promise.allSettled([
           getDashboardStories({
+            ...allFilters,
             sortBy: apiSortBy,
             order,
             page,
@@ -263,6 +265,8 @@ export default function Dashboard() {
             signal: controller.signal,
           }),
           getDashboardConfessions({
+            deleted: allFilters.deleted,
+            visibility: allFilters.visibility,
             sortBy: apiSortBy,
             order,
             page,

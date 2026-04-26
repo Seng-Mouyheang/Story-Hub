@@ -49,6 +49,21 @@ export default function ActivityFiltersPanel({
           {activityFilters.contentType !== "confession" && (
             <option value="draft">Draft</option>
           )}
+        </select>
+
+        <label
+          htmlFor="dashboard-story-show"
+          className="block text-xs font-medium text-slate-500 uppercase tracking-wide"
+        >
+          Show
+        </label>
+        <select
+          id="dashboard-story-show"
+          value={activityFilters.storyShow}
+          onChange={(event) => updateFilter("storyShow", event.target.value)}
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-100 focus:border-rose-400"
+        >
+          <option value="active">Active</option>
           <option value="deleted">Deleted</option>
         </select>
 

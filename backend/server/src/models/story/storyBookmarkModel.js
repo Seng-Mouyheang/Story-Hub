@@ -215,6 +215,15 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
           preserveNullAndEmptyArrays: true,
         },
       },
+      { $limit: limit + 1 },
+      {
+        $lookup: {
+          from: "storyBookmarks",
+          localField: "story._id",
+          foreignField: "storyId",
+          as: "_storyBookmarks",
+        },
+      },
       {
         $project: {
           _id: "$story._id",
@@ -226,6 +235,7 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
           tags: "$story.tags",
           likesCount: "$story.likesCount",
           commentCount: "$story.commentCount",
+          bookmarkCount: { $size: "$_storyBookmarks" },
           createdAt: "$story.createdAt",
           updatedAt: "$story.updatedAt",
           publishedAt: "$story.publishedAt",
@@ -236,7 +246,6 @@ const getUserBookmarkedStories = async (userId, cursor, limit) => {
           bookmarkCreatedAt: "$createdAt",
         },
       },
-      { $limit: limit + 1 },
     ])
     .toArray();
 
