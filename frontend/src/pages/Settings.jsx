@@ -75,7 +75,9 @@ export default function Settings() {
     setIsSaving(true);
     try {
       await changePassword({ currentPassword, newPassword });
-      // Backend revokes current token; show message then redirect to login
+      // Clear stale token immediately so no further API calls fire with revoked credentials
+      localStorage.removeItem("token");
+      localStorage.removeItem("currentUser");
       setMessage("Password updated. Please log in again.");
       setCurrentFieldError("");
       setNewFieldError("");
