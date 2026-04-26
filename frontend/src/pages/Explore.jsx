@@ -91,7 +91,7 @@ const AuthorRow = ({
       <div className="min-w-0">
         <Link
           to={userId ? `/profile/${userId}` : "/profile"}
-        state={{ from: "/explore" }}
+          state={{ from: "/explore" }}
           className="font-semibold text-sm text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
         >
           {name}
@@ -714,7 +714,10 @@ export default function Explore() {
                 {storiesLoading ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4">
                     {[0, 1].map((i) => (
-                      <div key={i} className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm animate-pulse">
+                      <div
+                        key={i}
+                        className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm animate-pulse"
+                      >
                         <div className="h-3 w-20 bg-slate-200 rounded-full mb-4" />
                         <div className="h-5 w-3/4 bg-slate-200 rounded-lg mb-2" />
                         <div className="h-3 w-1/3 bg-slate-200 rounded-full mb-4" />
@@ -942,7 +945,10 @@ export default function Explore() {
                 {storiesLoading ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4">
                     {[0, 1].map((i) => (
-                      <div key={i} className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm animate-pulse">
+                      <div
+                        key={i}
+                        className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm animate-pulse"
+                      >
                         <div className="h-3 w-20 bg-slate-200 rounded-full mb-4" />
                         <div className="h-5 w-3/4 bg-slate-200 rounded-lg mb-2" />
                         <div className="h-3 w-1/3 bg-slate-200 rounded-full mb-4" />
@@ -1171,7 +1177,10 @@ export default function Explore() {
                   {authorsLoading ? (
                     <div className="space-y-1">
                       {[0, 1, 2].map((i) => (
-                        <div key={i} className="flex items-center justify-between gap-3 py-3 animate-pulse">
+                        <div
+                          key={i}
+                          className="flex items-center justify-between gap-3 py-3 animate-pulse"
+                        >
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-slate-200 shrink-0" />
                             <div className="space-y-1.5">

@@ -235,7 +235,7 @@ export default function ConfessionFeedCard({
               {!item?.isAnonymous && authorId ? (
                 <Link
                   to={`/profile/${authorId}`}
-              state={{ from: "/confession" }}
+                  state={{ from: "/confession" }}
                   className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
                 >
                   {author}
