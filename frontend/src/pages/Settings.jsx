@@ -3,10 +3,9 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Shield, Trash2, LogOut } from "lucide-react";
-import { changePassword, deleteAccount } from "../api/auth/authApi";
-
+import { Shield, Trash2, LogOut, Loader2 } from "lucide-react";
 import { Eye, EyeOff } from "lucide-react";
+import { changePassword, deleteAccount } from "../api/auth/authApi";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -247,8 +246,9 @@ export default function Settings() {
                     <button
                       onClick={handleChangePassword}
                       disabled={isSaving}
-                      className="w-full py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-colors disabled:opacity-60"
+                      className="w-full py-3 bg-rose-500 text-white rounded-xl hover:bg-rose-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                     >
+                      {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                       {isSaving ? "Saving..." : "Change Password"}
                     </button>
                   </div>
@@ -289,8 +289,9 @@ export default function Settings() {
                     <button
                       onClick={handleDeleteAccount}
                       disabled={isDeleting}
-                      className="w-full py-3 bg-white text-rose-600 border border-rose-600 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-60"
+                      className="w-full py-3 bg-white text-rose-600 border border-rose-600 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                     >
+                      {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
                       {isDeleting ? "Deleting..." : "Delete Account"}
                     </button>
                   </div>

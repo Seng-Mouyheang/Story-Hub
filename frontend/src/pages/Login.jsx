@@ -3,19 +3,49 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Feather, Eye, EyeOff } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
 
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const successMessage = location.state?.message || "";
 
+  const validate = () => {
+    let valid = true;
+
+    if (!email.trim()) {
+      setEmailError("Email address is required.");
+      valid = false;
+    } else if (!isValidEmail(email.trim())) {
+      setEmailError("Please enter a valid email address.");
+      valid = false;
+    } else {
+      setEmailError("");
+    }
+
+    if (!password) {
+      setPasswordError("Password is required.");
+      valid = false;
+    } else {
+      setPasswordError("");
+    }
+
+    return valid;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage("");
+
+    if (!validate()) return;
+
     setIsSubmitting(true);
 
     try {
@@ -96,7 +126,7 @@ export default function Login() {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} noValidate className="space-y-5">
                 {successMessage && (
                   <p
                     role="status"
@@ -106,7 +136,7 @@ export default function Login() {
                   </p>
                 )}
 
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <label className="block text-sm font-medium text-slate-700">
                     Email Address
                   </label>
@@ -114,38 +144,54 @@ export default function Login() {
                     type="email"
                     placeholder="name@gmail.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError("");
+                      setErrorMessage("");
+                    }}
+                    className={`h-12 w-full rounded-xl border bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 ${
+                      emailError
+                        ? "border-rose-400 focus:border-rose-400 focus:ring-rose-100"
+                        : "border-slate-300 focus:border-rose-400 focus:ring-rose-100"
+                    }`}
                   />
+                  {emailError && (
+                    <p className="text-xs text-rose-600">{emailError}</p>
+                  )}
                 </div>
 
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">
-                      Password
-                    </label>
-                  </div>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-slate-700">
+                    Password
+                  </label>
                   <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      required
-                      className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 pr-12 text-sm text-slate-900 placeholder:text-slate-400 transition focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-100"
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setPasswordError("");
+                        setErrorMessage("");
+                      }}
+                      className={`h-12 w-full rounded-xl border bg-white px-4 pr-12 text-sm text-slate-900 placeholder:text-slate-400 transition focus:outline-none focus:ring-2 ${
+                        passwordError
+                          ? "border-rose-400 focus:border-rose-400 focus:ring-rose-100"
+                          : "border-slate-300 focus:border-rose-400 focus:ring-rose-100"
+                      }`}
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
                       className="absolute inset-y-0 right-3 flex items-center text-slate-500"
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
+                  {passwordError && (
+                    <p className="text-xs text-rose-600">{passwordError}</p>
+                  )}
                 </div>
 
                 {errorMessage && (
@@ -156,8 +202,6 @@ export default function Login() {
                     {errorMessage}
                   </p>
                 )}
-
-                {/* Remember checkbox removed per request */}
 
                 <button
                   type="submit"
