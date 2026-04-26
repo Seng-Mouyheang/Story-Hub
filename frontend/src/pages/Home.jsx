@@ -167,7 +167,10 @@ const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
       {isAdd ? (
         content
       ) : (
-        <Link to={authorId ? `/profile/${authorId}` : "/profile"} state={{ from: "/" }}>
+        <Link
+          to={authorId ? `/profile/${authorId}` : "/profile"}
+          state={{ from: "/" }}
+        >
           {content}
         </Link>
       )}

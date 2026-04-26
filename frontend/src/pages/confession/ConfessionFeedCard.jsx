@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Heart, MessageCircle, Bookmark, MoreHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -43,6 +44,9 @@ import {
  * @property {(confessionId: string) => void} onToggleLike
  * @property {(confessionId: string, author: string) => void} onOpenCommentModal
  * @property {(confessionId: string) => void} onToggleBookmark
+ * @property {(authorId: string) => void} [onToggleFollowAuthor]
+ * @property {boolean} [followingAuthor]
+ * @property {boolean} [followBusy]
  * @property {(payload: { tag: string, confessionId: string, item: ConfessionFeedItem }) => void} [onTagClick]
  * @property {(payload: { confessionId: string, item: ConfessionFeedItem, shareUrl: string, method: string }) => void | Promise<void>} [onShare]
  */
@@ -66,6 +70,9 @@ export default function ConfessionFeedCard({
   onToggleLike,
   onOpenCommentModal,
   onToggleBookmark,
+  onToggleFollowAuthor,
+  followingAuthor = false,
+  followBusy = false,
   onTagClick,
 }) {
   const originalAuthor = item?.authorDisplayName || "Unknown Author";
@@ -78,16 +85,77 @@ export default function ConfessionFeedCard({
       : `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(
           authorSeed,
         )}`;
-  const tags =
-    Array.isArray(item?.tags) && item.tags.length > 0 ? item.tags : [];
+  const [areTagsExpanded, setAreTagsExpanded] = useState(false);
+  const [areTagsWrapped, setAreTagsWrapped] = useState(false);
+  const [firstRowTagCount, setFirstRowTagCount] = useState(4);
+  const tagMeasurementRef = useRef(null);
+  const tags = Array.isArray(item?.tags) ? item.tags : [];
+  const hiddenTagCount = areTagsWrapped
+    ? Math.max(tags.length - firstRowTagCount, 0)
+    : 0;
+  const canExpandTags = hiddenTagCount > 0;
+  const visibleTags =
+    areTagsWrapped && !areTagsExpanded ? tags.slice(0, firstRowTagCount) : tags;
   const confessionId = String(item?._id || item?.id || `fallback-${index}`);
   const canManageConfession =
     Boolean(currentUserId) && normalizeId(item?.authorId) === currentUserId;
+  const canFollowAuthor =
+    !item?.isAnonymous &&
+    item?.visibility === "public" &&
+    Boolean(authorId) &&
+    authorId !== currentUserId &&
+    typeof onToggleFollowAuthor === "function";
   const isExpanded = Boolean(expandedConfessionIds[confessionId]);
   const { visibleContent, isLongContent } = getConfessionContentPreview(
     item?.content,
     isExpanded,
   );
+
+  useEffect(() => {
+    const measurementElement = tagMeasurementRef.current;
+
+    if (!measurementElement) {
+      return undefined;
+    }
+
+    const updateTagWrapState = () => {
+      const tagElements = Array.from(
+        measurementElement.querySelectorAll('[data-tag-chip="true"]'),
+      );
+
+      if (tagElements.length === 0) {
+        setAreTagsWrapped(false);
+        setFirstRowTagCount(4);
+        return;
+      }
+
+      const firstRowTop = tagElements[0].offsetTop;
+      const calculatedFirstRowCount = tagElements.filter(
+        (tagElement) => tagElement.offsetTop <= firstRowTop + 1,
+      ).length;
+      const safeFirstRowCount = Math.max(calculatedFirstRowCount, 1);
+
+      setFirstRowTagCount(safeFirstRowCount);
+      setAreTagsWrapped(safeFirstRowCount < tagElements.length);
+    };
+
+    const frameId = requestAnimationFrame(updateTagWrapState);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => cancelAnimationFrame(frameId);
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateTagWrapState();
+    });
+
+    observer.observe(measurementElement);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [tags]);
 
   return (
     <div
@@ -167,7 +235,7 @@ export default function ConfessionFeedCard({
               {!item?.isAnonymous && authorId ? (
                 <Link
                   to={`/profile/${authorId}`}
-              state={{ from: "/confession" }}
+                  state={{ from: "/confession" }}
                   className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
                 >
                   {author}
@@ -184,6 +252,24 @@ export default function ConfessionFeedCard({
             </div>
           </div>
         </div>
+
+        {canFollowAuthor ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleFollowAuthor(authorId);
+            }}
+            disabled={followBusy}
+            className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+              followingAuthor
+                ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                : "bg-rose-500 hover:bg-rose-600 text-white"
+            } ${followBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+          >
+            {followingAuthor ? "Following" : "Follow"}
+          </button>
+        ) : null}
       </div>
 
       <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap">
@@ -203,17 +289,73 @@ export default function ConfessionFeedCard({
       {!isLongContent && <div className="mb-6" />}
 
       {tags.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {tags.slice(0, 4).map((tag) => (
+        <div className="relative mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div
+            ref={tagMeasurementRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 -z-10 flex w-full flex-wrap items-center gap-x-3 gap-y-1 opacity-0"
+          >
+            {tags.map((tag, index) => (
+              <span
+                key={`${confessionId}-measure-tag-${String(tag)}-${index}`}
+                data-tag-chip="true"
+                className="text-xs font-semibold tracking-wide text-rose-600"
+              >
+                #
+                {String(tag || "")
+                  .trim()
+                  .replace(/^#/, "")
+                  .replaceAll(/\s+/g, "")}
+              </span>
+            ))}
+          </div>
+
+          {visibleTags.map((tag, index) => {
+            const normalizedTag = String(tag || "")
+              .trim()
+              .replace(/^#/, "")
+              .replaceAll(/\s+/g, "");
+
+            return onTagClick ? (
+              <button
+                key={`${confessionId}-tag-${normalizedTag}-${index}`}
+                type="button"
+                onClick={() =>
+                  onTagClick?.({ tag: normalizedTag, confessionId, item })
+                }
+                className="text-xs font-semibold tracking-wide text-rose-600"
+              >
+                #{normalizedTag}
+              </button>
+            ) : (
+              <span
+                key={`${confessionId}-tag-${normalizedTag}-${index}`}
+                className="text-xs font-semibold tracking-wide text-rose-600"
+              >
+                #{normalizedTag}
+              </span>
+            );
+          })}
+
+          {!areTagsExpanded && canExpandTags && (
             <button
-              key={`${confessionId}-${tag}`}
               type="button"
-              onClick={() => onTagClick?.({ tag, confessionId, item })}
-              className="text-xs font-semibold tracking-wide text-rose-600 hover:underline cursor-pointer"
+              onClick={() => setAreTagsExpanded(true)}
+              className="text-xs font-semibold cursor-pointer tracking-wide text-rose-600 transition-colors hover:text-rose-700"
             >
-              #{tag}
+              +{hiddenTagCount}
             </button>
-          ))}
+          )}
+
+          {areTagsExpanded && canExpandTags && (
+            <button
+              type="button"
+              onClick={() => setAreTagsExpanded(false)}
+              className="text-xs font-semibold cursor-pointer tracking-wide text-slate-500 transition-colors hover:text-slate-700"
+            >
+              Show less
+            </button>
+          )}
         </div>
       )}
 

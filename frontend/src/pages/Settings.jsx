@@ -155,8 +155,9 @@ export default function Settings() {
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10">
             <div className="flex justify-center">
               <div className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 flex flex-col items-center">
-
-                <h2 className="text-lg font-semibold mb-6 text-center">Account Settings</h2>
+                <h2 className="text-lg font-semibold mb-6 text-center">
+                  Account Settings
+                </h2>
 
                 {/* Change Password */}
                 <div className="w-full mb-8">
@@ -187,9 +188,17 @@ export default function Settings() {
                         type="button"
                         onClick={() => setShowCurrent((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={showCurrent ? "Hide current password" : "Show current password"}
+                        aria-label={
+                          showCurrent
+                            ? "Hide current password"
+                            : "Show current password"
+                        }
                       >
-                        {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showCurrent ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
                       </button>
                     </div>
 
@@ -207,15 +216,23 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {newFieldError && (
-                        <p className="mt-1 text-sm text-rose-600 text-center">{newFieldError}</p>
+                        <p className="mt-1 text-sm text-rose-600 text-center">
+                          {newFieldError}
+                        </p>
                       )}
                       <button
                         type="button"
                         onClick={() => setShowNew((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={showNew ? "Hide new password" : "Show new password"}
+                        aria-label={
+                          showNew ? "Hide new password" : "Show new password"
+                        }
                       >
-                        {showNew ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showNew ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
                       </button>
                     </div>
 
@@ -233,15 +250,25 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {confirmFieldError && (
-                        <p className="mt-1 text-sm text-rose-600 text-center">{confirmFieldError}</p>
+                        <p className="mt-1 text-sm text-rose-600 text-center">
+                          {confirmFieldError}
+                        </p>
                       )}
                       <button
                         type="button"
                         onClick={() => setShowConfirm((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={showConfirm ? "Hide confirm password" : "Show confirm password"}
+                        aria-label={
+                          showConfirm
+                            ? "Hide confirm password"
+                            : "Show confirm password"
+                        }
                       >
-                        {showConfirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showConfirm ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
                       </button>
                     </div>
 
@@ -276,15 +303,23 @@ export default function Settings() {
                         className="w-full px-4 py-3 rounded-xl bg-slate-50 border-none outline-none focus:ring-2 focus:ring-rose-100"
                       />
                       {deleteFieldError && (
-                        <p className="mt-1 text-sm text-rose-600 text-center">{deleteFieldError}</p>
+                        <p className="mt-1 text-sm text-rose-600 text-center">
+                          {deleteFieldError}
+                        </p>
                       )}
                       <button
                         type="button"
                         onClick={() => setShowCurrent((s) => !s)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500"
-                        aria-label={showCurrent ? "Hide password" : "Show password"}
+                        aria-label={
+                          showCurrent ? "Hide password" : "Show password"
+                        }
                       >
-                        {showCurrent ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showCurrent ? (
+                          <EyeOff className="w-5 h-5" />
+                        ) : (
+                          <Eye className="w-5 h-5" />
+                        )}
                       </button>
                     </div>
 
@@ -293,17 +328,23 @@ export default function Settings() {
                       disabled={isDeleting}
                       className="w-full py-3 bg-white text-rose-600 border border-rose-600 rounded-xl hover:bg-rose-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
                     >
-                      {isDeleting && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {isDeleting && (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      )}
                       {isDeleting ? "Deleting..." : "Delete Account"}
                     </button>
                   </div>
                 </div>
 
                 {error && (
-                  <p className="mt-4 text-sm text-rose-600 text-center">{error}</p>
+                  <p className="mt-4 text-sm text-rose-600 text-center">
+                    {error}
+                  </p>
                 )}
                 {message && (
-                  <p className="mt-4 text-sm text-emerald-600 text-center">{message}</p>
+                  <p className="mt-4 text-sm text-emerald-600 text-center">
+                    {message}
+                  </p>
                 )}
 
                 {/* Logout — mobile only, stays left-aligned */}
@@ -317,7 +358,6 @@ export default function Settings() {
                     Logout
                   </button>
                 </div>
-
               </div>
             </div>
             <SiteFooter />
