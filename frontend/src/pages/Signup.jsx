@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Feather } from "lucide-react";
+import { Eye, EyeOff, Feather, ArrowRight } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -273,9 +273,10 @@ export default function Signup() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? "Creating Account..." : "Create Account"}
+                  {!isSubmitting && <ArrowRight className="w-4 h-4 text-white" />}
                 </button>
               </form>
 
