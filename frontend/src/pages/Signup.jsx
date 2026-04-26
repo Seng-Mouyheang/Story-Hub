@@ -253,14 +253,22 @@ export default function Signup() {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      onClick={() =>
+                        setShowConfirmPassword(!showConfirmPassword)
+                      }
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
                     >
-                      {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      {showConfirmPassword ? (
+                        <EyeOff size={18} />
+                      ) : (
+                        <Eye size={18} />
+                      )}
                     </button>
                   </div>
                   {confirmPasswordError && (
-                    <p className="text-xs text-rose-600">{confirmPasswordError}</p>
+                    <p className="text-xs text-rose-600">
+                      {confirmPasswordError}
+                    </p>
                   )}
                 </div>
 
@@ -279,7 +287,9 @@ export default function Signup() {
                   className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? "Creating Account..." : "Create Account"}
-                  {!isSubmitting && <ArrowRight className="w-4 h-4 text-white" />}
+                  {!isSubmitting && (
+                    <ArrowRight className="w-4 h-4 text-white" />
+                  )}
                 </button>
               </form>
 

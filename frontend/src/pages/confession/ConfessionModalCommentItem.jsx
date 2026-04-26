@@ -103,7 +103,7 @@ export default function ConfessionModalCommentItem({
               {commentAuthorId ? (
                 <Link
                   to={`/profile/${commentAuthorId}`}
-            state={{ from: "/confession" }}
+                  state={{ from: "/confession" }}
                   className="text-xs font-semibold text-slate-700 truncate block rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
                 >
                   {commentAuthor}

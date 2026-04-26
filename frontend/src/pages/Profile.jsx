@@ -126,7 +126,9 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
     <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-xl font-semibold text-slate-900">{story.title}</h3>
+          <h3 className="text-xl font-semibold text-slate-900">
+            {story.title}
+          </h3>
           {story.author && (
             <p className="text-xs text-slate-400 mt-0.5">
               by{" "}
@@ -543,7 +545,13 @@ export default function Profile() {
         setIsLoadingFollowList(false);
       }
     },
-    [viewedUserId, followListCursor, buildFollowListAccounts, normalizeId, isValidUserId],
+    [
+      viewedUserId,
+      followListCursor,
+      buildFollowListAccounts,
+      normalizeId,
+      isValidUserId,
+    ],
   );
 
   const openFollowList = (listType) => {
@@ -685,10 +693,8 @@ export default function Profile() {
             payload
               ? {
                   ...payload,
-                  followers:
-                    followersData?.totalFollowers ?? payload.followers,
-                  following:
-                    followingData?.totalFollowing ?? payload.following,
+                  followers: followersData?.totalFollowers ?? payload.followers,
+                  following: followingData?.totalFollowing ?? payload.following,
                 }
               : payload,
           );
@@ -1007,7 +1013,10 @@ export default function Profile() {
         <Navbar title="User Profile" />
 
         <main className="flex-1 min-h-0 overflow-hidden">
-          <div ref={scrollContainerRef} className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            ref={scrollContainerRef}
+            className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
             <div className="max-w-6xl mx-auto">
               {!isOwnProfile ? (
                 <div className="mb-4 sm:mb-5 hidden sm:flex items-center gap-3">

@@ -40,8 +40,7 @@ export default function Sidebar() {
     let lastY = 0;
 
     const onScroll = (e) => {
-      const el =
-        e.target === document ? document.documentElement : e.target;
+      const el = e.target === document ? document.documentElement : e.target;
       const current =
         el === document.documentElement ? window.scrollY : el.scrollTop;
 

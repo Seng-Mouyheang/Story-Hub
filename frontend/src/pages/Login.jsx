@@ -188,7 +188,9 @@ export default function Login() {
                       type="button"
                       onClick={() => setShowPassword((s) => !s)}
                       className="absolute inset-y-0 right-3 flex items-center text-slate-500"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -222,7 +224,9 @@ export default function Login() {
                   className="w-full rounded-xl bg-rose-500 px-4 py-3 text-base font-semibold text-white shadow-sm shadow-rose-200 transition hover:bg-rose-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? "Logging in..." : "Login"}
-                  {!isSubmitting && <ArrowRight className="w-4 h-4 text-white" />}
+                  {!isSubmitting && (
+                    <ArrowRight className="w-4 h-4 text-white" />
+                  )}
                 </button>
               </form>
 
