@@ -167,7 +167,7 @@ const StoryCircle = ({ name, authorId, isAdd = false, image }) => {
       {isAdd ? (
         content
       ) : (
-        <Link to={authorId ? `/profile/${authorId}` : "/profile"}>
+        <Link to={authorId ? `/profile/${authorId}` : "/profile"} state={{ from: "/" }}>
           {content}
         </Link>
       )}
@@ -333,6 +333,7 @@ const PostCard = ({
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <Link
             to={authorId ? `/profile/${authorId}` : "/profile"}
+            state={{ from: "/" }}
             className="w-10 h-10 shrink-0 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
             aria-label={`View ${author} profile`}
           >
@@ -353,6 +354,7 @@ const PostCard = ({
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
               <Link
                 to={authorId ? `/profile/${authorId}` : "/profile"}
+                state={{ from: "/" }}
                 className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
               >
                 {author}
@@ -628,6 +630,7 @@ const AuthorRow = ({
     <div className="flex items-center gap-3 min-w-0">
       <Link
         to={authorId ? `/profile/${authorId}` : "/profile"}
+        state={{ from: "/" }}
         className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden block"
       >
         {avatar ? (
@@ -644,6 +647,7 @@ const AuthorRow = ({
       <div className="min-w-0">
         <Link
           to={authorId ? `/profile/${authorId}` : "/profile"}
+          state={{ from: "/" }}
           className="font-semibold text-sm text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
         >
           {name}

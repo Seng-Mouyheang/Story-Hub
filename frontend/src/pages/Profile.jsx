@@ -133,6 +133,7 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
               {story.authorId ? (
                 <Link
                   to={`/profile/${story.authorId}`}
+                  state={{ from: "/profile" }}
                   className="hover:text-rose-500 transition-colors"
                 >
                   {story.author}
@@ -1276,6 +1277,7 @@ export default function Profile() {
                             >
                               <Link
                                 to={`/profile/${account.userId}`}
+                                state={{ from: "/profile" }}
                                 onClick={closeFollowList}
                                 className="min-w-0 flex items-center gap-3 flex-1"
                               >

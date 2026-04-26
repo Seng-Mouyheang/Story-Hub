@@ -25,7 +25,15 @@ export default function Sidebar() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [fabVisible, setFabVisible] = useState(true);
 
-  const isActive = (path) => (location.pathname === path ? "active-link" : "");
+  const isActive = (path) => {
+    // When viewing another user's profile, keep the source tab highlighted
+    if (/^\/profile\/.+/.test(location.pathname)) {
+      const from = location.state?.from;
+      if (from) return from === path ? "active-link" : "";
+      return path === "/profile" ? "active-link" : "";
+    }
+    return location.pathname === path ? "active-link" : "";
+  };
 
   // Detect scroll direction across both window scroll and inner-container scroll.
   useEffect(() => {
