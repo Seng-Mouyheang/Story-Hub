@@ -9,7 +9,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { ChevronLeft, User } from "lucide-react";
+import { ChevronLeft, User, X } from "lucide-react";
 import {
   getProfileByUserId,
   getUserStats,
@@ -89,7 +89,78 @@ const mapStoryToCard = (story, overrides = {}) => ({
 
 const COLLAPSED_CONTENT_HEIGHT = 120;
 
+const formatJoinedDate = (dateString) => {
+  if (!dateString) return null;
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return null;
+  return `Joined ${d.toLocaleString(undefined, { month: "long", year: "numeric" })}`;
+};
+
+const ImagePreviewModal = ({ image, isVisible, onClose }) => {
+  useEffect(() => {
+    if (!image) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [image, onClose]);
+
+  if (!image) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      <button
+        type="button"
+        aria-label="Close image preview"
+        onClick={onClose}
+        className={`absolute inset-0 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-200 ease-out ${
+          isVisible ? "opacity-100" : "opacity-0"
+        }`}
+      />
+
+      <button
+        type="button"
+        onClick={onClose}
+        className={`fixed right-4 top-4 z-20 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/45 text-white/85 backdrop-blur-sm transition-all duration-200 ease-out hover:bg-black/65 hover:text-white sm:right-6 sm:top-6 ${
+          isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
+        }`}
+        aria-label="Close image preview"
+      >
+        <X className="h-5 w-5" />
+      </button>
+
+      <div
+        className={`relative z-10 w-full transition-all duration-200 ease-out ${
+          image.kind === "cover" ? "max-w-[min(96vw,1600px)]" : "max-w-3xl"
+        } ${isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}
+      >
+        <div className="relative flex items-center justify-center">
+          <img
+            src={image.src}
+            alt={image.alt}
+            className={`max-h-[85vh] rounded-3xl object-contain shadow-[0_20px_80px_rgba(0,0,0,0.5)] ${
+              image.kind === "cover" ? "w-full" : "w-auto max-w-full"
+            }`}
+          />
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const StoryCard = ({ story, actionLabel, actionHref }) => {
+  const navigate = useNavigate();
   const [areGenresExpanded, setAreGenresExpanded] = useState(false);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
   const [isContentOverflowing, setIsContentOverflowing] = useState(false);
@@ -122,8 +193,26 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
     return () => observer.disconnect();
   }, [story.fullContent]);
 
+  const handleCardClick = () => {
+    if (!story || !story.id) return;
+    navigate("/", { state: { focusedPostId: story.id, from: "/profile" } });
+  };
+
+  const handleKeyDownCard = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleCardClick();
+    }
+  };
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">
+    <div
+      role="link"
+      tabIndex={0}
+      onKeyDown={handleKeyDownCard}
+      onClick={handleCardClick}
+      className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+    >
       <div className="mb-2 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-xl font-semibold text-slate-900">
@@ -137,6 +226,7 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
                   to={`/profile/${story.authorId}`}
                   state={{ from: "/profile" }}
                   className="hover:text-rose-500 transition-colors"
+                  onClick={(e) => e.stopPropagation()}
                 >
                   {story.author}
                 </Link>
@@ -169,7 +259,10 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
           {hiddenGenreCount > 0 && !areGenresExpanded && (
             <button
               type="button"
-              onClick={() => setAreGenresExpanded(true)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setAreGenresExpanded(true);
+              }}
               className="text-[10px] font-semibold uppercase tracking-wider text-rose-600 transition-colors hover:text-rose-700"
               aria-label={`Show ${hiddenGenreCount} more genres`}
             >
@@ -180,7 +273,10 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
           {hiddenGenreCount > 0 && areGenresExpanded && (
             <button
               type="button"
-              onClick={() => setAreGenresExpanded(false)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setAreGenresExpanded(false);
+              }}
               className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-700"
               aria-label="Collapse genres"
             >
@@ -205,7 +301,10 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
       {isContentOverflowing && (
         <button
           type="button"
-          onClick={() => setIsContentExpanded((v) => !v)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsContentExpanded((v) => !v);
+          }}
           className="text-xs font-semibold text-rose-500 hover:text-rose-600 mb-4"
         >
           {isContentExpanded ? "Show less" : "Read more"}
@@ -227,6 +326,7 @@ const StoryCard = ({ story, actionLabel, actionHref }) => {
           <Link
             to={actionHref}
             className="text-xs font-semibold text-rose-500 hover:text-rose-600"
+            onClick={(e) => e.stopPropagation()}
           >
             {actionLabel}
           </Link>
@@ -255,6 +355,9 @@ export default function Profile() {
   const [isLoadingFollowList, setIsLoadingFollowList] = useState(false);
   const [followListError, setFollowListError] = useState("");
   const [listActionBusyByUserId, setListActionBusyByUserId] = useState({});
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isImagePreviewVisible, setIsImagePreviewVisible] = useState(false);
+  const imagePreviewCloseTimerRef = useRef(null);
   const [storyItems, setStoryItems] = useState([]);
   const [savedItems, setSavedItems] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
@@ -988,6 +1091,40 @@ export default function Profile() {
   const showProfileNotFound =
     !isOwnProfile && !isLoadingProfile && !profileData;
 
+  const openImagePreview = (image) => {
+    if (imagePreviewCloseTimerRef.current) {
+      clearTimeout(imagePreviewCloseTimerRef.current);
+      imagePreviewCloseTimerRef.current = null;
+    }
+
+    setImagePreview(image);
+    requestAnimationFrame(() => {
+      setIsImagePreviewVisible(true);
+    });
+  };
+
+  const closeImagePreview = () => {
+    setIsImagePreviewVisible(false);
+
+    if (imagePreviewCloseTimerRef.current) {
+      clearTimeout(imagePreviewCloseTimerRef.current);
+    }
+
+    imagePreviewCloseTimerRef.current = setTimeout(() => {
+      setImagePreview(null);
+      imagePreviewCloseTimerRef.current = null;
+    }, 200);
+  };
+
+  useEffect(
+    () => () => {
+      if (imagePreviewCloseTimerRef.current) {
+        clearTimeout(imagePreviewCloseTimerRef.current);
+      }
+    },
+    [],
+  );
+
   if (showProfileNotFound) {
     return (
       <div className="flex h-screen bg-[#f3f4f6] text-[#111827] overflow-hidden">
@@ -1051,51 +1188,72 @@ export default function Profile() {
               <div className="bg-white rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-200 relative shadow-sm">
                 <div className="h-36 sm:h-48 bg-linear-to-r from-rose-100 to-amber-50 relative overflow-hidden">
                   {userData.coverImage ? (
-                    <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openImagePreview({
+                          src: userData.coverImage,
+                          alt: `${userData.name} cover image`,
+                          title: "Cover photo",
+                          kind: "cover",
+                        })
+                      }
+                      className="group absolute inset-0 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                      aria-label="View cover photo"
+                    >
                       <img
                         src={userData.coverImage}
                         alt="Cover"
-                        className="absolute inset-0 w-full h-full object-cover"
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                       />
                       <div className="absolute inset-0 bg-slate-900/15" />
-                    </>
+                    </button>
                   ) : null}
                 </div>
                 <div className="px-4 sm:px-8 pb-6 sm:pb-8">
                   {/* Avatar */}
                   <div className="relative -mt-12 sm:-mt-16 mb-4">
-                    <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white overflow-hidden bg-white shadow-xl">
-                      {userData.avatar ? (
+                    {userData.avatar ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openImagePreview({
+                            src: userData.avatar,
+                            alt: `${userData.name} profile picture`,
+                            title: "Profile picture",
+                            kind: "avatar",
+                          })
+                        }
+                        className="group w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white overflow-hidden bg-white shadow-xl cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                        aria-label="View profile picture"
+                      >
                         <img
                           src={userData.avatar}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                           alt="Profile"
                         />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-300">
-                          <User className="w-10 h-10 sm:w-12 sm:h-12" />
-                        </div>
-                      )}
-                    </div>
+                      </button>
+                    ) : (
+                      <div className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl sm:rounded-3xl border-4 border-white overflow-hidden bg-white shadow-xl flex items-center justify-center bg-slate-100 text-slate-300">
+                        <User className="w-10 h-10 sm:w-12 sm:h-12" />
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-                    <div className="min-w-0">
+                  <div className="flex items-start justify-between gap-3 sm:gap-4">
+                    <div className="min-w-0 flex-1">
                       <h1 className="text-xl sm:text-2xl font-semibold truncate text-slate-900">
                         {userData.name}
                       </h1>
                       <p className="text-slate-500 truncate font-medium">
                         {userData.handle}
                       </p>
-                      <p className="mt-4 text-slate-600 max-w-lg">
-                        {userData.bio}
-                      </p>
                     </div>
                     {isOwnProfile ? (
-                      <div className="flex gap-2">
+                      <div className="flex shrink-0 gap-2">
                         <Link
                           to="/edit-profile"
-                          className="px-4 py-2 border border-slate-300 rounded-xl font-medium text-sm hover:bg-slate-100 transition-colors"
+                          className="px-3 sm:px-4 py-2 border border-slate-300 rounded-xl font-medium text-xs sm:text-sm whitespace-nowrap hover:bg-slate-100 transition-colors"
                         >
                           Edit Profile
                         </Link>
@@ -1124,8 +1282,16 @@ export default function Profile() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-8 border-t border-slate-50 pt-6 sm:pt-8">
-                    <div>
+                  <p className="mt-3 text-sm text-slate-600 leading-relaxed">
+                    {formatJoinedDate(
+                      profileData?.createdAt ||
+                        profileData?.created_at ||
+                        profileData?.joinedAt,
+                    ) || "Member"}
+                  </p>
+
+                  <div className="grid grid-cols-3 gap-4 sm:flex sm:gap-8 mt-5 border-t border-slate-200 pt-4 sm:pt-6">
+                    <div className="pl-4 md:pl-0">
                       <span className="font-semibold text-slate-900">
                         {userData.posts}
                       </span>{" "}
@@ -1361,6 +1527,11 @@ export default function Profile() {
           </div>
         </main>
       </div>
+      <ImagePreviewModal
+        image={imagePreview}
+        isVisible={isImagePreviewVisible}
+        onClose={closeImagePreview}
+      />
     </div>
   );
 }
