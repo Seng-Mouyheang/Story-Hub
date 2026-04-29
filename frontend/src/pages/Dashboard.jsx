@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Filter, PenTool, Clock3, FileText, Trash2 } from "lucide-react";
+import { Filter, PenTool, Clock3, FileText, Trash2, AlertTriangle } from "lucide-react";
 
 import {
   getDashboardStats,
@@ -70,9 +70,13 @@ const DashboardStoryCard = ({ story, onDelete, onRecover }) => {
     (story?._type === "confession" ? "Confession" : "Untitled Story");
   const excerpt =
     story?.summary || story?.content?.slice(0, 140) || "No preview available.";
-  const statusLabel = story?.status
-    ? `${story.status.charAt(0).toUpperCase()}${story.status.slice(1)}`
-    : "Draft";
+  const isConfession = story?._type === "confession";
+  const statusLabel =
+    isConfession
+      ? null
+      : story?.status
+        ? `${story.status.charAt(0).toUpperCase()}${story.status.slice(1)}`
+        : "Draft";
   const visibilityLabel = story?.visibility
     ? `${story.visibility.charAt(0).toUpperCase()}${story.visibility.slice(1)}`
     : "Public";
@@ -84,9 +88,11 @@ const DashboardStoryCard = ({ story, onDelete, onRecover }) => {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-600">
-              {statusLabel}
-            </span>
+            {statusLabel && (
+              <span className="inline-flex items-center rounded-full bg-rose-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-rose-600">
+                {statusLabel}
+              </span>
+            )}
             <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
               {visibilityLabel}
             </span>
@@ -157,6 +163,7 @@ export default function Dashboard() {
   );
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const filterButtonRef = useRef(null);
   const filterPanelRef = useRef(null);
 
@@ -282,9 +289,14 @@ export default function Dashboard() {
             ? confessionsRes.value?.data || []
             : [];
 
+        // Confessions have no draft/published status, so exclude them when
+        // the user is filtering by a specific story status.
+        const includeConfessions = allFilters.status === "all";
         const merged = [
           ...stories.map((s) => ({ ...s, _type: "story" })),
-          ...confessions.map((c) => ({ ...c, _type: "confession" })),
+          ...(includeConfessions
+            ? confessions.map((c) => ({ ...c, _type: "confession" }))
+            : []),
         ];
 
         // sort by updated or created date desc
@@ -317,13 +329,19 @@ export default function Dashboard() {
     };
   }, [activityFilters, page]);
 
-  const handleDeleteActivity = async (item) => {
+  const handleDeleteClick = (item) => {
+    setDeleteTarget(item);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const item = deleteTarget;
+    setDeleteTarget(null);
     try {
       const id = item.id || item._id || item.storyId || item.confessionId;
       if (item._type === "story") {
         await deleteStory(id);
       } else if (item._type === "confession") {
-        // Send Authorization header with token
         const token = localStorage.getItem("token");
         const res = await fetch(`/api/confessions/${id}`, {
           method: "DELETE",
@@ -342,7 +360,6 @@ export default function Dashboard() {
       );
     } catch (err) {
       setErrorMessage(err.message || "Failed to delete activity");
-      console.error("Failed to delete activity", err);
     }
   };
 
@@ -527,7 +544,7 @@ export default function Dashboard() {
                             likesCount: item.likesCount,
                             _type: item._type,
                           }}
-                          onDelete={handleDeleteActivity}
+                          onDelete={handleDeleteClick}
                           onRecover={handleRecoverActivity}
                         />
                       ))}
@@ -554,6 +571,45 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex items-center justify-center p-4"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-9 h-9 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-4 h-4 text-rose-500" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-900">
+                Delete this {deleteTarget._type === "confession" ? "confession" : "story"}?
+              </h3>
+            </div>
+            <p className="text-sm text-slate-500 mb-6 pl-12">
+              This will permanently remove it from your dashboard. This action cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 text-sm font-semibold rounded-xl bg-rose-500 text-white hover:bg-rose-600 transition-colors cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

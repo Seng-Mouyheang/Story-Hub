@@ -62,7 +62,7 @@ export default function Navbar({ title }) {
   return (
     <header className="h-16 bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-40 px-4 sm:px-6 lg:px-8 flex items-center justify-between">
       {/* Title */}
-      <h2 className="text-base sm:text-lg font-semibold truncate pl-10 lg:pl-0">
+      <h2 className="text-base sm:text-lg font-semibold truncate pl-0">
         {title}
       </h2>
 
