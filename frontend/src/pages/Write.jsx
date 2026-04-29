@@ -272,13 +272,17 @@ export default function Write() {
         {/* Top Header - Visibility Dropdown */}
         <div className="h-16 px-4 sm:px-6 lg:px-12 border-b border-rose-100 bg-rose-50/70 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-medium text-rose-700">
-              {isEditMode ? "Editing Story" : "Untitled 1"}
-            </span>
-            <Edit2
-              size={14}
-              className="text-rose-400 cursor-pointer hover:text-rose-600"
-            />
+            {isEditMode && (
+              <>
+                <span className="text-sm font-medium text-rose-700">
+                  Editing Story
+                </span>
+                <Edit2
+                  size={14}
+                  className="text-rose-400 cursor-pointer hover:text-rose-600"
+                />
+              </>
+            )}
           </div>
 
           <select
@@ -408,7 +412,7 @@ export default function Write() {
                       ? isEditMode
                         ? "Updating..."
                         : "Saving..."
-                      : "Save"}
+                      : "Draft"}
                   </button>
                   <button
                     onClick={handlePublish}
