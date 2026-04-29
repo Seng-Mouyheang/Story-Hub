@@ -37,10 +37,13 @@ const getAllStories = async (req, res) => {
     const { cursor } = req.query;
     const limit = Number.parseInt(req.query.limit, 10) || 10;
 
+    const sortBy = req.query.sortBy;
+
     const result = await storyModel.getPublishedStories(
       cursor,
       limit,
       req.user?.userId,
+      sortBy,
     );
 
     res.json(result);
@@ -55,11 +58,14 @@ const getStoriesByTag = async (req, res) => {
     const { cursor } = req.query;
     const limit = Number.parseInt(req.query.limit, 10) || 10;
 
+    const sortBy = req.query.sortBy;
+
     const result = await storyModel.getPublishedStoriesByTag(
       req.params.tag,
       cursor,
       limit,
       req.user?.userId,
+      sortBy,
     );
 
     res.json(result);
@@ -80,6 +86,7 @@ const getStoriesByCategories = async (req, res) => {
       cursor,
       limit,
       req.user?.userId,
+      req.query.sortBy,
     );
 
     res.json({
@@ -114,6 +121,7 @@ const getStoriesByMyInterests = async (req, res) => {
       cursor,
       limit,
       req.user.userId,
+      req.query.sortBy,
     );
 
     res.json({
@@ -195,6 +203,27 @@ const getStory = async (req, res) => {
     res.json(story);
   } catch {
     res.status(500).json({ message: "Failed to fetch story" });
+  }
+};
+
+const trackStoryView = async (req, res) => {
+  try {
+    const story = await storyModel.getStoryById(req.params.id);
+
+    if (!story) {
+      return res.status(404).json({ message: "Story not found" });
+    }
+
+    // Only track views for public published stories
+    if (story.status === "published" && story.visibility === "public") {
+      await storyModel.incrementViews(story._id);
+      return res.json({ success: true, views: story.views + 1 });
+    }
+
+    res.status(403).json({ message: "Cannot track views for this story" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to track story view" });
   }
 };
 
@@ -292,6 +321,7 @@ module.exports = {
   getStoriesByTitle,
   getStoriesByAuthor,
   getStory,
+  trackStoryView,
   updateStory,
   deleteStory,
   restoreStory,

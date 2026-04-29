@@ -105,6 +105,13 @@ router.get(
   storyController.getStory,
 );
 
+// Track view on feed/public pages (no auth required)
+router.post(
+  "/:id/view",
+  validate(idParamSchema, "params"),
+  storyController.trackStoryView,
+);
+
 /* ============================= */
 /*            PROTECTED          */
 /* ============================= */
