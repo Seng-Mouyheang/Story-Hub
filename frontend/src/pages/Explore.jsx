@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -226,7 +226,7 @@ export default function Explore() {
   const [busyFollowIds, setBusyFollowIds] = useState({});
   const [genresLoading, setGenresLoading] = useState(false);
   const [savedStoryIds, setSavedStoryIds] = useState(new Set());
-  const [trackedViewIds, setTrackedViewIds] = useState(new Set());
+  const trackedViewIdsRef = useRef(new Set());
   const handleToggleSave = async (storyId) => {
     try {
       const isAlreadySaved = savedStoryIds.has(storyId);
@@ -559,11 +559,11 @@ export default function Explore() {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
             const storyId = entry.target.getAttribute("data-story-id");
-            if (storyId && !trackedViewIds.has(storyId)) {
+            if (storyId && !trackedViewIdsRef.current.has(storyId)) {
+              trackedViewIdsRef.current.add(storyId);
               trackStoryView(storyId).catch((error) => {
                 console.warn("Failed to track view:", error);
               });
-              setTrackedViewIds((prev) => new Set([...prev, storyId]));
             }
           }
         });
@@ -578,7 +578,7 @@ export default function Explore() {
     return () => {
       observer.disconnect();
     };
-  }, [trackedViewIds]);
+  }, [popularStories, recommendedStories]);
 
   const handleToggleFollow = async (author) => {
     const normalizedTargetUserId = normalizeId(author?.userId);

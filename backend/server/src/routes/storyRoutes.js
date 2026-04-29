@@ -8,6 +8,9 @@ const storyBookmarkController = require("../controllers/story/storyBookmarkContr
 const storyCommentController = require("../controllers/story/storyCommentController");
 const commentLikeController = require("../controllers/story/commentLikeController");
 const validate = require("../middleware/validate");
+const {
+  storyViewRateLimiter,
+} = require("../middleware/storyViewRateLimitMiddleware");
 
 const {
   createStorySchema,
@@ -109,6 +112,7 @@ router.get(
 router.post(
   "/:id/view",
   validate(idParamSchema, "params"),
+  storyViewRateLimiter,
   storyController.trackStoryView,
 );
 
