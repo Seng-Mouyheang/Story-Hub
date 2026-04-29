@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
+import Toast from "../components/Toast";
 import {
   Bookmark,
   Heart,
@@ -25,7 +26,8 @@ import {
   toggleStoryLike,
   getMyBookmarkedStories,
 } from "../api/story/storyInteractionsApi";
-import { deleteStory } from "../api/story/storyApi";
+import { deleteStory, trackStoryView } from "../api/story/storyApi";
+import { useToast } from "../lib/useToast";
 import { useNavigate } from "react-router-dom";
 
 const formatCompactNumber = (value) =>
@@ -175,6 +177,16 @@ const ExpandableGenreChips = ({ storyId, genres, limit = 5 }) => {
 
 export default function Explore() {
   const navigate = useNavigate();
+  const {
+    toast,
+    isVisible,
+    isPaused,
+    duration,
+    showToast,
+    hideToast,
+    pauseToast,
+    resumeToast,
+  } = useToast();
   const [menuStoryId, setMenuStoryId] = useState(null);
   const [deletingStoryId, setDeletingStoryId] = useState(null);
 
@@ -196,8 +208,9 @@ export default function Explore() {
       setRecommendedStories((prev) => prev.filter((s) => s.id !== storyId));
       setPopularStories((prev) => prev.filter((s) => s.id !== storyId));
       setMenuStoryId(null);
+      showToast("Story deleted successfully.", "success");
     } catch {
-      alert("Failed to delete story. Please try again.");
+      showToast("Failed to delete story. Please try again.", "error");
     } finally {
       setDeletingStoryId(null);
     }
@@ -213,13 +226,16 @@ export default function Explore() {
   const [busyFollowIds, setBusyFollowIds] = useState({});
   const [genresLoading, setGenresLoading] = useState(false);
   const [savedStoryIds, setSavedStoryIds] = useState(new Set());
+  const [trackedViewIds, setTrackedViewIds] = useState(new Set());
   const handleToggleSave = async (storyId) => {
     try {
       const isAlreadySaved = savedStoryIds.has(storyId);
       if (isAlreadySaved) {
         await removeStoryBookmark(storyId);
+        showToast("Story removed from bookmarks.", "success");
       } else {
         await toggleStoryBookmark(storyId);
+        showToast("Story added to bookmarks.", "success");
       }
       setSavedStoryIds((prev) => {
         const next = new Set(prev);
@@ -232,6 +248,7 @@ export default function Explore() {
       });
     } catch (error) {
       console.error("Failed to toggle bookmark:", error);
+      showToast("Failed to save story. Please try again.", "error");
     }
   };
   const [storiesLoading, setStoriesLoading] = useState(false);
@@ -329,6 +346,7 @@ export default function Explore() {
     };
   }, [currentUserId]);
 
+  // Load published genres once on mount — clicking a genre should not reload this list
   useEffect(() => {
     const abortController = new AbortController();
     let isMounted = true;
@@ -359,14 +377,29 @@ export default function Explore() {
           return;
         }
 
+        const errorMsg = error?.message || "Failed to load genres.";
         setGenreFilters(["All"]);
-        setGenresError(error?.message || "Failed to load genres.");
+        setGenresError(errorMsg);
+        showToast(errorMsg, "error");
       } finally {
         if (isMounted) {
           setGenresLoading(false);
         }
       }
     };
+
+    loadGenres();
+
+    return () => {
+      isMounted = false;
+      abortController.abort();
+    };
+  }, []);
+
+  // Load explore content when active category or current user changes
+  useEffect(() => {
+    const abortController = new AbortController();
+    let isMounted = true;
 
     const loadExploreContent = async () => {
       setStoriesLoading(true);
@@ -375,14 +408,21 @@ export default function Explore() {
       setPopularError("");
       setAuthorsError("");
 
+      // Recommended: if no genre selected -> interest-based popular (likes),
+      // if genre selected -> latest in that genre
+      const recommendedSort =
+        activeCategory && activeCategory !== "All" ? "latest" : "popular";
+
       const [recommendedResult, popularResult, authorsResult] =
         await Promise.allSettled([
           getExploreRecommendedStories({
             category: activeCategory,
             limit: 4,
             signal: abortController.signal,
+            sortBy: recommendedSort,
           }),
           getExplorePopularStories({
+            category: activeCategory,
             limit: 4,
             signal: abortController.signal,
           }),
@@ -407,19 +447,21 @@ export default function Explore() {
         );
       } else {
         setRecommendedStories([]);
-        setRecommendedError(
+        const errorMsg =
           recommendedResult.reason?.message ||
-            "Failed to load recommended stories.",
-        );
+          "Failed to load recommended stories.";
+        setRecommendedError(errorMsg);
+        showToast(errorMsg, "error");
       }
 
       if (popularResult.status === "fulfilled") {
         setPopularStories((popularResult.value?.data || []).map(mapStoryCard));
       } else {
         setPopularStories([]);
-        setPopularError(
-          popularResult.reason?.message || "Failed to load popular stories.",
-        );
+        const errorMsg =
+          popularResult.reason?.message || "Failed to load popular stories.";
+        setPopularError(errorMsg);
+        showToast(errorMsg, "error");
       }
 
       if (authorsResult.status === "fulfilled") {
@@ -441,10 +483,11 @@ export default function Explore() {
         setResolvedAuthors(resolved);
       } else {
         setResolvedAuthors([]);
-        setAuthorsError(
+        const errorMsg =
           authorsResult.reason?.message ||
-            "Failed to load recommended authors.",
-        );
+          "Failed to load recommended authors.";
+        setAuthorsError(errorMsg);
+        showToast(errorMsg, "error");
       }
 
       const recommendedAuthorIds =
@@ -501,7 +544,6 @@ export default function Explore() {
       setAuthorsLoading(false);
     };
 
-    loadGenres();
     loadExploreContent();
 
     return () => {
@@ -509,6 +551,34 @@ export default function Explore() {
       abortController.abort();
     };
   }, [TOP_AUTHORS_COUNT, activeCategory, currentUserId]);
+
+  // Track story views when they come into view on the feed
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const storyId = entry.target.getAttribute("data-story-id");
+            if (storyId && !trackedViewIds.has(storyId)) {
+              trackStoryView(storyId).catch((error) => {
+                console.warn("Failed to track view:", error);
+              });
+              setTrackedViewIds((prev) => new Set([...prev, storyId]));
+            }
+          }
+        });
+      },
+      { threshold: 0.1 },
+    );
+
+    // Observe all story cards
+    const storyCards = document.querySelectorAll("[data-story-id]");
+    storyCards.forEach((card) => observer.observe(card));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [trackedViewIds]);
 
   const handleToggleFollow = async (author) => {
     const normalizedTargetUserId = normalizeId(author?.userId);
@@ -552,8 +622,18 @@ export default function Explore() {
         ...prev,
         [normalizedTargetUserId]: confirmedFollowing,
       }));
+
+      if (confirmedFollowing) {
+        showToast(
+          `Now following ${author?.displayName || "author"}.`,
+          "success",
+        );
+      } else {
+        showToast(`Unfollowed ${author?.displayName || "author"}.`, "success");
+      }
     } catch (error) {
       console.error("Failed to toggle follow state:", error);
+      showToast("Failed to update follow status. Please try again.", "error");
     } finally {
       setBusyFollowIds((prev) => ({
         ...prev,
@@ -622,12 +702,23 @@ export default function Explore() {
           (next[storyId] || 0) + (likedStoryIds.has(storyId) ? 1 : -1);
         return next;
       });
-      alert("Failed to like story. Please try again.");
+      showToast("Failed to like story. Please try again.", "error");
     }
   };
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
+      {toast && (
+        <Toast
+          toast={toast}
+          isVisible={isVisible}
+          isPaused={isPaused}
+          durationMs={duration}
+          onClose={hideToast}
+          onPause={pauseToast}
+          onResume={resumeToast}
+        />
+      )}
       <Sidebar />
 
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
@@ -753,6 +844,7 @@ export default function Explore() {
                   {recommendedStories.map((story, i) => (
                     <div
                       key={story.id || i}
+                      data-story-id={story.id}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => {
@@ -982,6 +1074,7 @@ export default function Explore() {
                   {popularStories.map((story, i) => (
                     <div
                       key={story.id || i}
+                      data-story-id={story.id}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(e) => {

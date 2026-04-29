@@ -65,6 +65,7 @@ const tagParamSchema = Joi.object({
 const cursorPaginationSchema = Joi.object({
   cursor: Joi.string().optional(),
   limit: Joi.number().integer().min(1).max(50).default(10),
+  sortBy: Joi.string().valid("latest", "popular").optional(),
 });
 
 const categorySearchQuerySchema = Joi.object({
@@ -76,6 +77,7 @@ const categorySearchQuerySchema = Joi.object({
     .required(),
   cursor: Joi.string().optional(),
   limit: Joi.number().integer().min(1).max(50).default(10),
+  sortBy: Joi.string().valid("latest", "popular").optional(),
 });
 
 const titleSearchQuerySchema = Joi.object({

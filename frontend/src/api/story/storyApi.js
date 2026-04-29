@@ -13,12 +13,21 @@ const parseJsonResponse = async (response, fallbackMessage) => {
   return payload;
 };
 
-export async function getStories({ limit = 10, cursor = null, signal } = {}) {
+export async function getStories({
+  limit = 10,
+  cursor = null,
+  signal,
+  sortBy,
+} = {}) {
   const cursorParam = cursor ? `&cursor=${cursor}` : "";
-  const response = await fetch(`/api/stories?limit=${limit}${cursorParam}`, {
-    signal,
-    headers: getAuthHeaders(),
-  });
+  const sortParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : "";
+  const response = await fetch(
+    `/api/stories?limit=${limit}${cursorParam}${sortParam}`,
+    {
+      signal,
+      headers: getAuthHeaders(),
+    },
+  );
 
   return parseJsonResponse(response, "Unable to load stories right now.");
 }
@@ -117,14 +126,16 @@ export async function getStoriesByCategories({
   limit = 10,
   cursor = null,
   signal,
+  sortBy,
 } = {}) {
   const cursorParam = cursor ? `&cursor=${cursor}` : "";
   const categoriesParam = Array.isArray(categories)
     ? categories.join(",")
     : String(categories || "");
+  const sortParam = sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : "";
 
   const response = await fetch(
-    `/api/stories/categories?limit=${limit}&categories=${encodeURIComponent(categoriesParam)}${cursorParam}`,
+    `/api/stories/categories?limit=${limit}&categories=${encodeURIComponent(categoriesParam)}${cursorParam}${sortParam}`,
     {
       signal,
       headers: getAuthHeaders(),
@@ -158,10 +169,11 @@ export async function getStoriesByMyInterests({
   limit = 10,
   cursor = null,
   signal,
+  sortBy,
 } = {}) {
   const cursorParam = cursor ? `&cursor=${cursor}` : "";
   const response = await fetch(
-    `/api/stories/interests/me?limit=${limit}${cursorParam}`,
+    `/api/stories/interests/me?limit=${limit}${cursorParam}${sortBy ? `&sortBy=${encodeURIComponent(sortBy)}` : ""}`,
     {
       signal,
       headers: getAuthHeaders(),
@@ -199,6 +211,20 @@ export async function getMyStories({ limit = 10, cursor = null, signal } = {}) {
   });
 
   return parseJsonResponse(response, "Failed to fetch user stories.");
+}
+
+export async function trackStoryView(storyId, signal) {
+  if (!storyId) {
+    throw new Error("Story ID is required");
+  }
+
+  const response = await fetch(`/api/stories/${storyId}/view`, {
+    method: "POST",
+    signal,
+    headers: getAuthHeaders(),
+  });
+
+  return parseJsonResponse(response, "Failed to track story view.");
 }
 
 export {

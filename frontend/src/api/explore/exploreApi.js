@@ -53,11 +53,12 @@ export async function getExploreRecommendedStories({
   category,
   limit = 4,
   signal,
+  sortBy = "latest",
 } = {}) {
   const normalizedCategory = normalizeCategory(category);
 
   if (normalizedCategory === "Most visited") {
-    const payload = await getStories({ limit, signal });
+    const payload = await getStories({ limit, signal, sortBy });
     return {
       ...payload,
       data: Array.isArray(payload?.data) ? payload.data : [],
@@ -69,30 +70,37 @@ export async function getExploreRecommendedStories({
       categories: [normalizedCategory],
       limit,
       signal,
+      sortBy,
     });
   }
 
   try {
-    return await getStoriesByMyInterests({ limit, signal });
+    return await getStoriesByMyInterests({ limit, signal, sortBy });
   } catch {
     return getStories({ limit, signal });
   }
 }
 
-export async function getExplorePopularStories({ limit = 4, signal } = {}) {
-  const payload = await getStories({ limit, signal });
-  const data = Array.isArray(payload?.data) ? [...payload.data] : [];
+export async function getExplorePopularStories({
+  category,
+  limit = 4,
+  signal,
+} = {}) {
+  // If a category is provided and not "All", fetch category-specific stories
+  if (category && String(category).trim() !== "All") {
+    return getStoriesByCategories({
+      categories: [String(category).trim()],
+      limit,
+      signal,
+      sortBy: "popular",
+    });
+  }
 
-  data.sort(
-    (leftStory, rightStory) =>
-      (Number(rightStory?.views) || 0) - (Number(leftStory?.views) || 0) ||
-      (Number(rightStory?.likesCount) || 0) -
-        (Number(leftStory?.likesCount) || 0),
-  );
-
+  // Global popular (likes-based)
+  const payload = await getStories({ limit, signal, sortBy: "popular" });
   return {
     ...payload,
-    data,
+    data: Array.isArray(payload?.data) ? payload.data : [],
   };
 }
 

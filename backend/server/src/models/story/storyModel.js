@@ -56,10 +56,18 @@ const normalizeCategoryList = (categories) => {
   );
 };
 
-const buildPublishedStoriesPipeline = (matchStage, limit) => {
+const getPublishedStoriesSortStage = (sortBy) => {
+  if (sortBy === "popular") {
+    return { likesCount: -1, publishedAt: -1, _id: -1 };
+  }
+
+  return { publishedAt: -1, _id: -1 };
+};
+
+const buildPublishedStoriesPipeline = (matchStage, limit, sortBy) => {
   const pipeline = [
     { $match: matchStage },
-    { $sort: { publishedAt: -1, _id: -1 } },
+    { $sort: getPublishedStoriesSortStage(sortBy) },
     { $limit: limit + 1 },
     {
       $lookup: {
@@ -156,7 +164,8 @@ const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
 
   if (hasMore) {
     const lastStory = data[data.length - 1];
-    const cursorDate = lastStory.publishedAt || lastStory.createdAt || new Date();
+    const cursorDate =
+      lastStory.publishedAt || lastStory.createdAt || new Date();
     nextCursor = `${cursorDate.toISOString()}_${lastStory._id}`;
   }
 
@@ -203,7 +212,12 @@ const createStory = async (storyData) => {
 };
 
 // Cursor Pagination - Main feed (no filters)
-const getPublishedStories = async (cursor, limit, currentUserId) => {
+const getPublishedStories = async (
+  cursor,
+  limit,
+  currentUserId,
+  sortBy = "latest",
+) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
 
@@ -214,7 +228,7 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
   };
 
   // If cursor exists, extract values
-  if (cursor) {
+  if (cursor && sortBy !== "popular") {
     const [publishedAtStr, id] = cursor.split("_");
 
     matchStage.$or = [
@@ -228,13 +242,19 @@ const getPublishedStories = async (cursor, limit, currentUserId) => {
     ];
   }
 
-  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
   return enrichStoriesWithUserData(db, stories, limit, currentUserId);
 };
 
-const getPublishedStoriesByTag = async (tag, cursor, limit, currentUserId) => {
+const getPublishedStoriesByTag = async (
+  tag,
+  cursor,
+  limit,
+  currentUserId,
+  sortBy = "latest",
+) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
 
@@ -251,7 +271,7 @@ const getPublishedStoriesByTag = async (tag, cursor, limit, currentUserId) => {
     },
   };
 
-  if (cursor) {
+  if (cursor && sortBy !== "popular") {
     const [publishedAtStr, id] = cursor.split("_");
     matchStage.$or = [
       {
@@ -264,7 +284,7 @@ const getPublishedStoriesByTag = async (tag, cursor, limit, currentUserId) => {
     ];
   }
 
-  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
   return enrichStoriesWithUserData(db, stories, limit, currentUserId);
@@ -275,6 +295,7 @@ const getPublishedStoriesByCategories = async (
   cursor,
   limit,
   currentUserId,
+  sortBy = "latest",
 ) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
@@ -294,7 +315,7 @@ const getPublishedStoriesByCategories = async (
     };
   }
 
-  if (cursor) {
+  if (cursor && sortBy !== "popular") {
     const [publishedAtStr, id] = cursor.split("_");
     matchStage.$or = [
       {
@@ -307,7 +328,7 @@ const getPublishedStoriesByCategories = async (
     ];
   }
 
-  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
   return enrichStoriesWithUserData(db, stories, limit, currentUserId);
@@ -318,6 +339,7 @@ const getPublishedStoriesByTitle = async (
   cursor,
   limit,
   currentUserId,
+  sortBy = "latest",
 ) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
@@ -330,7 +352,7 @@ const getPublishedStoriesByTitle = async (
     title: { $regex: escapedTitle, $options: "i" },
   };
 
-  if (cursor) {
+  if (cursor && sortBy !== "popular") {
     const [publishedAtStr, id] = cursor.split("_");
     matchStage.$or = [
       {
@@ -343,7 +365,7 @@ const getPublishedStoriesByTitle = async (
     ];
   }
 
-  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
   return enrichStoriesWithUserData(db, stories, limit, currentUserId);
@@ -354,6 +376,7 @@ const getPublishedStoriesByAuthor = async (
   cursor,
   limit,
   currentUserId,
+  sortBy = "latest",
 ) => {
   const db = await connectToDatabase();
   const collection = await getCollection();
@@ -365,7 +388,7 @@ const getPublishedStoriesByAuthor = async (
     deletedAt: null,
   };
 
-  if (cursor) {
+  if (cursor && sortBy !== "popular") {
     const [publishedAtStr, id] = cursor.split("_");
     matchStage.$or = [
       {
@@ -378,7 +401,7 @@ const getPublishedStoriesByAuthor = async (
     ];
   }
 
-  const pipeline = buildPublishedStoriesPipeline(matchStage, limit);
+  const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
   return enrichStoriesWithUserData(db, stories, limit, currentUserId);
@@ -437,18 +460,24 @@ const getStoryById = async (id, currentUserId = null) => {
       const currentUserObjectId = new ObjectId(currentUserId);
 
       const [follow, bookmark, like] = await Promise.all([
-        db.collection("follows").findOne(
-          { followerId: currentUserObjectId, followingId: story.authorId },
-          { projection: { _id: 1 } },
-        ),
-        db.collection("storyBookmarks").findOne(
-          { userId: currentUserObjectId, storyId: story._id },
-          { projection: { _id: 1 } },
-        ),
-        db.collection("storyLikes").findOne(
-          { userId: currentUserObjectId, storyId: story._id },
-          { projection: { _id: 1 } },
-        ),
+        db
+          .collection("follows")
+          .findOne(
+            { followerId: currentUserObjectId, followingId: story.authorId },
+            { projection: { _id: 1 } },
+          ),
+        db
+          .collection("storyBookmarks")
+          .findOne(
+            { userId: currentUserObjectId, storyId: story._id },
+            { projection: { _id: 1 } },
+          ),
+        db
+          .collection("storyLikes")
+          .findOne(
+            { userId: currentUserObjectId, storyId: story._id },
+            { projection: { _id: 1 } },
+          ),
       ]);
 
       followedByCurrentUser = Boolean(follow);
