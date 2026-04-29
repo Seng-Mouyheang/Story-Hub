@@ -3,7 +3,14 @@ import { Link } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Filter, PenTool, Clock3, FileText, Trash2, AlertTriangle } from "lucide-react";
+import {
+  Filter,
+  PenTool,
+  Clock3,
+  FileText,
+  Trash2,
+  AlertTriangle,
+} from "lucide-react";
 
 import {
   getDashboardStats,
@@ -71,12 +78,11 @@ const DashboardStoryCard = ({ story, onDelete, onRecover }) => {
   const excerpt =
     story?.summary || story?.content?.slice(0, 140) || "No preview available.";
   const isConfession = story?._type === "confession";
-  const statusLabel =
-    isConfession
-      ? null
-      : story?.status
-        ? `${story.status.charAt(0).toUpperCase()}${story.status.slice(1)}`
-        : "Draft";
+  const statusLabel = isConfession
+    ? null
+    : story?.status
+      ? `${story.status.charAt(0).toUpperCase()}${story.status.slice(1)}`
+      : "Draft";
   const visibilityLabel = story?.visibility
     ? `${story.visibility.charAt(0).toUpperCase()}${story.visibility.slice(1)}`
     : "Public";
@@ -587,11 +593,13 @@ export default function Dashboard() {
                 <AlertTriangle className="w-4 h-4 text-rose-500" />
               </div>
               <h3 className="text-base font-semibold text-slate-900">
-                Delete this {deleteTarget._type === "confession" ? "confession" : "story"}?
+                Delete this{" "}
+                {deleteTarget._type === "confession" ? "confession" : "story"}?
               </h3>
             </div>
             <p className="text-sm text-slate-500 mb-6 pl-12">
-              This will permanently remove it from your dashboard. This action cannot be undone.
+              This will permanently remove it from your dashboard. This action
+              cannot be undone.
             </p>
             <div className="flex items-center justify-end gap-2">
               <button

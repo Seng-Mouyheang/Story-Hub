@@ -32,8 +32,12 @@ export default function Navbar({ title }) {
       lastY = current;
     };
 
-    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
-    return () => document.removeEventListener("scroll", onScroll, { capture: true });
+    document.addEventListener("scroll", onScroll, {
+      capture: true,
+      passive: true,
+    });
+    return () =>
+      document.removeEventListener("scroll", onScroll, { capture: true });
   }, []);
 
   useEffect(() => {
