@@ -3,7 +3,9 @@ import {
   Routes,
   Route,
   Navigate,
+  useLocation,
 } from "react-router-dom";
+import { useEffect } from "react";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Home from "./pages/Home";
@@ -35,9 +37,53 @@ const PublicRoute = ({ children }) => {
   return children;
 };
 
+const PAGE_TITLES = [
+  { path: "/login", title: "Login" },
+  { path: "/signup", title: "Sign Up" },
+  { path: "/", title: "Home" },
+  { path: "/explore", title: "Explore" },
+  { path: "/confession", title: "Confession" },
+  { path: "/bookmarks", title: "Bookmarks" },
+  { path: "/dashboard", title: "Dashboard" },
+  { path: "/write", title: "Write Story" },
+  { path: "/profile", title: "Profile" },
+  { path: "/edit-profile", title: "Edit Profile" },
+  { path: "/settings", title: "Settings" },
+];
+
+function TitleManager() {
+  const location = useLocation();
+
+  useEffect(() => {
+    const matchedTitle = PAGE_TITLES.find(({ path }) => {
+      if (path === "/") {
+        return location.pathname === "/";
+      }
+
+      return (
+        location.pathname === path || location.pathname.startsWith(`${path}/`)
+      );
+    })?.title;
+
+    let nextTitle = matchedTitle || "Story Hub";
+
+    if (
+      location.pathname === "/write" &&
+      location.search.includes("storyId=")
+    ) {
+      nextTitle = "Edit Story";
+    }
+
+    document.title = `${nextTitle} | Story Hub`;
+  }, [location.pathname, location.search]);
+
+  return null;
+}
+
 function App() {
   return (
     <Router>
+      <TitleManager />
       <Routes>
         <Route
           path="/login"
