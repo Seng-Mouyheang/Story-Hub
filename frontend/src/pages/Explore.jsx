@@ -724,7 +724,7 @@ export default function Explore() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
         <Navbar title="Explore Communities" />
 
-        <main className="h-[calc(100vh-64px)] overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
             <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
               <div className="mb-8 sm:mb-10">
@@ -1258,6 +1258,7 @@ export default function Explore() {
                   ))}
                 </div>
               </div>
+              <SiteFooter className="hidden lg:block text-left lg:text-right" />
             </div>
 
             <aside className="hidden lg:block w-64 shrink-0 h-full">
@@ -1337,7 +1338,6 @@ export default function Explore() {
           </div>
         </main>
 
-        <SiteFooter className="text-left lg:text-right" />
       </div>
     </div>
   );

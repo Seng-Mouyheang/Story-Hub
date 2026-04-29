@@ -45,6 +45,7 @@ export default function Settings() {
   const [deletePassword, setDeletePassword] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteFieldError, setDeleteFieldError] = useState("");
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Ensure no password values persist when opening the Settings page
   useEffect(() => {
@@ -351,7 +352,7 @@ export default function Settings() {
                 <div className="lg:hidden w-full border-t border-slate-100 pt-6 mt-6">
                   <button
                     type="button"
-                    onClick={handleLogout}
+                    onClick={() => setShowLogoutConfirm(true)}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-slate-600 hover:text-rose-500 hover:border-rose-200 transition-colors text-sm font-medium"
                   >
                     <LogOut className="w-4 h-4" />
@@ -364,6 +365,44 @@ export default function Settings() {
           </div>
         </main>
       </div>
+
+      {showLogoutConfirm && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div
+            className="w-full sm:max-w-sm bg-white sm:rounded-2xl rounded-t-2xl shadow-xl border border-slate-200 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 pt-6 pb-2">
+              <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center mb-4">
+                <LogOut className="w-5 h-5 text-rose-500" />
+              </div>
+              <h3 className="text-base font-semibold text-slate-900">
+                Logout of your account?
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                You'll need to sign in again to access your account.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 px-6 py-4">
+              <button
+                onClick={handleLogout}
+                className="w-full py-3 bg-rose-500 hover:bg-rose-600 text-white text-sm font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Logout
+              </button>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="w-full py-3 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
