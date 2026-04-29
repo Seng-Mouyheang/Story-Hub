@@ -64,6 +64,28 @@ const getPublishedStoriesSortStage = (sortBy) => {
   return { publishedAt: -1, _id: -1 };
 };
 
+const buildPublishedStoriesCursorMatch = (cursor, sortBy) => {
+  if (sortBy === "popular") {
+    const [likesCountStr, publishedAtStr, id] = cursor.split("_");
+    const likesCount = Number.parseInt(likesCountStr, 10);
+    const publishedAt = new Date(publishedAtStr);
+
+    return [
+      { likesCount: { $lt: likesCount } },
+      { likesCount, publishedAt: { $lt: publishedAt } },
+      { likesCount, publishedAt, _id: { $lt: new ObjectId(id) } },
+    ];
+  }
+
+  const [publishedAtStr, id] = cursor.split("_");
+  const publishedAt = new Date(publishedAtStr);
+
+  return [
+    { publishedAt: { $lt: publishedAt } },
+    { publishedAt, _id: { $lt: new ObjectId(id) } },
+  ];
+};
+
 const buildPublishedStoriesPipeline = (matchStage, limit, sortBy) => {
   const pipeline = [
     { $match: matchStage },
@@ -98,7 +120,13 @@ const buildPublishedStoriesPipeline = (matchStage, limit, sortBy) => {
   return pipeline;
 };
 
-const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
+const enrichStoriesWithUserData = async (
+  db,
+  stories,
+  limit,
+  currentUserId,
+  sortBy = "latest",
+) => {
   const hasMore = stories.length > limit;
   const data = hasMore ? stories.slice(0, limit) : stories;
 
@@ -166,7 +194,10 @@ const enrichStoriesWithUserData = async (db, stories, limit, currentUserId) => {
     const lastStory = data[data.length - 1];
     const cursorDate =
       lastStory.publishedAt || lastStory.createdAt || new Date();
-    nextCursor = `${cursorDate.toISOString()}_${lastStory._id}`;
+    nextCursor =
+      sortBy === "popular"
+        ? `${lastStory.likesCount ?? 0}_${cursorDate.toISOString()}_${lastStory._id}`
+        : `${cursorDate.toISOString()}_${lastStory._id}`;
   }
 
   return {
@@ -227,25 +258,14 @@ const getPublishedStories = async (
     deletedAt: null,
   };
 
-  // If cursor exists, extract values
-  if (cursor && sortBy !== "popular") {
-    const [publishedAtStr, id] = cursor.split("_");
-
-    matchStage.$or = [
-      {
-        publishedAt: { $lt: new Date(publishedAtStr) },
-      },
-      {
-        publishedAt: new Date(publishedAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+  if (cursor) {
+    matchStage.$or = buildPublishedStoriesCursorMatch(cursor, sortBy);
   }
 
   const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
-  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId, sortBy);
 };
 
 const getPublishedStoriesByTag = async (
@@ -271,23 +291,14 @@ const getPublishedStoriesByTag = async (
     },
   };
 
-  if (cursor && sortBy !== "popular") {
-    const [publishedAtStr, id] = cursor.split("_");
-    matchStage.$or = [
-      {
-        publishedAt: { $lt: new Date(publishedAtStr) },
-      },
-      {
-        publishedAt: new Date(publishedAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+  if (cursor) {
+    matchStage.$or = buildPublishedStoriesCursorMatch(cursor, sortBy);
   }
 
   const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
-  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId, sortBy);
 };
 
 const getPublishedStoriesByCategories = async (
@@ -315,23 +326,14 @@ const getPublishedStoriesByCategories = async (
     };
   }
 
-  if (cursor && sortBy !== "popular") {
-    const [publishedAtStr, id] = cursor.split("_");
-    matchStage.$or = [
-      {
-        publishedAt: { $lt: new Date(publishedAtStr) },
-      },
-      {
-        publishedAt: new Date(publishedAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+  if (cursor) {
+    matchStage.$or = buildPublishedStoriesCursorMatch(cursor, sortBy);
   }
 
   const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
-  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId, sortBy);
 };
 
 const getPublishedStoriesByTitle = async (
@@ -352,23 +354,14 @@ const getPublishedStoriesByTitle = async (
     title: { $regex: escapedTitle, $options: "i" },
   };
 
-  if (cursor && sortBy !== "popular") {
-    const [publishedAtStr, id] = cursor.split("_");
-    matchStage.$or = [
-      {
-        publishedAt: { $lt: new Date(publishedAtStr) },
-      },
-      {
-        publishedAt: new Date(publishedAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+  if (cursor) {
+    matchStage.$or = buildPublishedStoriesCursorMatch(cursor, sortBy);
   }
 
   const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
-  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId, sortBy);
 };
 
 const getPublishedStoriesByAuthor = async (
@@ -388,23 +381,14 @@ const getPublishedStoriesByAuthor = async (
     deletedAt: null,
   };
 
-  if (cursor && sortBy !== "popular") {
-    const [publishedAtStr, id] = cursor.split("_");
-    matchStage.$or = [
-      {
-        publishedAt: { $lt: new Date(publishedAtStr) },
-      },
-      {
-        publishedAt: new Date(publishedAtStr),
-        _id: { $lt: new ObjectId(id) },
-      },
-    ];
+  if (cursor) {
+    matchStage.$or = buildPublishedStoriesCursorMatch(cursor, sortBy);
   }
 
   const pipeline = buildPublishedStoriesPipeline(matchStage, limit, sortBy);
   const stories = await collection.aggregate(pipeline).toArray();
 
-  return enrichStoriesWithUserData(db, stories, limit, currentUserId);
+  return enrichStoriesWithUserData(db, stories, limit, currentUserId, sortBy);
 };
 
 /**
