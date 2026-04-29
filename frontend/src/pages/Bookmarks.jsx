@@ -1,42 +1,61 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  AlertTriangle,
+  Bookmark,
+  FileText,
+  Heart,
+  MessageCircle,
+  MoreHorizontal,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
+import PropTypes from "prop-types";
+
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
-import { Heart, MessageCircle, Bookmark, User, Loader2, X } from "lucide-react";
-import {
-  getMyBookmarkedStories,
-  removeStoryBookmark,
-  toggleStoryLike,
-} from "../api/story/storyInteractionsApi";
+import CommentSection from "../components/CommentSection";
+import Toast from "../components/Toast";
+import { useToast } from "../lib/useToast";
 import {
   addStoryComment,
   deleteStoryComment,
+  getCommentReplies,
   getStoryComments,
   updateStoryComment,
 } from "../api/story/storyCommentsApi";
-import { getProfileByUserId } from "../api/profile";
+import {
+  getMyBookmarkedStories,
+  removeStoryBookmark,
+  toggleCommentLike,
+  toggleStoryLike,
+} from "../api/story/storyInteractionsApi";
+import { deleteStory } from "../api/story/storyApi";
 import {
   getBookmarkedConfessions,
   removeConfessionBookmark,
 } from "../api/confession/confessionBookmarkApi";
-import ConfessionModalCommentItem from "./confession/ConfessionModalCommentItem";
+import {
+  followUser,
+  getFollowStatus,
+  getProfileByUserId,
+  unfollowUser,
+} from "../api/profile";
+import ConfessionFeedCard from "./confession/ConfessionFeedCard";
 import { useOutsideClickCloser } from "./confession/useOutsideClickCloser";
-
-const getAuthHeaders = () => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
-const parseApiResponse = async (response, fallbackMessage) => {
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(payload?.message || fallbackMessage);
-  }
-
-  return payload;
-};
+import {
+  getRelativeTime as getSharedRelativeTime,
+  parseResponse,
+} from "./confession/confessionUtils";
+import { useConfessionComments } from "./confession/useConfessionComments";
 
 const formatCount = (value) => {
   if (value >= 1000000) {
@@ -50,38 +69,6 @@ const formatCount = (value) => {
   return String(value);
 };
 
-const getRelativeTime = (dateString) => {
-  const sourceDate = new Date(dateString);
-
-  if (Number.isNaN(sourceDate.getTime())) {
-    return "Recently";
-  }
-
-  const diffMs = Date.now() - sourceDate.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-
-  if (diffMinutes < 1) return "Just now";
-  if (diffMinutes < 60)
-    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-
-  const diffWeeks = Math.floor(diffDays / 7);
-  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
-
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths < 12) {
-    return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
-  }
-
-  const diffYears = Math.floor(diffDays / 365);
-  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
-};
-
 const normalizeId = (value) => {
   if (!value) return "";
   if (typeof value === "string") return value;
@@ -93,7 +80,7 @@ const normalizeId = (value) => {
   return String(value);
 };
 
-const getContentPreview = (content, isExpanded, maxLength = 220) => {
+const getContentPreview = (content, isExpanded, maxLength = 260) => {
   const text = String(content || "").trim();
 
   if (text.length <= maxLength) {
@@ -109,79 +96,417 @@ const getContentPreview = (content, isExpanded, maxLength = 220) => {
   };
 };
 
-const PostCard = ({
-  id,
-  author,
-  authorId,
-  avatar,
-  genres,
-  genre,
-  tags,
-  time,
-  title,
-  content,
-  isExpanded,
-  likesCount,
-  commentCount,
-  likedByCurrentUser,
-  onUnsave,
-  onToggleLike,
-  onOpenComments,
-  onToggleExpanded,
-}) => {
-  const [areGenresExpanded, setAreGenresExpanded] = useState(false);
-  const genreDisplayLimit = 5;
-  const storyGenres =
-    Array.isArray(genres) && genres.length > 0
-      ? genres
-      : [String(genre || "GENERAL")];
-  const visibleGenres = areGenresExpanded
-    ? storyGenres
-    : storyGenres.slice(0, genreDisplayLimit);
-  const hiddenGenreCount = Math.max(storyGenres.length - genreDisplayLimit, 0);
+const createEmptyRepliesState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  loadingMore: false,
+  error: "",
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+});
 
-  const { visibleContent, isLongContent } = getContentPreview(
-    content,
-    isExpanded,
+const createEmptyCommentState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  loadingMore: false,
+  error: "",
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+  input: "",
+  originalInput: "",
+  editingCommentId: null,
+  replyingToCommentId: null,
+  replyingToAuthor: "",
+  submitting: false,
+  repliesByComment: {},
+});
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+const PREFERRED_FOCUS_SELECTOR = [
+  "textarea:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "button:not([disabled])",
+  "a[href]",
+  '[tabindex]:not([tabindex="-1"])',
+].join(", ");
+
+const getFocusableElements = (container) => {
+  if (!(container instanceof HTMLElement)) {
+    return [];
+  }
+
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR)).filter(
+    (element) =>
+      element instanceof HTMLElement &&
+      !element.hasAttribute("disabled") &&
+      element.getAttribute("aria-hidden") !== "true",
   );
+};
+
+const moveFocusIntoDialog = (container) => {
+  const preferredFocusableElement =
+    container instanceof HTMLElement
+      ? container.querySelector(PREFERRED_FOCUS_SELECTOR)
+      : null;
+
+  if (preferredFocusableElement instanceof HTMLElement) {
+    preferredFocusableElement.focus();
+    return;
+  }
+
+  if (container instanceof HTMLElement) {
+    container.focus();
+  }
+};
+
+function ModalDialog({
+  isOpen,
+  onClose,
+  title,
+  titleId,
+  closeLabel,
+  widthClassName = "max-w-xl",
+  children,
+}) {
+  const dialogRef = React.useRef(null);
+  const previousFocusRef = React.useRef(null);
+  const onCloseRef = React.useRef(onClose);
+
+  React.useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  React.useEffect(() => {
+    if (!isOpen) {
+      return undefined;
+    }
+
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+
+    requestAnimationFrame(() => {
+      moveFocusIntoDialog(dialogRef.current);
+    });
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusableElements = getFocusableElements(dialogRef.current);
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const firstFocusableElement = focusableElements[0];
+      const lastFocusableElement =
+        focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === firstFocusableElement) {
+        event.preventDefault();
+        lastFocusableElement.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeElement === lastFocusableElement) {
+        event.preventDefault();
+        firstFocusableElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previousFocusRef.current instanceof HTMLElement) {
+        previousFocusRef.current.focus();
+      }
+    };
+  }, [isOpen]);
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
-    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link
-            to={authorId ? `/profile/${authorId}` : "/profile"}
-            state={{ from: "/bookmarks" }}
-            className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center shrink-0 transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-            aria-label={`View ${author} profile`}
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+      <button
+        type="button"
+        aria-label={closeLabel}
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+      />
+
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={`relative z-10 w-full ${widthClassName} rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden`}
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h4
+            id={titleId}
+            className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4"
           >
-            {avatar ? (
+            {title}
+          </h4>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors cursor-pointer"
+            aria-label={closeLabel}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function StoryBookmarkCardSkeleton() {
+  return (
+    <div className="rounded-2xl sm:rounded-3xl bg-slate-100 p-5 sm:p-6 animate-pulse shadow-sm border border-slate-200">
+      <div className="flex justify-between items-start gap-3 mb-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <div className="h-10 w-10 shrink-0 rounded-full bg-slate-200" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+              <div className="h-4 w-32 rounded-full bg-slate-200" />
+              <div className="h-3 w-16 rounded-full bg-slate-200" />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <div className="h-3 w-16 rounded-full bg-slate-200" />
+              <div className="h-3 w-20 rounded-full bg-slate-200" />
+              <div className="h-3 w-12 rounded-full bg-slate-200" />
+            </div>
+          </div>
+        </div>
+        <div className="h-8 w-20 rounded-full bg-slate-200" />
+      </div>
+
+      <div className="space-y-3">
+        <div className="h-6 w-3/4 rounded-full bg-slate-200" />
+        <div className="h-5 w-full rounded-full bg-slate-200" />
+        <div className="h-5 w-2/3 rounded-full bg-slate-200" />
+      </div>
+
+      <div className="flex items-center gap-4 pt-4 mt-4 border-t border-slate-200">
+        <div className="h-8 w-16 rounded-full bg-slate-200" />
+        <div className="h-8 w-14 rounded-full bg-slate-200" />
+        <div className="ml-auto h-8 w-8 rounded-full bg-slate-200" />
+      </div>
+    </div>
+  );
+}
+
+function ConfessionBookmarkCardSkeleton() {
+  return (
+    <div className="rounded-2xl sm:rounded-3xl bg-slate-100 p-5 sm:p-6 animate-pulse shadow-sm border border-slate-200">
+      <div className="flex items-start gap-3 mb-4">
+        <div className="h-10 w-10 rounded-full bg-slate-200" />
+        <div className="min-w-0 flex-1">
+          <div className="h-4 w-1/3 rounded-full bg-slate-200" />
+          <div className="mt-2 h-3 w-1/4 rounded-full bg-slate-200" />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <div className="h-5 rounded-full bg-slate-200 w-5/6" />
+        <div className="h-5 rounded-full bg-slate-200 w-full" />
+        <div className="h-5 rounded-full bg-slate-200 w-2/3" />
+        <div className="flex items-center gap-3 pt-4">
+          <div className="h-9 w-20 rounded-full bg-slate-200" />
+          <div className="h-9 w-16 rounded-full bg-slate-200" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// NOSONAR
+const StoryBookmarkCard = ({
+  story,
+  currentUserId,
+  menuStoryId,
+  isExpanded,
+  commentsActive,
+  followingAuthor,
+  followBusy,
+  onToggleStoryMenu,
+  onEditStory,
+  onDeleteStory,
+  onToggleLike,
+  onOpenComments,
+  onUnsave,
+  onToggleExpanded,
+  onToggleFollowAuthor,
+}) => {
+  const [areGenresExpanded, setAreGenresExpanded] = useState(false);
+  const [areTagsExpanded, setAreTagsExpanded] = useState(false);
+  const [areTagsWrapped, setAreTagsWrapped] = useState(false);
+  const [firstRowTagCount, setFirstRowTagCount] = useState(4);
+  const tagMeasurementRef = useRef(null);
+  const storyGenres = useMemo(
+    () =>
+      Array.isArray(story.genres) && story.genres.length > 0
+        ? story.genres
+        : ["GENERAL"],
+    [story.genres],
+  );
+  const visibleGenres = areGenresExpanded
+    ? storyGenres
+    : storyGenres.slice(0, 5);
+  const hiddenGenreCount = Math.max(storyGenres.length - 5, 0);
+  const tags = useMemo(
+    () => (Array.isArray(story.tags) ? story.tags : []),
+    [story.tags],
+  );
+  const hiddenTagCount = areTagsWrapped
+    ? Math.max(tags.length - firstRowTagCount, 0)
+    : 0;
+  const canExpandTags = hiddenTagCount > 0;
+  const visibleTags =
+    areTagsWrapped && !areTagsExpanded ? tags.slice(0, firstRowTagCount) : tags;
+  const canManageStory =
+    Boolean(currentUserId) && story.authorId === currentUserId;
+  const { visibleContent, isLongContent } = getContentPreview(
+    story.content,
+    isExpanded,
+  );
+  const navigate = useNavigate();
+
+  const handleCardClick = () => {
+    navigate("/", { state: { focusedPostId: story.id } });
+  };
+
+  const handleCardKeyDown = (e) => {
+    if (e.key === "Enter") {
+      handleCardClick();
+    }
+  };
+
+  useEffect(() => {
+    const measurementElement = tagMeasurementRef.current;
+
+    if (!measurementElement) {
+      return undefined;
+    }
+
+    const updateTagWrapState = () => {
+      const tagElements = Array.from(
+        measurementElement.querySelectorAll('[data-tag-chip="true"]'),
+      );
+
+      if (tagElements.length === 0) {
+        setAreTagsWrapped(false);
+        setFirstRowTagCount(4);
+        return;
+      }
+
+      const firstRowTop = tagElements[0].offsetTop;
+      const calculatedFirstRowCount = tagElements.filter(
+        (tagElement) => tagElement.offsetTop <= firstRowTop + 1,
+      ).length;
+      const safeFirstRowCount = Math.max(calculatedFirstRowCount, 1);
+
+      setFirstRowTagCount(safeFirstRowCount);
+      setAreTagsWrapped(safeFirstRowCount < tagElements.length);
+    };
+
+    const frameId = requestAnimationFrame(updateTagWrapState);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => cancelAnimationFrame(frameId);
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateTagWrapState();
+    });
+
+    observer.observe(measurementElement);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      observer.disconnect();
+    };
+  }, [tags]);
+
+  return (
+    <div
+      className="relative bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md cursor-pointer"
+      onClick={handleCardClick}
+      onKeyDown={handleCardKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={`View story: ${story.title}`}
+    >
+      <div className="flex justify-between items-start gap-3 mb-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <Link
+            to={story.authorId ? `/profile/${story.authorId}` : "/profile"}
+            state={{ from: "/bookmarks" }}
+            className="w-10 h-10 shrink-0 rounded-full bg-slate-200 overflow-hidden block transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            aria-label={`View ${story.author} profile`}
+          >
+            {story.avatar ? (
               <img
-                src={avatar}
+                src={story.avatar}
                 alt="avatar"
                 className="w-full h-full object-cover"
               />
             ) : (
-              <User size={20} className="text-slate-400" />
+              <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
+                <User size={20} />
+              </div>
             )}
           </Link>
 
           <div className="min-w-0">
             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
               <Link
-                to={authorId ? `/profile/${authorId}` : "/profile"}
+                to={story.authorId ? `/profile/${story.authorId}` : "/profile"}
                 state={{ from: "/bookmarks" }}
                 className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
               >
-                {author}
+                {story.author}
               </Link>
-              <span className="text-slate-400 text-xs">• {time}</span>
+              <span className="text-slate-400 text-xs">• {story.time}</span>
             </div>
 
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-              {visibleGenres.map((storyGenre, index) => (
+              {visibleGenres.map((genre, index) => (
                 <span
-                  key={`${id}-genre-${String(storyGenre)}-${index}`}
+                  key={`${story.id}-genre-${String(genre)}-${index}`}
                   className="inline-flex items-center gap-2"
                 >
                   {index > 0 && (
@@ -193,41 +518,109 @@ const PostCard = ({
                     </span>
                   )}
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-500">
-                    {storyGenre}
+                    {genre}
                   </span>
                 </span>
               ))}
 
-              {hiddenGenreCount > 0 && !areGenresExpanded && (
+              {hiddenGenreCount > 0 && !areGenresExpanded ? (
                 <button
                   type="button"
-                  onClick={() => setAreGenresExpanded(true)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setAreGenresExpanded(true);
+                  }}
                   className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-rose-600 transition-colors hover:text-rose-700"
                   aria-label={`Show ${hiddenGenreCount} more genres`}
                 >
                   +{hiddenGenreCount}
                 </button>
-              )}
+              ) : null}
 
-              {hiddenGenreCount > 0 && areGenresExpanded && (
+              {hiddenGenreCount > 0 && areGenresExpanded ? (
                 <button
                   type="button"
-                  onClick={() => setAreGenresExpanded(false)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setAreGenresExpanded(false);
+                  }}
                   className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-slate-500 transition-colors hover:text-slate-700"
                   aria-label="Collapse genres"
                 >
                   Show less
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
+        </div>
+
+        <div className="relative flex items-center gap-2" data-story-menu>
+          {story.authorId && story.authorId !== currentUserId ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleFollowAuthor(story.authorId);
+              }}
+              disabled={followBusy}
+              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
+                followingAuthor
+                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
+                  : "bg-rose-500 hover:bg-rose-600 text-white"
+              } ${followBusy ? "opacity-60 cursor-not-allowed" : ""}`}
+            >
+              {followingAuthor ? "Following" : "Follow"}
+            </button>
+          ) : null}
+
+          {canManageStory ? (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleStoryMenu(story.id);
+                }}
+                className="text-slate-400 cursor-pointer hover:text-slate-600 transition-colors duration-200"
+                aria-label="Story actions"
+              >
+                <MoreHorizontal size={18} />
+              </button>
+
+              {menuStoryId === story.id ? (
+                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1 overflow-hidden">
+                  <Link
+                    to={`/write?storyId=${story.id}&returnTo=/bookmarks`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEditStory(story.id);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <FileText size={14} />
+                    Edit
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDeleteStory(story.id);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-rose-600 hover:bg-rose-50"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </div>
+              ) : null}
+            </>
+          ) : null}
         </div>
       </div>
 
       <h2 className="text-xl sm:text-2xl font-semibold mb-3 text-slate-900">
-        {title}
+        {story.title}
       </h2>
-
       <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap mb-2">
         {visibleContent}
       </p>
@@ -235,20 +628,43 @@ const PostCard = ({
       {isLongContent ? (
         <button
           type="button"
-          onClick={() => onToggleExpanded(id)}
-          className="mb-6 text-xs font-semibold text-slate-500 hover:underline cursor-pointer"
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleExpanded(story.id);
+          }}
+          className="mb-4 text-xs font-semibold text-slate-500 hover:underline cursor-pointer"
         >
           {isExpanded ? "Show less" : "Read more"}
         </button>
       ) : (
-        <div className="mb-6" />
+        <div className="mb-4" />
       )}
 
-      {Array.isArray(tags) && tags.length > 0 && (
+      {Array.isArray(story.tags) && story.tags.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {tags.slice(0, 4).map((tag) => (
+          <div
+            ref={tagMeasurementRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-0 -z-10 flex w-full flex-wrap items-center gap-x-3 gap-y-1 opacity-0"
+          >
+            {tags.map((tag, index) => (
+              <span
+                key={`${story.id}-measure-tag-${String(tag)}-${index}`}
+                data-tag-chip="true"
+                className="text-xs font-semibold tracking-wide text-rose-600"
+              >
+                #
+                {String(tag || "")
+                  .trim()
+                  .replace(/^#/, "")
+                  .replaceAll(/\s+/g, "")}
+              </span>
+            ))}
+          </div>
+
+          {visibleTags.map((tag, index) => (
             <span
-              key={`${id}-${tag}`}
+              key={`${story.id}-tag-${String(tag)}-${index}`}
               className="text-xs font-semibold tracking-wide text-rose-600"
             >
               #
@@ -258,55 +674,87 @@ const PostCard = ({
                 .replaceAll(/\s+/g, "")}
             </span>
           ))}
+
+          {!areTagsExpanded && canExpandTags ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAreTagsExpanded(true);
+              }}
+              className="text-xs font-semibold cursor-pointer tracking-wide text-rose-600 transition-colors hover:text-rose-700"
+            >
+              +{hiddenTagCount}
+            </button>
+          ) : null}
+
+          {areTagsExpanded && canExpandTags ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setAreTagsExpanded(false);
+              }}
+              className="text-xs font-semibold cursor-pointer tracking-wide text-slate-500 transition-colors hover:text-slate-700"
+            >
+              Show less
+            </button>
+          ) : null}
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
-        <div className="flex items-center gap-6 min-w-0">
+      <div className="flex items-center gap-4 flex-wrap pt-4 border-t border-slate-100">
+        <div className="flex items-center gap-4">
           <button
             type="button"
-            onClick={() => onToggleLike(id)}
-            className={`flex items-center gap-2 cursor-pointer transition-colors ${
-              likedByCurrentUser
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleLike(story.id);
+            }}
+            className={`flex items-center gap-2 transition-all cursor-pointer duration-200 ${
+              story.likedByCurrentUser
                 ? "text-rose-500"
                 : "text-slate-500 hover:text-rose-500"
             }`}
           >
             <Heart
               size={20}
-              fill={likedByCurrentUser ? "currentColor" : "none"}
+              fill={story.likedByCurrentUser ? "currentColor" : "none"}
             />
-            <span className="text-sm font-medium">
-              {formatCount(Number(likesCount || 0))}
+            <span className="text-xs sm:text-sm font-medium">
+              {formatCount(Number(story.likesCount || 0))}
             </span>
           </button>
-
           <button
             type="button"
-            onClick={() => onOpenComments(id)}
-            className="flex items-center gap-2 text-slate-500 cursor-pointer hover:text-sky-500 transition-colors"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenComments(story.id);
+            }}
+            className={`flex items-center gap-2 transition-all cursor-pointer duration-200 ${
+              commentsActive
+                ? "text-sky-500"
+                : "text-slate-500 hover:text-sky-500"
+            }`}
           >
             <MessageCircle size={20} />
-            <span className="text-sm font-medium">
-              {formatCount(Number(commentCount || 0))}
+            <span className="text-xs sm:text-sm font-medium">
+              {formatCount(Number(story.commentCount || 0))}
             </span>
           </button>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 ml-auto">
           <button
             type="button"
-            onClick={() => onUnsave(id)}
-            className="text-rose-500 cursor-pointer hover:text-rose-600 transition-colors"
+            onClick={(event) => {
+              event.stopPropagation();
+              onUnsave(story.id);
+            }}
+            className="text-rose-500 hover:text-rose-600 transition-colors duration-200 cursor-pointer"
             aria-label="Remove bookmark"
           >
             <Bookmark size={20} fill="currentColor" />
-          </button>
-          <button
-            className="text-slate-500 cursor-pointer hover:text-slate-900"
-            type="button"
-          >
-            {/* share button removed */}
           </button>
         </div>
       </div>
@@ -314,228 +762,173 @@ const PostCard = ({
   );
 };
 
-const ConfessionCard = ({
-  id,
-  author,
-  authorId,
-  avatar,
-  isAnonymous,
-  time,
-  content,
-  tags,
-  isExpanded,
-  likesCount,
-  commentCount,
-  likedByCurrentUser,
-  onUnsave,
-  onToggleLike,
-  onOpenComments,
-  onToggleExpanded,
-}) => {
-  const originalAuthor = author || "Unknown Author";
-  const displayAuthor = isAnonymous ? "Anonymous" : originalAuthor;
-  const authorSeed = String(displayAuthor || "author");
-  const avatarSrc =
-    !isAnonymous && avatar
-      ? avatar
-      : `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(authorSeed)}`;
-  const { visibleContent, isLongContent } = getContentPreview(
-    content,
-    isExpanded,
-  );
-
-  return (
-    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 mb-5 sm:mb-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3 min-w-0">
-          {!isAnonymous && authorId ? (
-            <Link
-              to={`/profile/${authorId}`}
-              state={{ from: "/bookmarks" }}
-              className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center shrink-0 transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-              aria-label={`View ${displayAuthor} profile`}
-            >
-              <img
-                src={avatarSrc}
-                alt="avatar"
-                className="w-full h-full object-cover"
-              />
-            </Link>
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-              <img
-                src={avatarSrc}
-                alt="avatar"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
-
-          <div className="min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-              {!isAnonymous && authorId ? (
-                <Link
-                  to={`/profile/${authorId}`}
-                  state={{ from: "/bookmarks" }}
-                  className="font-semibold text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                >
-                  {displayAuthor}
-                </Link>
-              ) : (
-                <h3 className="font-semibold text-slate-900 truncate">
-                  {displayAuthor}
-                </h3>
-              )}
-              <span className="text-slate-400 text-xs">• {time}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <p className="text-slate-600 text-sm leading-relaxed whitespace-pre-wrap mb-2">
-        {visibleContent}
-      </p>
-
-      {isLongContent ? (
-        <button
-          type="button"
-          onClick={() => onToggleExpanded(id)}
-          className="mb-6 text-xs font-semibold text-slate-500 hover:underline cursor-pointer"
-        >
-          {isExpanded ? "Show less" : "Show more"}
-        </button>
-      ) : (
-        <div className="mb-6" />
-      )}
-
-      {Array.isArray(tags) && tags.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1">
-          {tags.slice(0, 4).map((tag) => (
-            <span
-              key={`${id}-${tag}`}
-              className="text-xs font-semibold tracking-wide text-rose-600"
-            >
-              #
-              {String(tag || "")
-                .trim()
-                .replace(/^#/, "")}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-100">
-        <div className="flex items-center gap-6 min-w-0">
-          <button
-            type="button"
-            onClick={() => onToggleLike(id)}
-            className={`flex items-center gap-2 cursor-pointer transition-colors ${
-              likedByCurrentUser
-                ? "text-rose-500"
-                : "text-slate-500 hover:text-rose-500"
-            }`}
-          >
-            <Heart
-              size={20}
-              fill={likedByCurrentUser ? "currentColor" : "none"}
-            />
-            <span className="text-sm font-medium">
-              {formatCount(Number(likesCount || 0))}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => onOpenComments(id)}
-            className="flex items-center gap-2 text-slate-500 cursor-pointer hover:text-sky-500 transition-colors"
-          >
-            <MessageCircle size={20} />
-            <span className="text-sm font-medium">
-              {formatCount(Number(commentCount || 0))}
-            </span>
-          </button>
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => onUnsave(id)}
-            className="text-rose-500 cursor-pointer hover:text-rose-600 transition-colors"
-            aria-label="Remove bookmark"
-          >
-            <Bookmark size={20} fill="currentColor" />
-          </button>
-          <button
-            className="text-slate-500 cursor-pointer hover:text-slate-900"
-            type="button"
-          >
-            {/* share button removed */}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+StoryBookmarkCard.propTypes = {
+  story: PropTypes.shape({
+    id: PropTypes.string.isRequired,
+    author: PropTypes.string,
+    authorId: PropTypes.string,
+    avatar: PropTypes.string,
+    genres: PropTypes.arrayOf(PropTypes.string),
+    time: PropTypes.string,
+    title: PropTypes.string,
+    content: PropTypes.string,
+    tags: PropTypes.arrayOf(PropTypes.string),
+    likesCount: PropTypes.number,
+    commentCount: PropTypes.number,
+    likedByCurrentUser: PropTypes.bool,
+  }).isRequired,
+  currentUserId: PropTypes.string,
+  menuStoryId: PropTypes.string,
+  isExpanded: PropTypes.bool,
+  commentsActive: PropTypes.bool,
+  followingAuthor: PropTypes.bool,
+  followBusy: PropTypes.bool,
+  onToggleStoryMenu: PropTypes.func.isRequired,
+  onEditStory: PropTypes.func.isRequired,
+  onDeleteStory: PropTypes.func.isRequired,
+  onToggleLike: PropTypes.func.isRequired,
+  onOpenComments: PropTypes.func.isRequired,
+  onUnsave: PropTypes.func.isRequired,
+  onToggleExpanded: PropTypes.func.isRequired,
+  onToggleFollowAuthor: PropTypes.func.isRequired,
 };
 
 export default function Bookmarks() {
-  const [stories, setStories] = useState([]);
-  const [expandedStoryIds, setExpandedStoryIds] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [activeCommentStoryId, setActiveCommentStoryId] = useState("");
-  const [commentsByStory, setCommentsByStory] = useState({});
-  const [activeCommentConfessionId, setActiveCommentConfessionId] =
-    useState("");
-  const [commentsByConfession, setCommentsByConfession] = useState({});
-  const [editingStoryCommentId, setEditingStoryCommentId] = useState("");
-  const [editingStoryCommentContent, setEditingStoryCommentContent] =
-    useState("");
-  const [savingStoryComment, setSavingStoryComment] = useState(false);
-  const [deletingStoryCommentId, setDeletingStoryCommentId] = useState("");
-  const [activeStoryCommentMenuId, setActiveStoryCommentMenuId] = useState("");
-  const [deleteTargetStoryCommentId, setDeleteTargetStoryCommentId] =
-    useState("");
-
-  const [editingConfessionCommentId, setEditingConfessionCommentId] =
-    useState("");
-  const [editingConfessionCommentContent, setEditingConfessionCommentContent] =
-    useState("");
-  const [savingConfessionComment, setSavingConfessionComment] = useState(false);
-  const [deletingConfessionCommentId, setDeletingConfessionCommentId] =
-    useState("");
-  const [activeConfessionCommentMenuId, setActiveConfessionCommentMenuId] =
-    useState("");
-  const [deleteTargetConfessionCommentId, setDeleteTargetConfessionCommentId] =
-    useState("");
-
-  const [confessions, setConfessions] = useState([]);
-  const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
-  const [isLoadingConfessions, setIsLoadingConfessions] = useState(true);
-  const [confessionError, setConfessionError] = useState("");
-
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("stories");
 
-  const currentUserId = useMemo(() => {
+  const [stories, setStories] = useState([]);
+  const [isLoadingStories, setIsLoadingStories] = useState(true);
+  const [storyError, setStoryError] = useState("");
+  const [expandedStoryIds, setExpandedStoryIds] = useState({});
+
+  const [confessions, setConfessions] = useState([]);
+  const [isLoadingConfessions, setIsLoadingConfessions] = useState(true);
+  const [confessionError, setConfessionError] = useState("");
+  const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
+
+  const [followStateByUserId, setFollowStateByUserId] = useState({});
+  const [busyFollowIds, setBusyFollowIds] = useState({});
+  const [menuStoryId, setMenuStoryId] = useState("");
+
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [currentUsername, setCurrentUsername] = useState("You");
+  const [currentUserProfilePicture, setCurrentUserProfilePicture] =
+    useState("");
+
+  const [commentsByStory, setCommentsByStory] = useState({});
+  const [activeCommentStoryId, setActiveCommentStoryId] = useState(null);
+  const [activeMenuCommentId, setActiveMenuCommentId] = useState(null);
+  const [commentActionFeedback, setCommentActionFeedback] = useState({});
+  const [pendingCommentLikeIds, setPendingCommentLikeIds] = useState({});
+  const [commentLikePulseIds, setCommentLikePulseIds] = useState({});
+  const [deleteTargetComment, setDeleteTargetComment] = useState(null);
+  const [deleteTargetStoryId, setDeleteTargetStoryId] = useState("");
+  const [isDeletingStory, setIsDeletingStory] = useState(false);
+  const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
+  const [isDeletingConfession, setIsDeletingConfession] = useState(false);
+
+  const storyCommentListRef = useRef(null);
+  const storyCommentListSentinelRef = useRef(null);
+  const storyCommentInputRef = useRef(null);
+
+  const [menuConfessionId, setMenuConfessionId] = useState("");
+  const [pressedLikeId, setPressedLikeId] = useState(null);
+  const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
+  const [gestureLikeBurstId] = useState(null);
+  const [pendingLikeIds, setPendingLikeIds] = useState(() => new Set());
+  const [pendingBookmarkIds, setPendingBookmarkIds] = useState(() => new Set());
+  const pendingLikeIdsRef = useRef(new Set());
+  const pendingBookmarkIdsRef = useRef(new Set());
+  const pressedLikeTimerRef = useRef(null);
+  const pressedBookmarkTimerRef = useRef(null);
+
+  const confessionCommentListRef = useRef(null);
+  const confessionCommentListSentinelRef = useRef(null);
+  const confessionCommentInputRef = useRef(null);
+  const [commentOriginalInput, setCommentOriginalInput] = useState("");
+
+  const {
+    toast,
+    isVisible: isToastVisible,
+    isPaused: isToastPaused,
+    duration,
+    showToast,
+    hideToast,
+    pauseToast,
+    resumeToast,
+  } = useToast();
+
+  const showError = useCallback(
+    (message) => {
+      showToast(message, "error");
+    },
+    [showToast],
+  );
+
+  const showSuccess = useCallback(
+    (message) => {
+      showToast(message, "success");
+    },
+    [showToast],
+  );
+
+  const dismissToast = useCallback(() => {
+    hideToast();
+  }, [hideToast]);
+
+  const activeCommentStory = useMemo(
+    () => stories.find((story) => story.id === activeCommentStoryId) || null,
+    [stories, activeCommentStoryId],
+  );
+
+  const activeStoryCommentState = activeCommentStoryId
+    ? commentsByStory[activeCommentStoryId] || {
+        ...createEmptyCommentState(),
+        open: true,
+      }
+    : null;
+
+  useEffect(() => {
     try {
       const currentUser = JSON.parse(
         localStorage.getItem("currentUser") || "null",
       );
-      return normalizeId(currentUser?.id || currentUser?._id || "");
+      const normalizedUserId = normalizeId(
+        currentUser?.id || currentUser?._id || "",
+      );
+
+      setCurrentUserId(normalizedUserId);
+      setCurrentUsername(
+        currentUser?.displayName ||
+          currentUser?.username ||
+          currentUser?.name ||
+          "You",
+      );
+      setCurrentUserProfilePicture(currentUser?.profilePicture || "");
+
+      if (!normalizedUserId) {
+        return;
+      }
+
+      getProfileByUserId(normalizedUserId)
+        .then((profile) => {
+          setCurrentUserProfilePicture(profile?.profilePicture || "");
+        })
+        .catch(() => {});
     } catch {
-      return "";
+      setCurrentUserId("");
+      setCurrentUsername("You");
+      setCurrentUserProfilePicture("");
     }
   }, []);
 
-  const loadBookmarks = useCallback(async () => {
-    setErrorMessage("");
-    setIsLoading(true);
-
-    const abortController = new AbortController();
+  const loadBookmarkedStories = useCallback(async () => {
+    setStoryError("");
+    setIsLoadingStories(true);
 
     try {
-      const backendResult = await getMyBookmarkedStories({
-        signal: abortController.signal,
-      });
-
+      const backendResult = await getMyBookmarkedStories({ limit: 20 });
       const backendStories = Array.isArray(backendResult?.data)
         ? backendResult.data
         : [];
@@ -564,7 +957,7 @@ export default function Bookmarks() {
         }
       });
 
-      const mapped = backendStories.map((story) => {
+      const mappedStories = backendStories.map((story) => {
         const authorId = normalizeId(story.authorId);
         const profile = profiles[authorId];
 
@@ -574,15 +967,15 @@ export default function Bookmarks() {
           author:
             profile?.displayName ||
             story.authorDisplayName ||
+            story.author ||
             "Anonymous Author",
           avatar: profile?.profilePicture || null,
           genres:
             Array.isArray(story.genres) && story.genres.length > 0
-              ? story.genres.map((item) => String(item).toUpperCase())
+              ? story.genres.map((genre) => String(genre).toUpperCase())
               : ["GENERAL"],
-          genre: story.genres?.[0]?.toUpperCase() || "GENERAL",
           tags: Array.isArray(story.tags) ? story.tags : [],
-          time: getRelativeTime(story.publishedAt || story.createdAt),
+          time: getSharedRelativeTime(story.publishedAt || story.createdAt),
           title: story.title || "Untitled Story",
           content:
             story.summary ||
@@ -594,43 +987,42 @@ export default function Bookmarks() {
         };
       });
 
-      setStories(mapped);
-    } catch (error) {
-      if (error?.name !== "AbortError") {
-        setErrorMessage("Unable to load bookmarks right now.");
-      }
+      setStories(mappedStories);
+    } catch {
+      setStoryError("Unable to load bookmarked stories right now.");
     } finally {
-      setIsLoading(false);
+      setIsLoadingStories(false);
     }
   }, []);
 
   const loadBookmarkedConfessions = useCallback(async () => {
     setConfessionError("");
     setIsLoadingConfessions(true);
+
     try {
-      const result = await getBookmarkedConfessions({ limit: 20 });
-      const data = Array.isArray(result?.data) ? result.data : [];
+      const payload = await getBookmarkedConfessions({ limit: 20 });
+      const data = Array.isArray(payload?.data) ? payload.data : [];
+
       setConfessions(
-        data.map((conf) => ({
-          id: String(conf._id),
-          authorId: normalizeId(conf.authorId),
-          author: conf.isAnonymous
-            ? "Anonymous"
-            : conf.authorDisplayName || conf.author || "Unknown Author",
-          avatar: conf.authorProfilePicture || null,
-          isAnonymous: Boolean(conf.isAnonymous),
-          time: getRelativeTime(conf.publishedAt || conf.createdAt),
-          content:
-            conf.content || "No preview is available for this confession.",
-          tags: Array.isArray(conf.tags) ? conf.tags : [],
-          likesCount: Number(conf.likesCount || 0),
-          commentCount: Number(conf.commentCount || 0),
-          likedByCurrentUser: Boolean(conf.likedByCurrentUser),
+        data.map((item) => ({
+          ...item,
+          _id: String(item?._id || item?.id || ""),
+          id: String(item?._id || item?.id || ""),
+          authorId: normalizeId(item?.authorId),
+          authorDisplayName:
+            item?.authorDisplayName || item?.author || "Unknown Author",
+          authorProfilePicture: item?.authorProfilePicture || null,
+          createdAt: item?.publishedAt || item?.createdAt,
+          likesCount: Number(item?.likesCount || 0),
+          commentCount: Number(item?.commentCount || 0),
+          likedByCurrentUser: Boolean(item?.likedByCurrentUser),
+          savedByCurrentUser: true,
+          isAnonymous: Boolean(item?.isAnonymous),
+          visibility: item?.visibility || "public",
+          tags: Array.isArray(item?.tags) ? item.tags : [],
         })),
       );
     } catch (error) {
-      // Log error for debugging
-      console.error("Confession bookmarks load error:", error);
       setConfessionError(
         error?.message || "Unable to load bookmarked confessions right now.",
       );
@@ -640,162 +1032,650 @@ export default function Bookmarks() {
   }, []);
 
   useEffect(() => {
-    loadBookmarks();
+    loadBookmarkedStories();
     loadBookmarkedConfessions();
-  }, [loadBookmarks, loadBookmarkedConfessions]);
+  }, [loadBookmarkedStories, loadBookmarkedConfessions]);
 
-  const handleUnsave = useCallback(async (storyId) => {
-    try {
-      await removeStoryBookmark(storyId);
-      setStories((prev) => prev.filter((story) => story.id !== storyId));
-      setExpandedStoryIds((prev) => {
-        if (!prev[storyId]) {
-          return prev;
-        }
+  const followableAuthorIds = useMemo(() => {
+    const storyAuthorIds = stories
+      .map((story) => normalizeId(story.authorId))
+      .filter((authorId) => Boolean(authorId) && authorId !== currentUserId);
 
-        const next = { ...prev };
-        delete next[storyId];
-        return next;
-      });
-      setCommentsByStory((prev) => {
-        if (!prev[storyId]) {
-          return prev;
-        }
+    const confessionAuthorIds = confessions
+      .filter((item) => !item?.isAnonymous)
+      .map((item) => normalizeId(item?.authorId))
+      .filter((authorId) => Boolean(authorId) && authorId !== currentUserId);
 
-        const next = { ...prev };
-        delete next[storyId];
-        return next;
-      });
-      setActiveCommentStoryId((currentId) =>
-        currentId === storyId ? "" : currentId,
-      );
-    } catch {
-      setErrorMessage("Failed to remove bookmark.");
+    return [...new Set([...storyAuthorIds, ...confessionAuthorIds])];
+  }, [stories, confessions, currentUserId]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const unresolvedAuthorIds = followableAuthorIds.filter(
+      (authorId) => typeof followStateByUserId[authorId] !== "boolean",
+    );
+
+    if (unresolvedAuthorIds.length === 0) {
+      return () => {
+        isMounted = false;
+      };
     }
-  }, []);
 
-  const loadStoryComments = useCallback(async (storyId) => {
-    setCommentsByStory((prev) => ({
-      ...prev,
-      [storyId]: {
-        ...(prev[storyId] || {
-          items: [],
-          input: "",
-          loaded: false,
-          submitting: false,
+    const resolveFollowStatuses = async () => {
+      const statusEntries = await Promise.all(
+        unresolvedAuthorIds.map(async (authorId) => {
+          try {
+            const payload = await getFollowStatus(authorId);
+            return [authorId, Boolean(payload?.following)];
+          } catch {
+            return [authorId, false];
+          }
         }),
-        loading: true,
-        error: "",
-      },
-    }));
+      );
 
-    try {
-      const payload = await getStoryComments(storyId, { limit: 10 });
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
+      if (!isMounted) {
+        return;
+      }
 
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...(prev[storyId] || {
-            input: "",
-            submitting: false,
-          }),
-          loading: false,
-          loaded: true,
-          error: "",
-          items: comments,
-        },
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        ...Object.fromEntries(statusEntries),
       }));
-    } catch {
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [storyId]: {
-          ...(prev[storyId] || {
-            items: [],
-            input: "",
-            loaded: false,
-            submitting: false,
-          }),
-          loading: false,
-          error: "Unable to load comments.",
-        },
+    };
+
+    resolveFollowStatuses().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [followStateByUserId, followableAuthorIds]);
+
+  const handleToggleFollowAuthor = useCallback(
+    async (authorId) => {
+      const normalizedTargetAuthorId = normalizeId(authorId);
+
+      if (
+        !normalizedTargetAuthorId ||
+        normalizedTargetAuthorId === currentUserId ||
+        busyFollowIds[normalizedTargetAuthorId]
+      ) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showError("Please log in to follow authors.");
+        return;
+      }
+
+      const currentlyFollowing = Boolean(
+        followStateByUserId[normalizedTargetAuthorId],
+      );
+
+      setBusyFollowIds((previous) => ({
+        ...previous,
+        [normalizedTargetAuthorId]: true,
       }));
-    }
+      setFollowStateByUserId((previous) => ({
+        ...previous,
+        [normalizedTargetAuthorId]: !currentlyFollowing,
+      }));
+
+      try {
+        const payload = currentlyFollowing
+          ? await unfollowUser(normalizedTargetAuthorId)
+          : await followUser(normalizedTargetAuthorId);
+
+        const nextFollowState =
+          typeof payload?.following === "boolean"
+            ? payload.following
+            : !currentlyFollowing;
+
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          [normalizedTargetAuthorId]: nextFollowState,
+        }));
+
+        showSuccess(
+          nextFollowState
+            ? "You are now following this author."
+            : "You have unfollowed this author.",
+        );
+      } catch {
+        setFollowStateByUserId((previous) => ({
+          ...previous,
+          [normalizedTargetAuthorId]: currentlyFollowing,
+        }));
+        showError("Unable to update follow status. Please try again.");
+      } finally {
+        setBusyFollowIds((previous) => {
+          const next = { ...previous };
+          delete next[normalizedTargetAuthorId];
+          return next;
+        });
+      }
+    },
+    [busyFollowIds, currentUserId, followStateByUserId, showError, showSuccess],
+  );
+
+  const handleToggleStoryMenu = useCallback((storyId) => {
+    setMenuStoryId((currentId) => (currentId === storyId ? "" : storyId));
   }, []);
 
-  const handleToggleLike = useCallback(async (storyId) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setErrorMessage("Please login to react to stories.");
+  const handleEditStory = useCallback(
+    (storyId) => {
+      setMenuStoryId("");
+      navigate(`/write?storyId=${storyId}&returnTo=/bookmarks`);
+    },
+    [navigate],
+  );
+
+  const handleDeleteStory = useCallback(
+    (storyId) => {
+      const story = stories.find((item) => item.id === storyId);
+      if (!story || story?.authorId !== currentUserId) {
+        showError("Only the owner can delete this story.");
+        return;
+      }
+      setMenuStoryId("");
+      setDeleteTargetStoryId(storyId);
+    },
+    [currentUserId, showError, stories],
+  );
+
+  const handleConfirmDeleteStory = useCallback(async () => {
+    if (!deleteTargetStoryId || isDeletingStory) {
       return;
     }
 
+    setIsDeletingStory(true);
     try {
-      const payload = await toggleStoryLike(storyId);
-
+      await deleteStory(deleteTargetStoryId);
       setStories((prev) =>
-        prev.map((story) =>
-          story.id === storyId
-            ? {
-                ...story,
-                likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
-                likesCount: Number(payload?.likesCount || 0),
-              }
-            : story,
+        prev.filter((item) => item.id !== deleteTargetStoryId),
+      );
+      showSuccess("Story deleted.");
+    } catch {
+      showError("Failed to delete story.");
+    } finally {
+      setIsDeletingStory(false);
+      setDeleteTargetStoryId("");
+    }
+  }, [deleteTargetStoryId, isDeletingStory, showError, showSuccess]);
+
+  const handleEditConfession = useCallback(
+    (confession) => {
+      const confessionId = String(confession?._id || confession?.id || "");
+      setMenuConfessionId("");
+      navigate(`/confession?editId=${confessionId}&returnTo=/bookmarks`);
+    },
+    [navigate],
+  );
+
+  const handleDeleteConfession = useCallback(
+    (confessionId) => {
+      const normalizedConfessionId = String(confessionId || "");
+      const currentConfession = confessions.find(
+        (item) =>
+          String(item?._id || item?.id || "") === normalizedConfessionId,
+      );
+
+      if (
+        !currentConfession ||
+        normalizeId(currentConfession.authorId) !== currentUserId
+      ) {
+        showError("Only the owner can delete this confession.");
+        return;
+      }
+
+      setMenuConfessionId("");
+      setDeleteTargetConfessionId(normalizedConfessionId);
+    },
+    [confessions, currentUserId, showError],
+  );
+
+  const handleConfirmDeleteConfession = useCallback(async () => {
+    if (!deleteTargetConfessionId || isDeletingConfession) {
+      return;
+    }
+
+    setIsDeletingConfession(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(
+        `/api/confessions/${deleteTargetConfessionId}`,
+        {
+          method: "DELETE",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        },
+      );
+
+      const payload = await parseResponse(response);
+      if (!response.ok) {
+        throw new Error(payload?.message || "Failed to delete confession.");
+      }
+
+      setConfessions((prev) =>
+        prev.filter(
+          (item) =>
+            String(item?._id || item?.id || "") !== deleteTargetConfessionId,
         ),
       );
-    } catch {
-      setErrorMessage("Failed to update reaction. Please try again.");
+      showSuccess("Confession deleted.");
+    } catch (error) {
+      showError(error.message || "Failed to delete confession.");
+    } finally {
+      setIsDeletingConfession(false);
+      setDeleteTargetConfessionId("");
     }
-  }, []);
+  }, [deleteTargetConfessionId, isDeletingConfession, showError, showSuccess]);
 
-  const handleOpenComments = useCallback(
+  const fetchStoryComments = useCallback(
+    async (storyId, cursor = null, append = false) => {
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          open: true,
+          loading: !append,
+          loadingMore: append,
+          error: "",
+        },
+      }));
+
+      try {
+        const payload = await getStoryComments(storyId, { limit: 10, cursor });
+        const comments = Array.isArray(payload?.comments)
+          ? payload.comments
+          : [];
+
+        setCommentsByStory((prev) => {
+          const existingState = prev[storyId] || createEmptyCommentState();
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...existingState,
+              open: true,
+              loading: false,
+              loadingMore: false,
+              loaded: true,
+              error: "",
+              items: append ? [...existingState.items, ...comments] : comments,
+              nextCursor: payload?.nextCursor || null,
+              hasMore: Boolean(payload?.hasMore),
+            },
+          };
+        });
+      } catch {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            open: true,
+            loading: false,
+            loadingMore: false,
+            error: "Unable to load comments.",
+          },
+        }));
+
+        showError("Unable to load comments.");
+      }
+    },
+    [showError],
+  );
+
+  const handleOpenStoryComments = useCallback(
     (storyId) => {
       setActiveCommentStoryId(storyId);
 
-      const current = commentsByStory[storyId];
-      if (!current?.loaded && !current?.loading) {
-        loadStoryComments(storyId);
+      const current = commentsByStory[storyId] || createEmptyCommentState();
+      if (!current.loaded && !current.loading) {
+        fetchStoryComments(storyId);
       }
     },
-    [commentsByStory, loadStoryComments],
+    [commentsByStory, fetchStoryComments],
   );
 
-  const handleCloseComments = useCallback(() => {
-    setActiveCommentStoryId("");
-    setActiveStoryCommentMenuId("");
-    setEditingStoryCommentId("");
-    setEditingStoryCommentContent("");
-    setDeletingStoryCommentId("");
-    setDeleteTargetStoryCommentId("");
+  const handleCloseStoryComments = useCallback(() => {
+    setActiveCommentStoryId(null);
+    setActiveMenuCommentId(null);
   }, []);
 
-  const handleCommentInputChange = useCallback((storyId, input) => {
+  useEffect(() => {
+    if (!activeCommentStoryId) {
+      return undefined;
+    }
+
+    const activeState =
+      commentsByStory[activeCommentStoryId] || createEmptyCommentState();
+    const sentinel = storyCommentListSentinelRef.current;
+    const root = storyCommentListRef.current;
+
+    if (
+      !sentinel ||
+      !root ||
+      !activeState.hasMore ||
+      activeState.loading ||
+      activeState.loadingMore
+    ) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          fetchStoryComments(
+            activeCommentStoryId,
+            activeState.nextCursor,
+            true,
+          );
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 120px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeCommentStoryId, commentsByStory, fetchStoryComments]);
+
+  const fetchStoryReplies = useCallback(
+    async (storyId, commentId, cursor = null, append = false) => {
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...createEmptyRepliesState(),
+              ...(prev[storyId]?.repliesByComment?.[commentId] || {}),
+              loading: !append,
+              loadingMore: append,
+              error: "",
+            },
+          },
+        },
+      }));
+
+      try {
+        const payload = await getCommentReplies(commentId, {
+          limit: 4,
+          cursor,
+        });
+        const replies = Array.isArray(payload?.replies) ? payload.replies : [];
+
+        setCommentsByStory((prev) => {
+          const existingReplyState =
+            prev[storyId]?.repliesByComment?.[commentId] ||
+            createEmptyRepliesState();
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...prev[storyId],
+              repliesByComment: {
+                ...(prev[storyId]?.repliesByComment || {}),
+                [commentId]: {
+                  ...createEmptyRepliesState(),
+                  ...existingReplyState,
+                  loading: false,
+                  loadingMore: false,
+                  loaded: true,
+                  open: true,
+                  error: "",
+                  items: append
+                    ? [...(existingReplyState.items || []), ...replies]
+                    : replies,
+                  nextCursor: payload?.nextCursor || null,
+                  hasMore: Boolean(payload?.hasMore),
+                },
+              },
+            },
+          };
+        });
+      } catch {
+        showError("Unable to load replies.");
+      }
+    },
+    [showError],
+  );
+
+  const showCommentFeedback = useCallback((commentId, message) => {
+    setCommentActionFeedback((prev) => ({ ...prev, [commentId]: message }));
+
+    setTimeout(() => {
+      setCommentActionFeedback((prev) => {
+        const next = { ...prev };
+        delete next[commentId];
+        return next;
+      });
+    }, 2200);
+  }, []);
+
+  const handleToggleStoryLike = useCallback(
+    async (storyId) => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showError("Please log in to react to stories.");
+        return;
+      }
+
+      try {
+        const payload = await toggleStoryLike(storyId);
+        setStories((prev) =>
+          prev.map((story) =>
+            story.id === storyId
+              ? {
+                  ...story,
+                  likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
+                  likesCount: Number(payload?.likesCount || 0),
+                }
+              : story,
+          ),
+        );
+      } catch {
+        showError("Failed to update reaction. Please try again.");
+      }
+    },
+    [showError],
+  );
+
+  const handleUnsaveStory = useCallback(
+    async (storyId) => {
+      try {
+        await removeStoryBookmark(storyId);
+        setStories((prev) => prev.filter((story) => story.id !== storyId));
+        setExpandedStoryIds((prev) => {
+          const next = { ...prev };
+          delete next[storyId];
+          return next;
+        });
+        setCommentsByStory((prev) => {
+          const next = { ...prev };
+          delete next[storyId];
+          return next;
+        });
+        setActiveCommentStoryId((currentId) =>
+          currentId === storyId ? null : currentId,
+        );
+        showSuccess("Story removed from bookmarks.");
+      } catch {
+        showError("Failed to remove bookmark.");
+      }
+    },
+    [showError, showSuccess],
+  );
+
+  const handleToggleStoryReplies = useCallback(
+    (storyId, commentId) => {
+      const currentReplyState =
+        commentsByStory[storyId]?.repliesByComment?.[commentId] ||
+        createEmptyRepliesState();
+      const nextOpen = !currentReplyState.open;
+
+      setCommentsByStory((prev) => ({
+        ...prev,
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          repliesByComment: {
+            ...(prev[storyId]?.repliesByComment || {}),
+            [commentId]: {
+              ...currentReplyState,
+              open: nextOpen,
+            },
+          },
+        },
+      }));
+
+      if (nextOpen && !currentReplyState.loaded && !currentReplyState.loading) {
+        fetchStoryReplies(storyId, commentId);
+      }
+    },
+    [commentsByStory, fetchStoryReplies],
+  );
+
+  const handleLoadMoreStoryReplies = useCallback(
+    (storyId, commentId) => {
+      const currentReplyState =
+        commentsByStory[storyId]?.repliesByComment?.[commentId] ||
+        createEmptyRepliesState();
+
+      if (!currentReplyState.hasMore || !currentReplyState.nextCursor) {
+        return;
+      }
+
+      fetchStoryReplies(storyId, commentId, currentReplyState.nextCursor, true);
+    },
+    [commentsByStory, fetchStoryReplies],
+  );
+
+  const handleStoryCommentInputChange = useCallback((storyId, input) => {
     setCommentsByStory((prev) => ({
       ...prev,
       [storyId]: {
-        ...(prev[storyId] || {
-          items: [],
-          loaded: true,
-          loading: false,
-          error: "",
-          submitting: false,
-        }),
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
         input,
       },
     }));
   }, []);
 
-  const handleSubmitComment = useCallback(
+  const handleToggleStoryCommentMenu = useCallback((commentId) => {
+    setActiveMenuCommentId((currentId) =>
+      currentId === commentId ? null : commentId,
+    );
+  }, []);
+
+  const handleStartStoryReply = useCallback((storyId, comment) => {
+    const replyCommentId = String(comment?._id || comment?.id || "");
+    const replyAuthor = comment?.authorDisplayName || "Anonymous";
+
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: "",
+        editingCommentId: null,
+        replyingToCommentId: replyCommentId,
+        replyingToAuthor: replyAuthor,
+      },
+    }));
+
+    setTimeout(() => {
+      storyCommentInputRef.current?.focus();
+    }, 0);
+  }, []);
+
+  const handleEditStoryComment = useCallback((storyId, comment) => {
+    const commentId = String(comment?._id || comment?.id || "");
+
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: comment?.content || "",
+        originalInput: comment?.content || "",
+        editingCommentId: commentId,
+        replyingToCommentId: null,
+        replyingToAuthor: "",
+      },
+    }));
+
+    setTimeout(() => {
+      if (storyCommentInputRef.current) {
+        storyCommentInputRef.current.focus();
+      }
+    }, 0);
+  }, []);
+
+  const handleDeleteStoryComment = useCallback(
+    (storyId, commentId) => {
+      const storyState = commentsByStory[storyId] || createEmptyCommentState();
+      const topLevelComment = (storyState.items || []).find(
+        (item) => String(item?._id || item?.id) === String(commentId),
+      );
+      const replyParentEntry = Object.entries(
+        storyState.repliesByComment || {},
+      ).find(([, replyState]) =>
+        (replyState?.items || []).some(
+          (item) => String(item?._id || item?.id) === String(commentId),
+        ),
+      );
+
+      setDeleteTargetComment({
+        storyId,
+        commentId,
+        replyCount: Number(topLevelComment?.replyCount || 0),
+        parentId:
+          normalizeId(topLevelComment?.parentId) ||
+          String(replyParentEntry?.[0] || ""),
+      });
+      setActiveMenuCommentId(null);
+    },
+    [commentsByStory],
+  );
+
+  const handleCancelStoryComposer = useCallback((storyId) => {
+    setCommentsByStory((prev) => ({
+      ...prev,
+      [storyId]: {
+        ...createEmptyCommentState(),
+        ...(prev[storyId] || {}),
+        input: "",
+        originalInput: "",
+        editingCommentId: null,
+        replyingToCommentId: null,
+        replyingToAuthor: "",
+      },
+    }));
+  }, []);
+
+  const handleSubmitStoryComment = useCallback(
     async (storyId) => {
       const token = localStorage.getItem("token");
       if (!token) {
-        setErrorMessage("Please login to comment.");
+        showError("Please log in to comment.");
         return;
       }
 
-      const currentState = commentsByStory[storyId] || {};
-      const content = (currentState.input || "").trim();
+      const current = commentsByStory[storyId] || createEmptyCommentState();
+      const content = current?.input?.trim();
+      const editingCommentId = current?.editingCommentId || null;
+      const replyingToCommentId = current?.replyingToCommentId || null;
 
       if (!content) {
         return;
@@ -804,64 +1684,120 @@ export default function Bookmarks() {
       setCommentsByStory((prev) => ({
         ...prev,
         [storyId]: {
-          ...(prev[storyId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-          }),
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
           submitting: true,
           error: "",
         },
       }));
 
       try {
-        const payload = await addStoryComment(storyId, { content });
+        if (editingCommentId) {
+          await updateStoryComment(editingCommentId, { content });
 
-        let currentUsername = "You";
-        let currentUserId = "";
-        let currentProfilePicture = "";
-        try {
-          const currentUser = JSON.parse(
-            localStorage.getItem("currentUser") || "null",
-          );
-          currentUsername =
-            currentUser?.displayName ||
-            currentUser?.username ||
-            currentUser?.name ||
-            "You";
-          currentUserId = normalizeId(
-            currentUser?.id || currentUser?._id || "",
-          );
-          currentProfilePicture = currentUser?.profilePicture || "";
-        } catch {
-          currentUsername = "You";
-          currentUserId = "";
-          currentProfilePicture = "";
+          setCommentsByStory((prev) => ({
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...(prev[storyId] || {}),
+              submitting: false,
+              input: "",
+              originalInput: "",
+              editingCommentId: null,
+              replyingToCommentId: null,
+              replyingToAuthor: "",
+              items: (prev[storyId]?.items || []).map((item) =>
+                String(item?._id || item?.id) === String(editingCommentId)
+                  ? { ...item, content, isEdited: true }
+                  : item,
+              ),
+              repliesByComment: Object.fromEntries(
+                Object.entries(prev[storyId]?.repliesByComment || {}).map(
+                  ([parentId, replyState]) => [
+                    parentId,
+                    {
+                      ...replyState,
+                      items: (replyState?.items || []).map((item) =>
+                        String(item?._id || item?.id) ===
+                        String(editingCommentId)
+                          ? { ...item, content, isEdited: true }
+                          : item,
+                      ),
+                    },
+                  ],
+                ),
+              ),
+            },
+          }));
+
+          showCommentFeedback(editingCommentId, "Comment updated");
+          showSuccess("Comment updated.");
+          return;
         }
 
-        const localComment = {
+        const payload = await addStoryComment(storyId, {
+          content,
+          parentId: replyingToCommentId,
+        });
+
+        const newComment = {
           _id: payload?.commentId || `${Date.now()}`,
           userId: currentUserId,
           authorDisplayName: currentUsername,
-          authorProfilePicture: currentProfilePicture,
+          authorProfilePicture: currentUserProfilePicture,
           content,
           createdAt: new Date().toISOString(),
+          likesCount: 0,
+          likedByCurrentUser: false,
+          isEdited: false,
+          parentId: replyingToCommentId,
+          replyCount: 0,
         };
 
-        setCommentsByStory((prev) => ({
-          ...prev,
-          [storyId]: {
-            ...(prev[storyId] || {
-              items: [],
-              loaded: true,
-              loading: false,
-            }),
-            submitting: false,
-            error: "",
-            input: "",
-            items: [localComment, ...(prev[storyId]?.items || [])],
-          },
-        }));
+        setCommentsByStory((prev) => {
+          const existingReplyState =
+            prev[storyId]?.repliesByComment?.[replyingToCommentId] || {};
+          const replyStateLoaded = existingReplyState.loaded === true;
+
+          return {
+            ...prev,
+            [storyId]: {
+              ...createEmptyCommentState(),
+              ...(prev[storyId] || {}),
+              submitting: false,
+              input: "",
+              originalInput: "",
+              editingCommentId: null,
+              replyingToCommentId: null,
+              replyingToAuthor: "",
+              items: replyingToCommentId
+                ? (prev[storyId]?.items || []).map((item) =>
+                    String(item?._id || item?.id) ===
+                    String(replyingToCommentId)
+                      ? {
+                          ...item,
+                          replyCount: Number(item?.replyCount || 0) + 1,
+                        }
+                      : item,
+                  )
+                : [newComment, ...(prev[storyId]?.items || [])],
+              repliesByComment: replyingToCommentId
+                ? {
+                    ...(prev[storyId]?.repliesByComment || {}),
+                    [replyingToCommentId]: {
+                      ...createEmptyRepliesState(),
+                      ...existingReplyState,
+                      open: true,
+                      loaded: replyStateLoaded,
+                      loading: false,
+                      error: "",
+                      items: [...(existingReplyState?.items || []), newComment],
+                    },
+                  }
+                : prev[storyId]?.repliesByComment || {},
+            },
+          };
+        });
 
         setStories((prev) =>
           prev.map((story) =>
@@ -873,616 +1809,549 @@ export default function Bookmarks() {
               : story,
           ),
         );
+
+        showSuccess("Comment posted.");
       } catch {
         setCommentsByStory((prev) => ({
           ...prev,
           [storyId]: {
-            ...(prev[storyId] || {
-              items: [],
-              loaded: true,
-              loading: false,
-            }),
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
             submitting: false,
-            error: "Failed to post comment.",
+            error: editingCommentId
+              ? "Failed to update comment."
+              : replyingToCommentId
+                ? "Failed to post reply."
+                : "Failed to post comment.",
           },
         }));
       }
     },
-    [commentsByStory],
+    [
+      commentsByStory,
+      currentUserId,
+      currentUsername,
+      currentUserProfilePicture,
+      showCommentFeedback,
+      showError,
+      showSuccess,
+    ],
   );
 
-  const activeCommentState = activeCommentStoryId
-    ? commentsByStory[activeCommentStoryId] || {
-        items: [],
-        input: "",
-        loading: false,
-        loaded: false,
-        error: "",
-        submitting: false,
+  const handleToggleStoryCommentLike = useCallback(
+    async (storyId, commentId) => {
+      if (!storyId || !commentId || pendingCommentLikeIds[commentId]) {
+        return;
       }
-    : null;
 
-  const activeStory = stories.find(
-    (story) => story.id === activeCommentStoryId,
-  );
-
-  const loadConfessionComments = useCallback(async (confessionId) => {
-    setCommentsByConfession((prev) => ({
-      ...prev,
-      [confessionId]: {
-        ...(prev[confessionId] || {
-          items: [],
-          input: "",
-          loaded: false,
-          submitting: false,
-        }),
-        loading: true,
-        error: "",
-      },
-    }));
-
-    try {
-      const response = await fetch(
-        `/api/confessions/${confessionId}/comments?limit=10`,
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-
-      const payload = await parseApiResponse(
-        response,
-        "Unable to load comments.",
-      );
-      const comments = Array.isArray(payload?.comments) ? payload.comments : [];
-
-      setCommentsByConfession((prev) => ({
-        ...prev,
-        [confessionId]: {
-          ...(prev[confessionId] || {
-            input: "",
-            submitting: false,
-          }),
-          loading: false,
-          loaded: true,
-          error: "",
-          items: comments,
-        },
-      }));
-    } catch (error) {
-      setCommentsByConfession((prev) => ({
-        ...prev,
-        [confessionId]: {
-          ...(prev[confessionId] || {
-            items: [],
-            input: "",
-            loaded: false,
-            submitting: false,
-          }),
-          loading: false,
-          error: error?.message || "Unable to load comments.",
-        },
-      }));
-    }
-  }, []);
-
-  const handleToggleLikeConfession = useCallback(async (confessionId) => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setConfessionError("Please login to react to confessions.");
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `/api/confessions/${confessionId}/toggle-like`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-        },
-      );
-
-      const payload = await parseApiResponse(
-        response,
-        "Failed to update reaction.",
-      );
-
-      setConfessions((prev) =>
-        prev.map((confession) =>
-          confession.id === confessionId
-            ? {
-                ...confession,
-                likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
-                likesCount: Number(payload?.likesCount || 0),
-              }
-            : confession,
-        ),
-      );
-    } catch (error) {
-      setConfessionError(error?.message || "Failed to update reaction.");
-    }
-  }, []);
-
-  const handleOpenConfessionComments = useCallback(
-    (confessionId) => {
-      setActiveCommentConfessionId(confessionId);
-
-      const current = commentsByConfession[confessionId];
-      if (!current?.loaded && !current?.loading) {
-        loadConfessionComments(confessionId);
-      }
-    },
-    [commentsByConfession, loadConfessionComments],
-  );
-
-  const handleCloseConfessionComments = useCallback(() => {
-    setActiveCommentConfessionId("");
-    setActiveConfessionCommentMenuId("");
-    setEditingConfessionCommentId("");
-    setEditingConfessionCommentContent("");
-    setDeletingConfessionCommentId("");
-    setDeleteTargetConfessionCommentId("");
-  }, []);
-
-  useOutsideClickCloser(
-    Boolean(activeStoryCommentMenuId),
-    () => setActiveStoryCommentMenuId(""),
-    "[data-comment-menu]",
-  );
-
-  useOutsideClickCloser(
-    Boolean(activeConfessionCommentMenuId),
-    () => setActiveConfessionCommentMenuId(""),
-    "[data-comment-menu]",
-  );
-
-  const handleToggleStoryCommentMenu = useCallback((commentId) => {
-    setActiveStoryCommentMenuId((currentId) =>
-      currentId === commentId ? "" : commentId,
-    );
-  }, []);
-
-  const handleToggleConfessionCommentMenu = useCallback((commentId) => {
-    setActiveConfessionCommentMenuId((currentId) =>
-      currentId === commentId ? "" : commentId,
-    );
-  }, []);
-
-  const handleConfessionCommentInputChange = useCallback(
-    (confessionId, input) => {
-      setCommentsByConfession((prev) => ({
-        ...prev,
-        [confessionId]: {
-          ...(prev[confessionId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-            error: "",
-            submitting: false,
-          }),
-          input,
-        },
-      }));
-    },
-    [],
-  );
-
-  const handleSubmitConfessionComment = useCallback(
-    async (confessionId) => {
       const token = localStorage.getItem("token");
       if (!token) {
-        setConfessionError("Please login to comment.");
+        showError("Please log in to react to comments.");
         return;
       }
 
-      const currentState = commentsByConfession[confessionId] || {};
-      const content = (currentState.input || "").trim();
-
-      if (!content) {
-        return;
-      }
-
-      setCommentsByConfession((prev) => ({
-        ...prev,
-        [confessionId]: {
-          ...(prev[confessionId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-          }),
-          submitting: true,
-          error: "",
-        },
-      }));
+      setCommentLikePulseIds((prev) => ({ ...prev, [commentId]: true }));
+      setPendingCommentLikeIds((prev) => ({ ...prev, [commentId]: true }));
 
       try {
-        const response = await fetch(
-          `/api/confessions/${confessionId}/comments`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...getAuthHeaders(),
-            },
-            body: JSON.stringify({ content }),
-          },
-        );
+        const payload = await toggleCommentLike(commentId);
 
-        const payload = await parseApiResponse(
-          response,
-          "Failed to post comment.",
-        );
-
-        let currentUsername = "You";
-        let currentProfilePicture = "";
-        try {
-          const currentUser = JSON.parse(
-            localStorage.getItem("currentUser") || "null",
-          );
-          currentUsername =
-            currentUser?.displayName ||
-            currentUser?.username ||
-            currentUser?.name ||
-            "You";
-          currentProfilePicture = currentUser?.profilePicture || "";
-        } catch {
-          currentUsername = "You";
-          currentProfilePicture = "";
-        }
-
-        const localComment = {
-          _id: payload?.commentId || `${Date.now()}`,
-          authorDisplayName: currentUsername,
-          authorProfilePicture: currentProfilePicture,
-          content,
-          createdAt: new Date().toISOString(),
-        };
-
-        setCommentsByConfession((prev) => ({
+        setCommentsByStory((prev) => ({
           ...prev,
-          [confessionId]: {
-            ...(prev[confessionId] || {
-              items: [],
-              loaded: true,
-              loading: false,
-            }),
-            submitting: false,
-            error: "",
-            input: "",
-            items: [localComment, ...(prev[confessionId]?.items || [])],
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            items: (prev[storyId]?.items || []).map((item) =>
+              String(item?._id || item?.id) === String(commentId)
+                ? {
+                    ...item,
+                    likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
+                    likesCount: Number(payload?.likesCount || 0),
+                  }
+                : item,
+            ),
+            repliesByComment: Object.fromEntries(
+              Object.entries(prev[storyId]?.repliesByComment || {}).map(
+                ([parentId, replyState]) => [
+                  parentId,
+                  {
+                    ...replyState,
+                    items: (replyState?.items || []).map((item) =>
+                      String(item?._id || item?.id) === String(commentId)
+                        ? {
+                            ...item,
+                            likedByCurrentUser: Boolean(
+                              payload?.likedByCurrentUser,
+                            ),
+                            likesCount: Number(payload?.likesCount || 0),
+                          }
+                        : item,
+                    ),
+                  },
+                ],
+              ),
+            ),
           },
         }));
+      } catch {
+        showCommentFeedback(commentId, "Failed to update comment like.");
+      } finally {
+        setPendingCommentLikeIds((prev) => {
+          const next = { ...prev };
+          delete next[commentId];
+          return next;
+        });
 
-        setConfessions((prev) =>
-          prev.map((confession) =>
-            confession.id === confessionId
-              ? {
-                  ...confession,
-                  commentCount: Number(confession.commentCount || 0) + 1,
-                }
-              : confession,
-          ),
-        );
-      } catch (error) {
-        setCommentsByConfession((prev) => ({
-          ...prev,
-          [confessionId]: {
-            ...(prev[confessionId] || {
-              items: [],
-              loaded: true,
-              loading: false,
-            }),
-            submitting: false,
-            error: error?.message || "Failed to post comment.",
-          },
-        }));
+        setTimeout(() => {
+          setCommentLikePulseIds((prev) => {
+            const next = { ...prev };
+            delete next[commentId];
+            return next;
+          });
+        }, 220);
       }
     },
-    [commentsByConfession],
+    [pendingCommentLikeIds, showCommentFeedback, showError],
   );
 
-  const handleStartEditStoryComment = useCallback((comment) => {
-    const commentId = String(comment?._id || comment?.id || "");
-    setActiveStoryCommentMenuId("");
-    setDeleteTargetStoryCommentId("");
-    setEditingStoryCommentId(commentId);
-    setEditingStoryCommentContent(comment?.content || "");
-  }, []);
-
-  const handleSaveStoryCommentEdit = useCallback(async () => {
-    if (!editingStoryCommentId || savingStoryComment || !activeCommentStoryId) {
-      return;
-    }
-
-    const content = editingStoryCommentContent.trim();
-    if (!content) {
-      setErrorMessage("Comment cannot be empty.");
-      return;
-    }
-
-    setSavingStoryComment(true);
-
-    try {
-      await updateStoryComment(editingStoryCommentId, { content });
-
-      setCommentsByStory((prev) => ({
-        ...prev,
-        [activeCommentStoryId]: {
-          ...(prev[activeCommentStoryId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-            input: "",
-            submitting: false,
-          }),
-          items: (prev[activeCommentStoryId]?.items || []).map((comment) =>
-            String(comment?._id || comment?.id || "") === editingStoryCommentId
-              ? { ...comment, content, isEdited: true }
-              : comment,
-          ),
-        },
-      }));
-
-      setEditingStoryCommentId("");
-      setEditingStoryCommentContent("");
-    } catch {
-      setErrorMessage("Failed to update comment.");
-    } finally {
-      setSavingStoryComment(false);
-    }
-  }, [
-    activeCommentStoryId,
-    editingStoryCommentContent,
-    editingStoryCommentId,
-    savingStoryComment,
-  ]);
-
-  const handleDeleteStoryComment = useCallback((commentId) => {
-    setActiveStoryCommentMenuId("");
-    setEditingStoryCommentId("");
-    setEditingStoryCommentContent("");
-    setDeleteTargetStoryCommentId(commentId);
-  }, []);
-
   const handleConfirmDeleteStoryComment = useCallback(async () => {
-    if (
-      !activeCommentStoryId ||
-      !deleteTargetStoryCommentId ||
-      deletingStoryCommentId
-    ) {
+    if (!deleteTargetComment) {
       return;
     }
 
-    const commentId = deleteTargetStoryCommentId;
-    setDeletingStoryCommentId(commentId);
+    const {
+      storyId,
+      commentId,
+      parentId,
+      replyCount = 0,
+    } = deleteTargetComment;
+    setDeleteTargetComment(null);
+
+    const token = localStorage.getItem("token");
+    if (!token) {
+      showError("Please log in to delete comments.");
+      return;
+    }
 
     try {
       await deleteStoryComment(commentId);
 
       setCommentsByStory((prev) => ({
         ...prev,
-        [activeCommentStoryId]: {
-          ...(prev[activeCommentStoryId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-            input: "",
-            submitting: false,
-          }),
-          items: (prev[activeCommentStoryId]?.items || []).filter(
-            (comment) =>
-              String(comment?._id || comment?.id || "") !== String(commentId),
+        [storyId]: {
+          ...createEmptyCommentState(),
+          ...(prev[storyId] || {}),
+          editingCommentId:
+            String(prev[storyId]?.editingCommentId || "") === String(commentId)
+              ? null
+              : prev[storyId]?.editingCommentId || null,
+          input:
+            String(prev[storyId]?.editingCommentId || "") ===
+              String(commentId) ||
+            String(prev[storyId]?.replyingToCommentId || "") ===
+              String(commentId)
+              ? ""
+              : prev[storyId]?.input || "",
+          replyingToCommentId:
+            String(prev[storyId]?.replyingToCommentId || "") ===
+            String(commentId)
+              ? null
+              : prev[storyId]?.replyingToCommentId || null,
+          replyingToAuthor:
+            String(prev[storyId]?.replyingToCommentId || "") ===
+            String(commentId)
+              ? ""
+              : prev[storyId]?.replyingToAuthor || "",
+          items: (prev[storyId]?.items || []).filter(
+            (item) => String(item?._id || item?.id) !== String(commentId),
+          ),
+          repliesByComment: Object.fromEntries(
+            Object.entries(prev[storyId]?.repliesByComment || {})
+              .map(([replyParentId, replyState]) => [
+                replyParentId,
+                {
+                  ...replyState,
+                  items: (replyState?.items || []).filter(
+                    (item) =>
+                      String(item?._id || item?.id) !== String(commentId),
+                  ),
+                },
+              ])
+              .filter(
+                ([replyParentId]) =>
+                  String(replyParentId) !== String(commentId),
+              ),
           ),
         },
       }));
 
+      if (parentId) {
+        setCommentsByStory((prev) => ({
+          ...prev,
+          [storyId]: {
+            ...createEmptyCommentState(),
+            ...(prev[storyId] || {}),
+            items: (prev[storyId]?.items || []).map((item) =>
+              String(item?._id || item?.id) === String(parentId)
+                ? {
+                    ...item,
+                    replyCount: Math.max(0, Number(item?.replyCount || 0) - 1),
+                  }
+                : item,
+            ),
+          },
+        }));
+      }
+
       setStories((prev) =>
         prev.map((story) =>
-          story.id === activeCommentStoryId
+          story.id === storyId
             ? {
                 ...story,
-                commentCount: Math.max(0, Number(story.commentCount || 0) - 1),
+                commentCount: Math.max(
+                  0,
+                  Number(story.commentCount || 0) -
+                    (parentId ? 1 : 1 + Number(replyCount || 0)),
+                ),
               }
             : story,
         ),
       );
 
-      if (editingStoryCommentId === String(commentId)) {
-        setEditingStoryCommentId("");
-        setEditingStoryCommentContent("");
-      }
-
-      setDeleteTargetStoryCommentId("");
+      showSuccess("Comment deleted.");
     } catch {
-      setErrorMessage("Failed to delete comment.");
-    } finally {
-      setDeletingStoryCommentId("");
+      showCommentFeedback(commentId, "Failed to delete comment.");
     }
-  }, [
-    activeCommentStoryId,
-    deleteTargetStoryCommentId,
-    deletingStoryCommentId,
-    editingStoryCommentId,
-  ]);
+  }, [deleteTargetComment, showCommentFeedback, showError, showSuccess]);
 
-  const handleStartEditConfessionComment = useCallback((comment) => {
-    const commentId = String(comment?._id || comment?.id || "");
-    setActiveConfessionCommentMenuId("");
-    setDeleteTargetConfessionCommentId("");
-    setEditingConfessionCommentId(commentId);
-    setEditingConfessionCommentContent(comment?.content || "");
-  }, []);
-
-  const handleSaveConfessionCommentEdit = useCallback(async () => {
-    if (
-      !editingConfessionCommentId ||
-      savingConfessionComment ||
-      !activeCommentConfessionId
-    ) {
-      return;
-    }
-
-    const content = editingConfessionCommentContent.trim();
-    if (!content) {
-      setConfessionError("Comment cannot be empty.");
-      return;
-    }
-
-    setSavingConfessionComment(true);
-
-    try {
-      const response = await fetch(
-        `/api/confessions/comments/${editingConfessionCommentId}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            ...getAuthHeaders(),
-          },
-          body: JSON.stringify({ content }),
-        },
-      );
-
-      const payload = await parseApiResponse(
-        response,
-        "Failed to update comment.",
-      );
-      const updatedComment = payload?.comment || null;
-
-      setCommentsByConfession((prev) => ({
-        ...prev,
-        [activeCommentConfessionId]: {
-          ...(prev[activeCommentConfessionId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-            input: "",
-            submitting: false,
-          }),
-          items: (prev[activeCommentConfessionId]?.items || []).map(
-            (comment) => {
-              const currentId = String(comment?._id || comment?.id || "");
-              if (currentId !== editingConfessionCommentId) {
-                return comment;
-              }
-
-              return updatedComment
-                ? { ...comment, ...updatedComment }
-                : { ...comment, content, isEdited: true };
-            },
-          ),
-        },
-      }));
-
-      setEditingConfessionCommentId("");
-      setEditingConfessionCommentContent("");
-    } catch (error) {
-      setConfessionError(error?.message || "Failed to update comment.");
-    } finally {
-      setSavingConfessionComment(false);
-    }
-  }, [
+  const {
     activeCommentConfessionId,
-    editingConfessionCommentContent,
-    editingConfessionCommentId,
-    savingConfessionComment,
-  ]);
+    commentModalTitle,
+    modalComments,
+    newCommentContent,
+    setNewCommentContent,
+    isSubmittingComment,
+    activeCommentMenuId,
+    editingCommentId,
+    editCommentContent,
+    setEditCommentContent,
+    isSavingEditedComment,
+    isDeletingComment,
+    isLoadingModalComments,
+    modalCommentsError,
+    modalCommentsHasMore,
+    modalCommentsNextCursor,
+    replyingToCommentId,
+    replyingToAuthor,
+    repliesByComment,
+    pendingCommentLikeIds: pendingConfessionCommentLikeIds,
+    commentLikePulseIds: confessionCommentLikePulseIds,
+    commentActionFeedback: confessionCommentActionFeedback,
+    closeCommentModal: closeConfessionModalState,
+    openCommentModal: openConfessionModalState,
+    handleAddComment,
+    handleToggleCommentMenu,
+    handleStartReply,
+    handleToggleReplies,
+    loadMoreModalComments,
+    handleLoadMoreReplies,
+    handleStartEditComment,
+    handleSaveEditedComment,
+    handleCancelCommentComposer,
+    handleToggleCommentLike,
+    handleDeleteComment: handleDeleteCommentHook,
+    deleteTargetCommentId,
+    setDeleteTargetCommentId,
+    handleConfirmDeleteComment,
+  } = useConfessionComments({
+    setConfessionFeed: setConfessions,
+    showError,
+    showSuccess,
+    currentUserId,
+    currentUsername,
+    currentUserProfilePicture,
+  });
 
-  const handleDeleteConfessionComment = useCallback((commentId) => {
-    setActiveConfessionCommentMenuId("");
-    setEditingConfessionCommentId("");
-    setEditingConfessionCommentContent("");
-    setDeleteTargetConfessionCommentId(commentId);
-  }, []);
+  const handleStartEditCommentWithOriginal = useCallback(
+    (comment) => {
+      setCommentOriginalInput(comment?.content || "");
+      handleStartEditComment(comment);
+    },
+    [handleStartEditComment],
+  );
 
-  const handleConfirmDeleteConfessionComment = useCallback(async () => {
+  const handleConfessionCommentInputChange = useCallback(
+    (...args) => {
+      const value = args[1];
+
+      if (editingCommentId) {
+        setEditCommentContent(value);
+      } else {
+        setNewCommentContent(value);
+      }
+    },
+    [editingCommentId, setEditCommentContent, setNewCommentContent],
+  );
+
+  const handleSubmitConfessionComment = useCallback(() => {
+    if (editingCommentId) {
+      handleSaveEditedComment();
+    } else {
+      handleAddComment();
+    }
+  }, [editingCommentId, handleAddComment, handleSaveEditedComment]);
+
+  const handleDeleteConfessionComment = useCallback(
+    (_storyId, commentId) => {
+      handleDeleteCommentHook(commentId);
+    },
+    [handleDeleteCommentHook],
+  );
+
+  const handleToggleConfessionCommentLike = useCallback(
+    (_storyId, commentId) => {
+      handleToggleCommentLike(commentId);
+    },
+    [handleToggleCommentLike],
+  );
+
+  const handleStartConfessionReply = useCallback(
+    (_storyId, comment) => {
+      handleStartReply(comment);
+    },
+    [handleStartReply],
+  );
+
+  const handleToggleConfessionReplies = useCallback(
+    (_storyId, commentId) => {
+      handleToggleReplies(commentId);
+    },
+    [handleToggleReplies],
+  );
+
+  const handleLoadMoreConfessionReplies = useCallback(
+    (_storyId, commentId) => {
+      handleLoadMoreReplies(commentId);
+    },
+    [handleLoadMoreReplies],
+  );
+
+  const closeDeleteConfessionCommentDialog = useCallback(() => {
+    setDeleteTargetCommentId("");
+  }, [setDeleteTargetCommentId]);
+
+  useEffect(() => {
+    const sentinel = confessionCommentListSentinelRef.current;
+    const root = confessionCommentListRef.current;
+
     if (
       !activeCommentConfessionId ||
-      !deleteTargetConfessionCommentId ||
-      deletingConfessionCommentId
+      !sentinel ||
+      !root ||
+      !modalCommentsHasMore ||
+      isLoadingModalComments
     ) {
-      return;
+      return undefined;
     }
 
-    const commentId = deleteTargetConfessionCommentId;
-    setDeletingConfessionCommentId(commentId);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          loadMoreModalComments().catch(() => {});
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 120px 0px",
+        threshold: 0.1,
+      },
+    );
 
-    try {
-      const response = await fetch(`/api/confessions/comments/${commentId}`, {
-        method: "DELETE",
-        headers: getAuthHeaders(),
-      });
+    observer.observe(sentinel);
 
-      const payload = await parseApiResponse(
-        response,
-        "Failed to delete comment.",
-      );
-      const removedCount = Number(payload?.removedCount || 1);
-
-      setCommentsByConfession((prev) => ({
-        ...prev,
-        [activeCommentConfessionId]: {
-          ...(prev[activeCommentConfessionId] || {
-            items: [],
-            loaded: true,
-            loading: false,
-            input: "",
-            submitting: false,
-          }),
-          items: (prev[activeCommentConfessionId]?.items || []).filter(
-            (comment) =>
-              String(comment?._id || comment?.id || "") !== String(commentId),
-          ),
-        },
-      }));
-
-      setConfessions((prev) =>
-        prev.map((confession) =>
-          confession.id === activeCommentConfessionId
-            ? {
-                ...confession,
-                commentCount: Math.max(
-                  0,
-                  Number(confession.commentCount || 0) -
-                    (Number.isFinite(removedCount) && removedCount > 0
-                      ? removedCount
-                      : 1),
-                ),
-              }
-            : confession,
-        ),
-      );
-
-      if (editingConfessionCommentId === String(commentId)) {
-        setEditingConfessionCommentId("");
-        setEditingConfessionCommentContent("");
-      }
-
-      setDeleteTargetConfessionCommentId("");
-    } catch (error) {
-      setConfessionError(error?.message || "Failed to delete comment.");
-    } finally {
-      setDeletingConfessionCommentId("");
-    }
+    return () => {
+      observer.disconnect();
+    };
   }, [
     activeCommentConfessionId,
-    deleteTargetConfessionCommentId,
-    deletingConfessionCommentId,
-    editingConfessionCommentId,
+    isLoadingModalComments,
+    loadMoreModalComments,
+    modalCommentsHasMore,
   ]);
 
-  const activeConfessionCommentState = activeCommentConfessionId
-    ? commentsByConfession[activeCommentConfessionId] || {
-        items: [],
-        input: "",
-        loading: false,
-        loaded: false,
-        error: "",
-        submitting: false,
+  const activeConfessionCommentState = {
+    open: Boolean(activeCommentConfessionId),
+    loaded:
+      !isLoadingModalComments &&
+      (modalComments.length > 0 || Boolean(modalCommentsError)),
+    loading: isLoadingModalComments,
+    loadingMore: isLoadingModalComments && modalComments.length > 0,
+    error: modalCommentsError,
+    items: modalComments,
+    nextCursor: modalCommentsNextCursor,
+    hasMore: modalCommentsHasMore,
+    input: editingCommentId
+      ? editCommentContent || ""
+      : newCommentContent || "",
+    originalInput: commentOriginalInput,
+    editingCommentId,
+    replyingToCommentId,
+    replyingToAuthor,
+    submitting:
+      isSubmittingComment || isSavingEditedComment || isDeletingComment,
+    repliesByComment,
+  };
+
+  const activeConfessionCommentStory = activeCommentConfessionId
+    ? {
+        id: activeCommentConfessionId,
+        title: commentModalTitle,
       }
     : null;
 
-  const activeConfession = confessions.find(
-    (confession) => confession.id === activeCommentConfessionId,
+  const closeConfessionModal = useCallback(() => {
+    closeConfessionModalState();
+    setCommentOriginalInput("");
+  }, [closeConfessionModalState]);
+
+  const openConfessionModal = useCallback(
+    async (...args) => {
+      await openConfessionModalState(...args);
+    },
+    [openConfessionModalState],
+  );
+
+  const handleToggleConfessionLike = useCallback(
+    async (confessionId) => {
+      if (
+        pendingLikeIdsRef.current.has(confessionId) ||
+        pendingLikeIds.has(confessionId)
+      ) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showError("Please log in to like confessions.");
+        return;
+      }
+
+      pendingLikeIdsRef.current.add(confessionId);
+      setPendingLikeIds((prev) => {
+        const next = new Set(prev);
+        next.add(confessionId);
+        return next;
+      });
+
+      setPressedLikeId(confessionId);
+      if (pressedLikeTimerRef.current) {
+        clearTimeout(pressedLikeTimerRef.current);
+      }
+
+      pressedLikeTimerRef.current = setTimeout(() => {
+        setPressedLikeId((currentId) =>
+          currentId === confessionId ? null : currentId,
+        );
+        pressedLikeTimerRef.current = null;
+      }, 150);
+
+      try {
+        const response = await fetch(
+          `/api/confessions/${confessionId}/toggle-like`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to toggle like.");
+        }
+
+        const payload = await parseResponse(response);
+
+        setConfessions((prev) =>
+          prev.map((item) =>
+            String(item?._id || item?.id || "") === String(confessionId)
+              ? {
+                  ...item,
+                  likedByCurrentUser: Boolean(payload?.likedByCurrentUser),
+                  likesCount: Number(payload?.likesCount || 0),
+                }
+              : item,
+          ),
+        );
+      } catch {
+        showError("Failed to toggle like.");
+      } finally {
+        pendingLikeIdsRef.current.delete(confessionId);
+        setPendingLikeIds((prev) => {
+          const next = new Set(prev);
+          next.delete(confessionId);
+          return next;
+        });
+      }
+    },
+    [pendingLikeIds, showError],
+  );
+
+  const handleUnsaveConfession = useCallback(
+    async (confessionId) => {
+      if (
+        pendingBookmarkIdsRef.current.has(confessionId) ||
+        pendingBookmarkIds.has(confessionId)
+      ) {
+        return;
+      }
+
+      const token = localStorage.getItem("token");
+      if (!token) {
+        showError("Please log in to manage confession bookmarks.");
+        return;
+      }
+
+      pendingBookmarkIdsRef.current.add(confessionId);
+      setPendingBookmarkIds((prev) => {
+        const next = new Set(prev);
+        next.add(confessionId);
+        return next;
+      });
+
+      setPressedBookmarkId(confessionId);
+      if (pressedBookmarkTimerRef.current) {
+        clearTimeout(pressedBookmarkTimerRef.current);
+      }
+
+      pressedBookmarkTimerRef.current = setTimeout(() => {
+        setPressedBookmarkId((currentId) =>
+          currentId === confessionId ? null : currentId,
+        );
+        pressedBookmarkTimerRef.current = null;
+      }, 150);
+
+      try {
+        await removeConfessionBookmark(confessionId);
+        setConfessions((prev) =>
+          prev.filter(
+            (item) =>
+              String(item?._id || item?.id || "") !== String(confessionId),
+          ),
+        );
+        showSuccess("Confession removed from bookmarks.");
+      } catch {
+        showError("Failed to remove confession bookmark.");
+      } finally {
+        pendingBookmarkIdsRef.current.delete(confessionId);
+        setPendingBookmarkIds((prev) => {
+          const next = new Set(prev);
+          next.delete(confessionId);
+          return next;
+        });
+      }
+    },
+    [pendingBookmarkIds, showError, showSuccess],
   );
 
   const handleToggleExpandedStory = useCallback((storyId) => {
@@ -1499,15 +2368,42 @@ export default function Bookmarks() {
     }));
   }, []);
 
-  // Remove bookmarked confession
-  const handleUnsaveConfession = useCallback(async (confessionId) => {
-    try {
-      await removeConfessionBookmark(confessionId);
-      setConfessions((prev) => prev.filter((c) => c.id !== confessionId));
-    } catch {
-      setConfessionError("Failed to remove confession bookmark.");
-    }
+  const handleToggleConfessionMenu = useCallback((confessionId) => {
+    setMenuConfessionId((currentId) =>
+      currentId === confessionId ? "" : confessionId,
+    );
   }, []);
+
+  useOutsideClickCloser(
+    Boolean(activeMenuCommentId),
+    () => setActiveMenuCommentId(null),
+    "[data-comment-menu]",
+  );
+
+  useOutsideClickCloser(
+    Boolean(menuConfessionId),
+    () => setMenuConfessionId(""),
+    "[data-confession-menu]",
+  );
+
+  useOutsideClickCloser(
+    Boolean(menuStoryId),
+    () => setMenuStoryId(""),
+    "[data-story-menu]",
+  );
+
+  useEffect(
+    () => () => {
+      if (pressedLikeTimerRef.current) {
+        clearTimeout(pressedLikeTimerRef.current);
+      }
+
+      if (pressedBookmarkTimerRef.current) {
+        clearTimeout(pressedBookmarkTimerRef.current);
+      }
+    },
+    [],
+  );
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
@@ -1519,7 +2415,6 @@ export default function Bookmarks() {
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full overflow-y-auto pt-6 sm:pt-8 lg:pt-10 px-3 sm:px-5 lg:px-6 pb-8 sm:pb-10 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <div className="max-w-6xl mx-auto">
-              {/* Tab Selector */}
               <div className="flex gap-2 mb-8 sm:mb-10">
                 <button
                   className={`px-4 py-2 rounded-lg font-semibold cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 ${
@@ -1528,10 +2423,11 @@ export default function Bookmarks() {
                       : "bg-white text-rose-500 border border-rose-200 hover:bg-rose-50"
                   }`}
                   onClick={() => setActiveTab("stories")}
-                  aria-selected={activeTab === "stories"}
+                  aria-pressed={activeTab === "stories"}
                 >
                   Stories
                 </button>
+
                 <button
                   className={`px-4 py-2 rounded-lg font-semibold cursor-pointer transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 ${
                     activeTab === "confessions"
@@ -1539,13 +2435,12 @@ export default function Bookmarks() {
                       : "bg-white text-rose-500 border border-rose-200 hover:bg-rose-50"
                   }`}
                   onClick={() => setActiveTab("confessions")}
-                  aria-selected={activeTab === "confessions"}
+                  aria-pressed={activeTab === "confessions"}
                 >
                   Confessions
                 </button>
               </div>
 
-              {/* Tab Content */}
               {activeTab === "stories" && (
                 <>
                   <header className="mb-8 sm:mb-10">
@@ -1557,35 +2452,55 @@ export default function Bookmarks() {
                     </p>
                   </header>
 
-                  {errorMessage ? (
-                    <div className="mb-4 bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-red-200 shadow-sm text-sm text-red-500">
-                      {errorMessage}
+                  {storyError ? (
+                    <div className="mb-4 bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm text-sm text-rose-700">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                        <span>{storyError}</span>
+                      </div>
                     </div>
                   ) : null}
 
-                  {isLoading ? (
-                    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                      Loading bookmarks...
+                  {isLoadingStories ? (
+                    <div className="space-y-5">
+                      {[...Array(3)].map((_, index) => (
+                        <StoryBookmarkCardSkeleton
+                          key={`story-bookmark-skeleton-${index}`}
+                        />
+                      ))}
                     </div>
                   ) : null}
 
-                  {!isLoading && !errorMessage && stories.length === 0 ? (
+                  {!isLoadingStories && !storyError && stories.length === 0 ? (
                     <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
                       No bookmarked stories yet.
                     </div>
                   ) : null}
 
-                  {!isLoading &&
-                    !errorMessage &&
-                    stories.map((post) => (
-                      <PostCard
-                        key={post.id}
-                        {...post}
-                        isExpanded={Boolean(expandedStoryIds[post.id])}
-                        onUnsave={handleUnsave}
-                        onToggleLike={handleToggleLike}
-                        onOpenComments={handleOpenComments}
+                  {!isLoadingStories &&
+                    !storyError &&
+                    stories.map((story) => (
+                      <StoryBookmarkCard
+                        key={story.id}
+                        story={story}
+                        currentUserId={currentUserId}
+                        menuStoryId={menuStoryId}
+                        isExpanded={Boolean(expandedStoryIds[story.id])}
+                        commentsActive={activeCommentStoryId === story.id}
+                        followingAuthor={Boolean(
+                          followStateByUserId[normalizeId(story.authorId)],
+                        )}
+                        followBusy={Boolean(
+                          busyFollowIds[normalizeId(story.authorId)],
+                        )}
+                        onToggleStoryMenu={handleToggleStoryMenu}
+                        onEditStory={handleEditStory}
+                        onDeleteStory={handleDeleteStory}
+                        onToggleLike={handleToggleStoryLike}
+                        onOpenComments={handleOpenStoryComments}
+                        onUnsave={handleUnsaveStory}
                         onToggleExpanded={handleToggleExpandedStory}
+                        onToggleFollowAuthor={handleToggleFollowAuthor}
                       />
                     ))}
                 </>
@@ -1603,15 +2518,24 @@ export default function Bookmarks() {
                   </header>
 
                   {confessionError ? (
-                    <div className="mb-4 bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-red-200 shadow-sm text-sm text-red-500">
-                      {confessionError}
+                    <div className="mb-4 bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-rose-200 shadow-sm text-sm text-rose-700">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                        <span>{confessionError}</span>
+                      </div>
                     </div>
                   ) : null}
+
                   {isLoadingConfessions ? (
-                    <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm text-sm text-slate-500">
-                      Loading bookmarked confessions...
+                    <div className="space-y-5">
+                      {[...Array(3)].map((_, index) => (
+                        <ConfessionBookmarkCardSkeleton
+                          key={`confession-bookmark-skeleton-${index}`}
+                        />
+                      ))}
                     </div>
                   ) : null}
+
                   {!isLoadingConfessions &&
                   !confessionError &&
                   confessions.length === 0 ? (
@@ -1619,268 +2543,262 @@ export default function Bookmarks() {
                       No bookmarked confessions yet.
                     </div>
                   ) : null}
+
                   {!isLoadingConfessions &&
                     !confessionError &&
-                    confessions.map((conf) => (
-                      <ConfessionCard
-                        key={conf.id}
-                        {...conf}
-                        isExpanded={Boolean(expandedConfessionIds[conf.id])}
-                        onUnsave={handleUnsaveConfession}
-                        onToggleLike={handleToggleLikeConfession}
-                        onOpenComments={handleOpenConfessionComments}
-                        onToggleExpanded={handleToggleExpandedConfession}
+                    confessions.map((item, index) => (
+                      <ConfessionFeedCard
+                        key={String(
+                          item?._id || item?.id || `bookmarked-conf-${index}`,
+                        )}
+                        item={item}
+                        index={index}
+                        currentUserId={currentUserId}
+                        expandedConfessionIds={expandedConfessionIds}
+                        menuConfessionId={menuConfessionId}
+                        gestureLikeBurstId={gestureLikeBurstId}
+                        pressedLikeId={pressedLikeId}
+                        pressedBookmarkId={pressedBookmarkId}
+                        onToggleConfessionMenu={handleToggleConfessionMenu}
+                        onEditConfession={handleEditConfession}
+                        onDeleteConfession={handleDeleteConfession}
+                        onToggleExpandedConfession={
+                          handleToggleExpandedConfession
+                        }
+                        onToggleLike={handleToggleConfessionLike}
+                        onOpenCommentModal={openConfessionModal}
+                        onToggleBookmark={handleUnsaveConfession}
+                        onToggleFollowAuthor={handleToggleFollowAuthor}
+                        followingAuthor={Boolean(
+                          followStateByUserId[normalizeId(item?.authorId)],
+                        )}
+                        followBusy={Boolean(
+                          busyFollowIds[normalizeId(item?.authorId)],
+                        )}
                       />
                     ))}
                 </>
               )}
+
+              <SiteFooter />
             </div>
-
-            <SiteFooter />
-
-            {activeCommentStoryId ? (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <button
-                  type="button"
-                  aria-label="Close comments"
-                  onClick={handleCloseComments}
-                  className="absolute inset-0 bg-slate-900/40"
-                />
-
-                <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                    <h3 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
-                      Comments · {activeStory?.title || "Story"}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={handleCloseComments}
-                      className="inline-flex h-8 w-8 items-center justify-center cursor-pointer rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                      aria-label="Close"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-
-                  <div className="max-h-[60vh] overflow-y-auto px-4 py-4 space-y-3">
-                    {activeCommentState?.loading ? (
-                      <div className="text-sm text-slate-500 flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading comments...
-                      </div>
-                    ) : null}
-
-                    {activeCommentState?.error ? (
-                      <div className="text-sm text-rose-600">
-                        {activeCommentState.error}
-                      </div>
-                    ) : null}
-
-                    {!activeCommentState?.loading &&
-                    !activeCommentState?.error &&
-                    (activeCommentState?.items || []).length === 0 ? (
-                      <div className="text-sm text-slate-500">
-                        No comments yet. Start the conversation.
-                      </div>
-                    ) : null}
-
-                    {(activeCommentState?.items || []).map((comment, index) => (
-                      <ConfessionModalCommentItem
-                        key={String(
-                          comment?._id ||
-                            comment?.id ||
-                            `story-comment-${index}`,
-                        )}
-                        comment={comment}
-                        currentUserId={currentUserId}
-                        activeCommentMenuId={activeStoryCommentMenuId}
-                        editingCommentId={editingStoryCommentId}
-                        editCommentContent={editingStoryCommentContent}
-                        isSavingEditedComment={savingStoryComment}
-                        deleteTargetCommentId={deleteTargetStoryCommentId}
-                        isDeletingComment={
-                          deletingStoryCommentId ===
-                          (comment?._id || comment?.id || "")
-                        }
-                        onToggleMenu={handleToggleStoryCommentMenu}
-                        onStartEdit={handleStartEditStoryComment}
-                        onDelete={handleDeleteStoryComment}
-                        onCancelEdit={() => {
-                          setEditingStoryCommentId("");
-                          setEditingStoryCommentContent("");
-                        }}
-                        onEditContentChange={setEditingStoryCommentContent}
-                        onSaveEdit={handleSaveStoryCommentEdit}
-                        onCancelDelete={() => setDeleteTargetStoryCommentId("")}
-                        onConfirmDelete={handleConfirmDeleteStoryComment}
-                      />
-                    ))}
-                  </div>
-
-                  <div className="border-t border-slate-100 px-4 py-3">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={activeCommentState?.input || ""}
-                        onChange={(event) =>
-                          handleCommentInputChange(
-                            activeCommentStoryId,
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Write a comment..."
-                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSubmitComment(activeCommentStoryId)
-                        }
-                        disabled={Boolean(activeCommentState?.submitting)}
-                        className="inline-flex items-center justify-center cursor-pointer rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
-                      >
-                        {activeCommentState?.submitting ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          "Post"
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {activeCommentConfessionId ? (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <button
-                  type="button"
-                  aria-label="Close confession comments"
-                  onClick={handleCloseConfessionComments}
-                  className="absolute inset-0 bg-slate-900/40"
-                />
-
-                <div className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                    <h3 className="text-sm sm:text-base font-semibold text-slate-900 truncate pr-4">
-                      Comments ·{" "}
-                      {activeConfession?.isAnonymous
-                        ? "Anonymous"
-                        : activeConfession?.author || "Confession"}
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={handleCloseConfessionComments}
-                      className="inline-flex h-8 w-8 items-center justify-center cursor-pointer rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-                      aria-label="Close"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-
-                  <div className="max-h-[60vh] overflow-y-auto px-4 py-4 space-y-3">
-                    {activeConfessionCommentState?.loading ? (
-                      <div className="text-sm text-slate-500 flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin" />
-                        Loading comments...
-                      </div>
-                    ) : null}
-
-                    {activeConfessionCommentState?.error ? (
-                      <div className="text-sm text-rose-600">
-                        {activeConfessionCommentState.error}
-                      </div>
-                    ) : null}
-
-                    {!activeConfessionCommentState?.loading &&
-                    !activeConfessionCommentState?.error &&
-                    (activeConfessionCommentState?.items || []).length === 0 ? (
-                      <div className="text-sm text-slate-500">
-                        No comments yet. Start the conversation.
-                      </div>
-                    ) : null}
-
-                    {(activeConfessionCommentState?.items || []).map(
-                      (comment, index) => (
-                        <ConfessionModalCommentItem
-                          key={String(
-                            comment?._id ||
-                              comment?.id ||
-                              `confession-comment-${index}`,
-                          )}
-                          comment={comment}
-                          currentUserId={currentUserId}
-                          activeCommentMenuId={activeConfessionCommentMenuId}
-                          editingCommentId={editingConfessionCommentId}
-                          editCommentContent={editingConfessionCommentContent}
-                          isSavingEditedComment={savingConfessionComment}
-                          deleteTargetCommentId={
-                            deleteTargetConfessionCommentId
-                          }
-                          isDeletingComment={
-                            deletingConfessionCommentId ===
-                            (comment?._id || comment?.id || "")
-                          }
-                          onToggleMenu={handleToggleConfessionCommentMenu}
-                          onStartEdit={handleStartEditConfessionComment}
-                          onDelete={handleDeleteConfessionComment}
-                          onCancelEdit={() => {
-                            setEditingConfessionCommentId("");
-                            setEditingConfessionCommentContent("");
-                          }}
-                          onEditContentChange={
-                            setEditingConfessionCommentContent
-                          }
-                          onSaveEdit={handleSaveConfessionCommentEdit}
-                          onCancelDelete={() =>
-                            setDeleteTargetConfessionCommentId("")
-                          }
-                          onConfirmDelete={handleConfirmDeleteConfessionComment}
-                        />
-                      ),
-                    )}
-                  </div>
-
-                  <div className="border-t border-slate-100 px-4 py-3">
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={activeConfessionCommentState?.input || ""}
-                        onChange={(event) =>
-                          handleConfessionCommentInputChange(
-                            activeCommentConfessionId,
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Write a comment..."
-                        className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleSubmitConfessionComment(
-                            activeCommentConfessionId,
-                          )
-                        }
-                        disabled={Boolean(
-                          activeConfessionCommentState?.submitting,
-                        )}
-                        className="inline-flex items-center justify-center cursor-pointer rounded-xl bg-rose-500 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-60"
-                      >
-                        {activeConfessionCommentState?.submitting ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          "Post"
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : null}
           </div>
         </main>
       </div>
+
+      <CommentSection
+        story={activeCommentStory}
+        commentState={activeStoryCommentState}
+        activeMenuCommentId={activeMenuCommentId}
+        currentUserId={currentUserId}
+        commentActionFeedback={commentActionFeedback}
+        pendingCommentLikeIds={pendingCommentLikeIds}
+        commentLikePulseIds={commentLikePulseIds}
+        commentListRef={storyCommentListRef}
+        commentListSentinelRef={storyCommentListSentinelRef}
+        commentInputRef={storyCommentInputRef}
+        onClose={handleCloseStoryComments}
+        onToggleCommentLike={handleToggleStoryCommentLike}
+        onToggleCommentMenu={handleToggleStoryCommentMenu}
+        onEditComment={handleEditStoryComment}
+        onDeleteComment={handleDeleteStoryComment}
+        onStartReply={handleStartStoryReply}
+        onToggleReplies={handleToggleStoryReplies}
+        onLoadMoreReplies={handleLoadMoreStoryReplies}
+        onCancelCommentComposer={handleCancelStoryComposer}
+        onCommentInputChange={handleStoryCommentInputChange}
+        onSubmitComment={handleSubmitStoryComment}
+      />
+
+      <CommentSection
+        story={activeConfessionCommentStory}
+        commentState={activeConfessionCommentState}
+        activeMenuCommentId={activeCommentMenuId}
+        currentUserId={currentUserId}
+        commentActionFeedback={confessionCommentActionFeedback}
+        pendingCommentLikeIds={pendingConfessionCommentLikeIds}
+        commentLikePulseIds={confessionCommentLikePulseIds}
+        commentListRef={confessionCommentListRef}
+        commentListSentinelRef={confessionCommentListSentinelRef}
+        commentInputRef={confessionCommentInputRef}
+        onClose={closeConfessionModal}
+        onToggleCommentLike={handleToggleConfessionCommentLike}
+        onToggleCommentMenu={handleToggleCommentMenu}
+        onEditComment={(_, comment) =>
+          handleStartEditCommentWithOriginal(comment)
+        }
+        onDeleteComment={handleDeleteConfessionComment}
+        onStartReply={handleStartConfessionReply}
+        onToggleReplies={handleToggleConfessionReplies}
+        onLoadMoreReplies={handleLoadMoreConfessionReplies}
+        onCancelCommentComposer={handleCancelCommentComposer}
+        onCommentInputChange={handleConfessionCommentInputChange}
+        onSubmitComment={handleSubmitConfessionComment}
+      />
+
+      <ModalDialog
+        isOpen={Boolean(deleteTargetStoryId)}
+        onClose={() => {
+          if (isDeletingStory) {
+            return;
+          }
+          setDeleteTargetStoryId("");
+        }}
+        title="Delete this story?"
+        titleId="story-delete-dialog-title"
+        closeLabel="Close delete story modal"
+        widthClassName="max-w-sm"
+      >
+        <div className="p-5">
+          <p className="text-sm text-slate-500 mb-5">
+            This action cannot be undone.
+          </p>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteTargetStoryId("")}
+              disabled={isDeletingStory}
+              className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteStory}
+              disabled={isDeletingStory}
+              className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
+            >
+              {isDeletingStory ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ModalDialog
+        isOpen={Boolean(deleteTargetConfessionId)}
+        onClose={() => {
+          if (isDeletingConfession) {
+            return;
+          }
+          setDeleteTargetConfessionId("");
+        }}
+        title="Delete this confession?"
+        titleId="confession-delete-dialog-title"
+        closeLabel="Close delete confession modal"
+        widthClassName="max-w-sm"
+      >
+        <div className="p-5">
+          <p className="text-sm text-slate-500 mb-5">
+            This action cannot be undone.
+          </p>
+
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setDeleteTargetConfessionId("")}
+              disabled={isDeletingConfession}
+              className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteConfession}
+              disabled={isDeletingConfession}
+              className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-70 cursor-pointer"
+            >
+              {isDeletingConfession ? "Deleting..." : "Delete"}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      {deleteTargetComment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            aria-label="Close delete comment modal"
+            onClick={() => setDeleteTargetComment(null)}
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+          />
+
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden p-5">
+            <h4 className="text-sm sm:text-base font-semibold text-slate-900">
+              Delete this comment?
+            </h4>
+            <p className="text-sm text-slate-500 mt-2 mb-5">
+              This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTargetComment(null)}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteStoryComment}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTargetCommentId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          <button
+            type="button"
+            aria-label="Close delete comment modal"
+            onClick={closeDeleteConfessionCommentDialog}
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]"
+          />
+
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden p-5">
+            <h4 className="text-sm sm:text-base font-semibold text-slate-900">
+              Delete this comment?
+            </h4>
+            <p className="text-sm text-slate-500 mt-2 mb-5">
+              This action cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeDeleteConfessionCommentDialog}
+                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteComment}
+                className="px-4 py-2 text-sm font-medium rounded-xl bg-rose-500 text-white hover:bg-rose-600 cursor-pointer"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && (
+        <Toast
+          toast={toast}
+          isVisible={isToastVisible}
+          isPaused={isToastPaused}
+          durationMs={duration}
+          onClose={dismissToast}
+          onPause={pauseToast}
+          onResume={resumeToast}
+        />
+      )}
     </div>
   );
 }

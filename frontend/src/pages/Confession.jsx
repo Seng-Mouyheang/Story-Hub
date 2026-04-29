@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -312,6 +312,27 @@ export default function Confession() {
   const [commentOriginalInput, setCommentOriginalInput] = React.useState("");
 
   const location = useLocation();
+  const navigate = useNavigate();
+
+  React.useEffect(() => {
+    const initialFocused = location?.state?.focusedConfessionId;
+    if (!initialFocused) return;
+
+    const tryScroll = () => {
+      const el = document.getElementById(`confession-${initialFocused}`);
+      if (!el) return;
+
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: {} },
+      );
+    };
+
+    requestAnimationFrame(tryScroll);
+    const t = setTimeout(tryScroll, 500);
+    return () => clearTimeout(t);
+  }, [location, confessionFeed, navigate]);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -1387,6 +1408,7 @@ export default function Confession() {
           followStateByUserId[normalizeId(item?.authorId)],
         )}
         followBusy={Boolean(busyFollowIds[normalizeId(item?.authorId)])}
+        enableCardNavigation={false}
       />
     ));
   }
