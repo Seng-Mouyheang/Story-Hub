@@ -6,9 +6,9 @@ const {
 } = require("../migrations/userEmailMigration");
 require("dotenv").config({ path: path.resolve(__dirname, "../../../.env") });
 
-const uri = process.env.ATLAS_URI;
+const uri = process.env.ATLAS_URI || process.env.MONGODB_URI;
 if (!uri) {
-  throw new Error("Missing ATLAS_URI environment variable");
+  throw new Error("Missing ATLAS_URI or MONGODB_URI environment variable");
 }
 
 const client = new MongoClient(uri);

@@ -1,5 +1,6 @@
 import { generateReactHelpers } from "@uploadthing/react";
+import { apiUrl } from "./apiUrl";
 
 export const { uploadFiles, createUpload } = generateReactHelpers({
-  url: "/api/uploadthing",
+  url: apiUrl("/api/uploadthing"),
 });

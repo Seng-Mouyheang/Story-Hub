@@ -11,6 +11,7 @@ import {
   uploadProfileImage,
   uploadCoverImage,
 } from "../api/profile";
+import { apiUrl } from "../lib/apiUrl";
 
 const toCanonicalInterest = (value) =>
   String(value || "")
@@ -154,7 +155,7 @@ export default function EditProfile() {
       fileType: file?.type || "unknown",
       fileSize: formatFileSize(file?.size || 0),
       tokenPresent: Boolean(localStorage.getItem("token")),
-      endpoint: "/api/uploadthing",
+      endpoint: apiUrl("/api/uploadthing"),
     });
 
     try {

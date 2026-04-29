@@ -4,7 +4,7 @@ const path = require("node:path");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-require("dotenv").config({ path: path.resolve(__dirname, "../../../.env") });
+require("dotenv").config({ path: path.resolve(__dirname, "../.env") });
 const { connectToDatabase } = require("./src/configuration/dbConfig");
 const authRoutes = require("./src/routes/authRoutes");
 const storyRoutes = require("./src/routes/storyRoutes");
@@ -15,7 +15,7 @@ const uploadThingRoutes = require("./src/routes/uploadThingRoute");
 const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const recommendationRoutes = require("./src/routes/recommendationRoutes");
 
-const port = process.env.PORT;
+const port = process.env.PORT || 3001;
 const allowedOrigins = new Set(
   String(
     process.env.CORS_ORIGIN ||
