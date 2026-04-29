@@ -2369,7 +2369,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50">
         <Navbar title="Home Feed" />
 
-        <main className="h-[calc(100vh-64px)] overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-5 sm:py-6">
             <div
               ref={feedScrollRef}
