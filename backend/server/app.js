@@ -16,6 +16,7 @@ const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const recommendationRoutes = require("./src/routes/recommendationRoutes");
 
 const port = process.env.PORT || 3001;
+const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "");
 const allowedOrigins = new Set(
   String(
     process.env.CORS_ORIGIN ||
@@ -23,13 +24,15 @@ const allowedOrigins = new Set(
       "http://localhost:5173",
   )
     .split(",")
-    .map((origin) => origin.trim())
+    .map(normalizeOrigin)
     .filter(Boolean),
 );
 
 const corsOptions = {
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) {
+    const normalizedRequestOrigin = normalizeOrigin(origin);
+
+    if (!origin || allowedOrigins.has(normalizedRequestOrigin)) {
       callback(null, true);
       return;
     }
@@ -37,11 +40,18 @@ const corsOptions = {
     callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-uploadthing-package",
+    "x-uploadthing-version",
+    "b3",
+    "traceparent",
+  ],
 };
 
 const apiRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 60 * 1000,
   max: 300,
   standardHeaders: true,
   legacyHeaders: false,

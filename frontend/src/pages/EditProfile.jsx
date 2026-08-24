@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -12,6 +12,7 @@ import {
   uploadCoverImage,
 } from "../api/profile";
 import { apiUrl } from "../lib/apiUrl";
+import { useCurrentUser } from "../lib/useCurrentUser";
 
 const toCanonicalInterest = (value) =>
   String(value || "")
@@ -82,18 +83,7 @@ export default function EditProfile() {
   const profileInputRef = useRef(null);
   const coverInputRef = useRef(null);
 
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("currentUser") || "null");
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const currentUserId = useMemo(
-    () => String(currentUser?.id || currentUser?._id || "").trim(),
-    [currentUser],
-  );
+  const { currentUser, currentUserId } = useCurrentUser();
 
   useEffect(() => {
     if (!currentUserId) {

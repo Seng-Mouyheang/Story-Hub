@@ -1,6 +1,20 @@
 const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() || "";
 
-export const API_BASE_URL = rawApiBaseUrl.replace(/\/+$/, "");
+const normalizeApiBaseUrl = (value) => {
+  const trimmedValue = String(value || "").trim().replace(/\/+$/, "");
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  return `https://${trimmedValue}`;
+};
+
+export const API_BASE_URL = normalizeApiBaseUrl(rawApiBaseUrl);
 
 export const apiUrl = (path) => {
   if (!path || typeof path !== "string") {
@@ -15,20 +29,20 @@ export const apiUrl = (path) => {
 };
 
 export const installApiFetchBaseUrl = () => {
-  if (!API_BASE_URL || window.__storyHubApiFetchInstalled) {
+  if (!API_BASE_URL || globalThis.__storyHubApiFetchInstalled) {
     return;
   }
 
-  const nativeFetch = window.fetch.bind(window);
+  const nativeFetch = globalThis.fetch.bind(globalThis);
 
-  window.fetch = (input, init) => {
+  globalThis.fetch = (input, init) => {
     if (typeof input === "string") {
       return nativeFetch(apiUrl(input), init);
     }
 
     if (input instanceof URL) {
       const nextUrl =
-        input.origin === window.location.origin
+        input.origin === globalThis.location.origin
           ? apiUrl(input.pathname)
           : input.href;
 
@@ -38,5 +52,5 @@ export const installApiFetchBaseUrl = () => {
     return nativeFetch(input, init);
   };
 
-  window.__storyHubApiFetchInstalled = true;
+  globalThis.__storyHubApiFetchInstalled = true;
 };

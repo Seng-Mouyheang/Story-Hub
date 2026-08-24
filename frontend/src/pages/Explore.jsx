@@ -1,179 +1,89 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
 import SiteFooter from "../components/SiteFooter";
 import Toast from "../components/Toast";
-import {
-  Bookmark,
-  Heart,
-  Eye,
-  ChevronRight,
-  User,
-  MoreHorizontal,
-  ChevronLeft,
-} from "lucide-react";
-import { followUser, unfollowUser, getFollowStatus } from "../api/profile";
-import {
-  getExploreRecommendedStories,
-  getExplorePopularStories,
-  getExplorePublishedGenres,
-  getExploreAuthors,
-} from "../api/explore";
-import {
-  toggleStoryBookmark,
-  removeStoryBookmark,
-  toggleStoryLike,
-  getMyBookmarkedStories,
-} from "../api/story/storyInteractionsApi";
-import { deleteStory, trackStoryView } from "../api/story/storyApi";
 import { useToast } from "../lib/useToast";
-import { useNavigate } from "react-router-dom";
+import { useCurrentUser } from "../lib/useCurrentUser";
+import { useFollowState } from "../features/social/useFollowState";
+import { useExploreContent } from "../features/explore/useExploreContent";
+import { useExploreLikes } from "../features/explore/useExploreLikes";
+import { useExploreBookmarks } from "../features/explore/useExploreBookmarks";
+import { useExploreStoryMenu } from "../features/explore/useExploreStoryMenu";
+import { useExploreViewTracking } from "../features/explore/useExploreViewTracking";
+import ExploreGenreFilterBar from "../features/explore/ExploreGenreFilterBar";
+import ExploreTopAuthorsSidebar from "../features/explore/ExploreTopAuthorsSidebar";
+import ExploreStoryCard from "../features/explore/ExploreStoryCard";
+import ExploreStoryCardSkeleton from "../features/explore/ExploreStoryCardSkeleton";
 
-const formatCompactNumber = (value) =>
-  new Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(Number(value) || 0);
-
-const normalizeId = (value) => {
-  if (!value) return "";
-  if (typeof value === "string") return value.trim();
-  if (typeof value === "object") {
-    if (typeof value.$oid === "string") return value.$oid.trim();
-    if (typeof value.toString === "function") return value.toString().trim();
-  }
-  return String(value).trim();
-};
-
-const mapStoryCard = (story) => ({
-  id: story?._id || story?.storyId || story?.id || story?.title,
-  authorId: normalizeId(
-    story?.authorId || story?.author?._id || story?.author?.userId || null,
-  ),
-  title: story?.title || "Untitled story",
-  tags:
-    Array.isArray(story?.genres) && story.genres.length > 0
-      ? story.genres
-      : Array.isArray(story?.tags) && story.tags.length > 0
-        ? story.tags
-        : ["Story"],
-  excerpt:
-    story?.summary || story?.content?.slice(0, 140) || "No summary available.",
-  likes: Number(story?.likesCount) || 0,
-  likedByCurrentUser: !!story?.likedByCurrentUser,
-  views: formatCompactNumber(story?.views),
-  author: story?.authorDisplayName || story?.author?.displayName || "Unknown",
-});
-
-const AuthorRow = ({
-  userId,
-  name,
-  role,
-  avatar,
-  isFollowing,
-  isBusy,
+function StorySection({
+  title,
+  stories,
+  isLoading,
+  error,
+  emptyMessage,
+  currentUserId,
+  onOpenStory,
+  menuStoryId,
+  onToggleMenu,
+  onEditStory,
+  onDeleteStory,
+  deletingStoryId,
+  followStateByUserId,
+  busyFollowIds,
   onToggleFollow,
-}) => (
-  <div className="flex items-center justify-between gap-3 py-3">
-    <div className="flex items-center gap-3 min-w-0">
-      <Link
-        to={userId ? `/profile/${userId}` : "/profile"}
-        state={{ from: "/explore" }}
-        className="w-10 h-10 rounded-full bg-slate-100 overflow-hidden flex items-center justify-center shrink-0 transition-all duration-150 hover:ring-2 hover:ring-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-        aria-label={`View ${name} profile`}
-      >
-        {avatar ? (
-          <img src={avatar} alt={name} className="w-full h-full object-cover" />
-        ) : (
-          <User className="w-4 h-4 text-slate-400" />
-        )}
-      </Link>
+  savedStoryIds,
+  onToggleSave,
+  isLiked,
+  getLikeCount,
+  onToggleLike,
+}) {
+  return (
+    <div className="mb-12">
+      <h3 className="font-semibold text-lg mb-6 text-slate-900">{title}</h3>
 
-      <div className="min-w-0">
-        <Link
-          to={userId ? `/profile/${userId}` : "/profile"}
-          state={{ from: "/explore" }}
-          className="font-semibold text-sm text-slate-900 truncate rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-        >
-          {name}
-        </Link>
-        <p className="text-[10px] text-rose-500 font-medium">{role}</p>
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4">
+          {[0, 1].map((i) => (
+            <ExploreStoryCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : null}
+
+      {!isLoading && error ? (
+        <p className="mb-4 text-sm text-rose-500">{error}</p>
+      ) : null}
+
+      {!isLoading && !error && stories.length === 0 ? (
+        <p className="mb-4 text-sm text-slate-500">{emptyMessage}</p>
+      ) : null}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+        {stories.map((story, i) => (
+          <ExploreStoryCard
+            key={story.id || i}
+            story={story}
+            currentUserId={currentUserId}
+            onOpenStory={onOpenStory}
+            isMenuOpen={menuStoryId === story.id}
+            onToggleMenu={onToggleMenu}
+            onEditStory={onEditStory}
+            onDeleteStory={onDeleteStory}
+            isDeleting={deletingStoryId === story.id}
+            isFollowing={Boolean(followStateByUserId[story.authorId])}
+            isFollowBusy={Boolean(busyFollowIds[story.authorId])}
+            onToggleFollow={onToggleFollow}
+            isSaved={savedStoryIds.has(story.id)}
+            onToggleSave={onToggleSave}
+            isLiked={isLiked(story.id)}
+            likeCount={getLikeCount(story.id)}
+            onToggleLike={onToggleLike}
+          />
+        ))}
       </div>
     </div>
-
-    <button
-      type="button"
-      onClick={onToggleFollow}
-      disabled={isBusy}
-      className={`text-[10px] font-semibold px-3 sm:px-4 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
-        isFollowing
-          ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
-          : "bg-rose-500 hover:bg-rose-600 text-white"
-      } ${isBusy ? "opacity-60 cursor-not-allowed" : ""}`}
-    >
-      {isFollowing ? "Following" : "Follow"}
-    </button>
-  </div>
-);
-
-const ExpandableGenreChips = ({ storyId, genres, limit = 5 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const safeGenres = Array.isArray(genres) && genres.length > 0 ? genres : [];
-  const visibleGenres = isExpanded ? safeGenres : safeGenres.slice(0, limit);
-  const hiddenGenresCount = Math.max(safeGenres.length - limit, 0);
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      {visibleGenres.map((genre, index) => (
-        <span
-          key={`${storyId}-genre-${String(genre)}-${index}`}
-          className="inline-flex items-center gap-2"
-        >
-          {index > 0 && (
-            <span
-              aria-hidden="true"
-              className="text-[10px] font-semibold text-rose-400"
-            >
-              •
-            </span>
-          )}
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-500">
-            {String(genre)}
-          </span>
-        </span>
-      ))}
-
-      {hiddenGenresCount > 0 && !isExpanded && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setIsExpanded(true);
-          }}
-          className="text-[10px] font-semibold uppercase cursor-pointer tracking-wider text-rose-600 transition-colors hover:text-rose-700"
-          aria-label={`Show ${hiddenGenresCount} more genres`}
-        >
-          +{hiddenGenresCount}
-        </button>
-      )}
-
-      {hiddenGenresCount > 0 && isExpanded && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            setIsExpanded(false);
-          }}
-          className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-700"
-          aria-label="Collapse genres"
-        >
-          Show less
-        </button>
-      )}
-    </div>
   );
-};
+}
 
 export default function Explore() {
   const navigate = useNavigate();
@@ -187,523 +97,83 @@ export default function Explore() {
     pauseToast,
     resumeToast,
   } = useToast();
-  const [menuStoryId, setMenuStoryId] = useState(null);
-  const [deletingStoryId, setDeletingStoryId] = useState(null);
 
-  const handleEditStory = (storyId) => {
-    setMenuStoryId(null);
-    navigate(`/write?storyId=${storyId}&returnTo=/explore`);
-  };
+  const { currentUserId } = useCurrentUser();
 
-  const handleDeleteStory = async (storyId) => {
-    if (
-      !window.confirm(
-        "Are you sure you want to delete this story? This action cannot be undone.",
-      )
-    )
-      return;
-    setDeletingStoryId(storyId);
-    try {
-      await deleteStory(storyId);
+  const {
+    topAuthorsCount,
+    activeCategory,
+    setActiveCategory,
+    genreFilters,
+    genresLoading,
+    genresError,
+    recommendedStories,
+    setRecommendedStories,
+    popularStories,
+    setPopularStories,
+    resolvedAuthors,
+    storiesLoading,
+    authorsLoading,
+    recommendedError,
+    popularError,
+    authorsError,
+    authorIdsForFollowStatus,
+  } = useExploreContent({ currentUserId, showToast });
+
+  const { followStateByUserId, busyFollowIds, toggleFollow } = useFollowState({
+    currentUserId,
+    authorIds: authorIdsForFollowStatus,
+    notify: showToast,
+    onUnauthenticated: (message) => showToast(message, "error"),
+  });
+
+  const { savedStoryIds, toggleSave } = useExploreBookmarks({
+    currentUserId,
+    showToast,
+  });
+
+  const { isLiked, getLikeCount, toggleLike } = useExploreLikes({
+    recommendedStories,
+    popularStories,
+    showToast,
+  });
+
+  const {
+    menuStoryId,
+    toggleMenu,
+    deletingStoryId,
+    handleEditStory,
+    handleDeleteStory,
+  } = useExploreStoryMenu({
+    showToast,
+    onStoryDeleted: (storyId) => {
       setRecommendedStories((prev) => prev.filter((s) => s.id !== storyId));
       setPopularStories((prev) => prev.filter((s) => s.id !== storyId));
-      setMenuStoryId(null);
-      showToast("Story deleted successfully.", "success");
-    } catch {
-      showToast("Failed to delete story. Please try again.", "error");
-    } finally {
-      setDeletingStoryId(null);
-    }
-  };
-  const TOP_AUTHORS_COUNT = 6;
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [genreFilters, setGenreFilters] = useState(["All"]);
-  const _genresRef = React.useRef(null);
-  const [recommendedStories, setRecommendedStories] = useState([]);
-  const [popularStories, setPopularStories] = useState([]);
-  const [resolvedAuthors, setResolvedAuthors] = useState([]);
-  const [followStateByUserId, setFollowStateByUserId] = useState({});
-  const [busyFollowIds, setBusyFollowIds] = useState({});
-  const [genresLoading, setGenresLoading] = useState(false);
-  const [savedStoryIds, setSavedStoryIds] = useState(new Set());
-  const trackedViewIdsRef = useRef(new Set());
-  const handleToggleSave = async (storyId) => {
-    try {
-      const isAlreadySaved = savedStoryIds.has(storyId);
-      if (isAlreadySaved) {
-        await removeStoryBookmark(storyId);
-        showToast("Story removed from bookmarks.", "success");
-      } else {
-        await toggleStoryBookmark(storyId);
-        showToast("Story added to bookmarks.", "success");
-      }
-      setSavedStoryIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(storyId)) {
-          next.delete(storyId);
-        } else {
-          next.add(storyId);
-        }
-        return next;
-      });
-    } catch (error) {
-      console.error("Failed to toggle bookmark:", error);
-      showToast("Failed to save story. Please try again.", "error");
-    }
-  };
-  const [storiesLoading, setStoriesLoading] = useState(false);
-  const [authorsLoading, setAuthorsLoading] = useState(false);
-  const [genresError, setGenresError] = useState("");
-  const [recommendedError, setRecommendedError] = useState("");
-  const [popularError, setPopularError] = useState("");
-  const [authorsError, setAuthorsError] = useState("");
+    },
+  });
 
-  const currentUserId = useMemo(() => {
-    try {
-      const currentUser = JSON.parse(
-        localStorage.getItem("currentUser") || "null",
-      );
-      return normalizeId(currentUser?.id || currentUser?._id || "");
-    } catch {
-      return "";
-    }
-  }, []);
+  useExploreViewTracking({ recommendedStories, popularStories });
 
-  useEffect(() => {
-    const handleFollowUpdated = (event) => {
-      const followerId = normalizeId(event?.detail?.followerId || "");
-      const followingId = normalizeId(event?.detail?.followingId || "");
-      const following = Boolean(event?.detail?.following);
-
-      if (!followingId || followerId !== currentUserId) {
-        return;
-      }
-
-      setFollowStateByUserId((previous) => ({
-        ...previous,
-        [followingId]: following,
-      }));
-
-      setBusyFollowIds((previous) => ({
-        ...previous,
-        [followingId]: false,
-      }));
-    };
-
-    window.addEventListener("storyhub:follow-updated", handleFollowUpdated);
-
-    return () => {
-      window.removeEventListener(
-        "storyhub:follow-updated",
-        handleFollowUpdated,
-      );
-    };
-  }, [currentUserId]);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    let isMounted = true;
-
-    const loadSavedStories = async () => {
-      if (!currentUserId) {
-        if (isMounted) {
-          setSavedStoryIds(new Set());
-        }
-        return;
-      }
-
-      try {
-        const payload = await getMyBookmarkedStories({
-          signal: abortController.signal,
-        });
-
-        if (!isMounted) {
-          return;
-        }
-
-        const bookmarkedIds = Array.isArray(payload?.data)
-          ? payload.data
-              .map((story) => normalizeId(story?._id || story?.id || ""))
-              .filter(Boolean)
-          : [];
-
-        setSavedStoryIds(new Set(bookmarkedIds));
-      } catch (error) {
-        if (!isMounted || abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("Failed to load bookmarked stories:", error);
-        setSavedStoryIds(new Set());
-      }
-    };
-
-    loadSavedStories();
-
-    return () => {
-      isMounted = false;
-      abortController.abort();
-    };
-  }, [currentUserId]);
-
-  // Load published genres once on mount — clicking a genre should not reload this list
-  useEffect(() => {
-    const abortController = new AbortController();
-    let isMounted = true;
-
-    const loadGenres = async () => {
-      setGenresLoading(true);
-      setGenresError("");
-
-      try {
-        const publishedGenres = await getExplorePublishedGenres({
-          limit: 50,
-          maxPages: 3,
-          signal: abortController.signal,
-        });
-
-        if (!isMounted) {
-          return;
-        }
-
-        const nextGenres = ["All", ...publishedGenres];
-        setGenreFilters(nextGenres);
-
-        if (!nextGenres.includes(activeCategory)) {
-          setActiveCategory("All");
-        }
-      } catch (error) {
-        if (!isMounted || abortController.signal.aborted) {
-          return;
-        }
-
-        const errorMsg = error?.message || "Failed to load genres.";
-        setGenreFilters(["All"]);
-        setGenresError(errorMsg);
-        showToast(errorMsg, "error");
-      } finally {
-        if (isMounted) {
-          setGenresLoading(false);
-        }
-      }
-    };
-
-    loadGenres();
-
-    return () => {
-      isMounted = false;
-      abortController.abort();
-    };
-  }, []);
-
-  // Load explore content when active category or current user changes
-  useEffect(() => {
-    const abortController = new AbortController();
-    let isMounted = true;
-
-    const loadExploreContent = async () => {
-      setStoriesLoading(true);
-      setAuthorsLoading(true);
-      setRecommendedError("");
-      setPopularError("");
-      setAuthorsError("");
-
-      // Recommended: if no genre selected -> interest-based popular (likes),
-      // if genre selected -> latest in that genre
-      const recommendedSort =
-        activeCategory && activeCategory !== "All" ? "latest" : "popular";
-
-      const [recommendedResult, popularResult, authorsResult] =
-        await Promise.allSettled([
-          getExploreRecommendedStories({
-            category: activeCategory,
-            limit: 4,
-            signal: abortController.signal,
-            sortBy: recommendedSort,
-          }),
-          getExplorePopularStories({
-            category: activeCategory,
-            limit: 4,
-            signal: abortController.signal,
-          }),
-          getExploreAuthors({
-            limit: TOP_AUTHORS_COUNT,
-            minLikes: 10,
-            signal: abortController.signal,
-          }),
-        ]);
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (recommendedResult.status === "fulfilled") {
-        const allRecommended = (recommendedResult.value?.data || []).map(
-          mapStoryCard,
-        );
-        // Filter out stories authored by the current user
-        setRecommendedStories(
-          allRecommended.filter((story) => story.authorId !== currentUserId),
-        );
-      } else {
-        setRecommendedStories([]);
-        const errorMsg =
-          recommendedResult.reason?.message ||
-          "Failed to load recommended stories.";
-        setRecommendedError(errorMsg);
-        showToast(errorMsg, "error");
-      }
-
-      if (popularResult.status === "fulfilled") {
-        setPopularStories((popularResult.value?.data || []).map(mapStoryCard));
-      } else {
-        setPopularStories([]);
-        const errorMsg =
-          popularResult.reason?.message || "Failed to load popular stories.";
-        setPopularError(errorMsg);
-        showToast(errorMsg, "error");
-      }
-
-      if (authorsResult.status === "fulfilled") {
-        const resolved = (authorsResult.value?.data || []).map((author) => ({
-          userId: normalizeId(author?.authorId || null),
-          avatar: author?.profilePicture || "",
-          displayName: author?.displayName || author?.username || "Unknown",
-          role: `Top ${String(
-            authorsResult.value?.category ||
-              author?.primaryCategory ||
-              "recommended",
-          ).toLowerCase()} author`,
-          popularStoriesInCategory: Number(
-            author?.popularStoriesInCategory || 0,
-          ),
-          totalCategoryLikes: Number(author?.totalCategoryLikes || 0),
-        }));
-
-        setResolvedAuthors(resolved);
-      } else {
-        setResolvedAuthors([]);
-        const errorMsg =
-          authorsResult.reason?.message ||
-          "Failed to load recommended authors.";
-        setAuthorsError(errorMsg);
-        showToast(errorMsg, "error");
-      }
-
-      const recommendedAuthorIds =
-        authorsResult.status === "fulfilled"
-          ? (authorsResult.value?.data || [])
-              .map((author) => normalizeId(author?.authorId || null))
-              .filter((authorId) => Boolean(authorId))
-          : [];
-
-      const storyAuthorIds = [
-        ...new Set(
-          [
-            ...(recommendedResult.status === "fulfilled"
-              ? (recommendedResult.value?.data || []).map(
-                  (story) => mapStoryCard(story).authorId,
-                )
-              : []),
-            ...(popularResult.status === "fulfilled"
-              ? (popularResult.value?.data || []).map(
-                  (story) => mapStoryCard(story).authorId,
-                )
-              : []),
-          ].filter(
-            (authorId) => Boolean(authorId) && authorId !== currentUserId,
-          ),
-        ),
-      ];
-
-      const authorIdsForFollowStatus = [
-        ...new Set([...recommendedAuthorIds, ...storyAuthorIds]),
-      ].filter((authorId) => authorId !== currentUserId);
-
-      if (authorIdsForFollowStatus.length > 0) {
-        const followEntries = await Promise.all(
-          authorIdsForFollowStatus.map(async (authorId) => {
-            try {
-              const statusPayload = await getFollowStatus(authorId);
-              return [authorId, Boolean(statusPayload?.following)];
-            } catch {
-              return [authorId, false];
-            }
-          }),
-        );
-
-        if (isMounted) {
-          setFollowStateByUserId((previous) => ({
-            ...previous,
-            ...Object.fromEntries(followEntries),
-          }));
-        }
-      }
-
-      setStoriesLoading(false);
-      setAuthorsLoading(false);
-    };
-
-    loadExploreContent();
-
-    return () => {
-      isMounted = false;
-      abortController.abort();
-    };
-  }, [TOP_AUTHORS_COUNT, activeCategory, currentUserId]);
-
-  // Track story views when they come into view on the feed
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const storyId = entry.target.getAttribute("data-story-id");
-            if (storyId && !trackedViewIdsRef.current.has(storyId)) {
-              trackedViewIdsRef.current.add(storyId);
-              trackStoryView(storyId).catch((error) => {
-                console.warn("Failed to track view:", error);
-              });
-            }
-          }
-        });
-      },
-      { threshold: 0.1 },
-    );
-
-    // Observe all story cards
-    const storyCards = document.querySelectorAll("[data-story-id]");
-    storyCards.forEach((card) => observer.observe(card));
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [popularStories, recommendedStories]);
-
-  const handleToggleFollow = async (author) => {
-    const normalizedTargetUserId = normalizeId(author?.userId);
-
-    if (!normalizedTargetUserId || normalizedTargetUserId === currentUserId) {
-      return;
-    }
-
-    setBusyFollowIds((prev) => ({ ...prev, [normalizedTargetUserId]: true }));
-
-    try {
-      const isFollowing = Boolean(followStateByUserId[normalizedTargetUserId]);
-      let followResult;
-
-      if (isFollowing) {
-        followResult = await unfollowUser(normalizedTargetUserId);
-      } else {
-        followResult = await followUser(normalizedTargetUserId);
-      }
-
-      const confirmedFollowing =
-        typeof followResult?.following === "boolean"
-          ? followResult.following
-          : !isFollowing;
-      const eventFollowerId =
-        normalizeId(followResult?.followerId) || currentUserId;
-      const eventFollowingId =
-        normalizeId(followResult?.followingId) || normalizedTargetUserId;
-
-      window.dispatchEvent(
-        new CustomEvent("storyhub:follow-updated", {
-          detail: {
-            followerId: eventFollowerId,
-            followingId: eventFollowingId,
-            following: confirmedFollowing,
-          },
-        }),
-      );
-
-      setFollowStateByUserId((prev) => ({
-        ...prev,
-        [normalizedTargetUserId]: confirmedFollowing,
-      }));
-
-      if (confirmedFollowing) {
-        showToast(
-          `Now following ${author?.displayName || "author"}.`,
-          "success",
-        );
-      } else {
-        showToast(`Unfollowed ${author?.displayName || "author"}.`, "success");
-      }
-    } catch (error) {
-      console.error("Failed to toggle follow state:", error);
-      showToast("Failed to update follow status. Please try again.", "error");
-    } finally {
-      setBusyFollowIds((prev) => ({
-        ...prev,
-        [normalizedTargetUserId]: false,
-      }));
-    }
+  const handleOpenStory = (storyId) => {
+    navigate("/", { state: { focusedPostId: storyId } });
   };
 
-  // Like state for instant UI feedback
-  const [likedStoryIds, setLikedStoryIds] = useState(new Set());
-  const [likeCounts, setLikeCounts] = useState({});
-
-  useEffect(() => {
-    setLikedStoryIds(
-      new Set([
-        ...recommendedStories
-          .filter((s) => s.likedByCurrentUser)
-          .map((s) => s.id),
-        ...popularStories.filter((s) => s.likedByCurrentUser).map((s) => s.id),
-      ]),
-    );
-    setLikeCounts((prev) => {
-      const counts = { ...prev };
-      recommendedStories.forEach((s) => {
-        counts[s.id] = s.likes;
-      });
-      popularStories.forEach((s) => {
-        counts[s.id] = s.likes;
-      });
-      return counts;
-    });
-  }, [recommendedStories, popularStories]);
-
-  const handleToggleLike = async (storyId) => {
-    setLikedStoryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(storyId)) {
-        next.delete(storyId);
-      } else {
-        next.add(storyId);
-      }
-      return next;
-    });
-    setLikeCounts((prev) => {
-      const next = { ...prev };
-      next[storyId] =
-        (next[storyId] || 0) + (likedStoryIds.has(storyId) ? -1 : 1);
-      return next;
-    });
-    try {
-      await toggleStoryLike(storyId);
-    } catch {
-      // Revert on error
-      setLikedStoryIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(storyId)) {
-          next.delete(storyId);
-        } else {
-          next.add(storyId);
-        }
-        return next;
-      });
-      setLikeCounts((prev) => {
-        const next = { ...prev };
-        next[storyId] =
-          (next[storyId] || 0) + (likedStoryIds.has(storyId) ? 1 : -1);
-        return next;
-      });
-      showToast("Failed to like story. Please try again.", "error");
-    }
+  const sharedSectionProps = {
+    currentUserId,
+    onOpenStory: handleOpenStory,
+    menuStoryId,
+    onToggleMenu: toggleMenu,
+    onEditStory: handleEditStory,
+    onDeleteStory: handleDeleteStory,
+    deletingStoryId,
+    followStateByUserId,
+    busyFollowIds,
+    onToggleFollow: toggleFollow,
+    savedStoryIds,
+    onToggleSave: toggleSave,
+    isLiked,
+    getLikeCount,
+    onToggleLike: toggleLike,
   };
 
   return (
@@ -727,614 +197,44 @@ export default function Explore() {
         <main className="flex-1 min-h-0 overflow-hidden">
           <div className="h-full grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_16rem] gap-4 lg:gap-6 px-3 sm:px-5 lg:px-6 py-4 sm:py-5">
             <div className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-              <div className="mb-8 sm:mb-10">
-                <div className="flex items-center gap-2 sm:gap-3 px-1 py-1">
-                  <button
-                    type="button"
-                    aria-label="Scroll genres left"
-                    onClick={() => {
-                      if (!_genresRef.current) return;
-                      const w = _genresRef.current.clientWidth || 240;
-                      _genresRef.current.scrollBy({
-                        left: -Math.round(w * 0.7),
-                        behavior: "smooth",
-                      });
-                    }}
-                    className="inline-flex h-10 w-10 items-center justify-center text-slate-600 hover:text-slate-800"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
+              <ExploreGenreFilterBar
+                genreFilters={genreFilters}
+                genresLoading={genresLoading}
+                genresError={genresError}
+                activeCategory={activeCategory}
+                onSelectCategory={setActiveCategory}
+              />
 
-                  <div
-                    ref={_genresRef}
-                    className="flex-1 flex items-center gap-2 sm:gap-3 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden px-1"
-                  >
-                    {genresLoading ? (
-                      <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-slate-200 text-slate-400">
-                        Loading genres...
-                      </span>
-                    ) : null}
+              <StorySection
+                title="Recommended for you"
+                stories={recommendedStories}
+                isLoading={storiesLoading}
+                error={recommendedError}
+                emptyMessage="No recommended stories found."
+                {...sharedSectionProps}
+              />
 
-                    {!genresLoading && genresError ? (
-                      <span className="h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium inline-flex items-center border border-rose-200 text-rose-500">
-                        {genresError}
-                      </span>
-                    ) : null}
+              <StorySection
+                title="Most Popular"
+                stories={popularStories}
+                isLoading={storiesLoading}
+                error={popularError}
+                emptyMessage="No popular stories found."
+                {...sharedSectionProps}
+              />
 
-                    {!genresLoading &&
-                      !genresError &&
-                      genreFilters.map((category) => (
-                        <button
-                          key={category}
-                          type="button"
-                          onClick={() => setActiveCategory(category)}
-                          className={`h-10 px-4 sm:px-6 rounded-lg text-xs sm:text-sm font-medium whitespace-nowrap inline-flex items-center ${
-                            activeCategory === category
-                              ? "bg-rose-500 text-white"
-                              : "border border-slate-300 text-slate-600"
-                          }`}
-                        >
-                          {category}
-                        </button>
-                      ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    aria-label="Scroll genres right"
-                    onClick={() => {
-                      if (!_genresRef.current) return;
-                      const w = _genresRef.current.clientWidth || 240;
-                      _genresRef.current.scrollBy({
-                        left: Math.round(w * 0.7),
-                        behavior: "smooth",
-                      });
-                    }}
-                    className="inline-flex h-10 w-10 items-center justify-center text-slate-600 hover:text-slate-800"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="mb-12">
-                <h3 className="font-semibold text-lg mb-6 text-slate-900">
-                  Recommended for you
-                </h3>
-
-                {storiesLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4">
-                    {[0, 1].map((i) => (
-                      <div
-                        key={i}
-                        className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm animate-pulse"
-                      >
-                        <div className="h-3 w-20 bg-slate-200 rounded-full mb-4" />
-                        <div className="h-5 w-3/4 bg-slate-200 rounded-lg mb-2" />
-                        <div className="h-3 w-1/3 bg-slate-200 rounded-full mb-4" />
-                        <div className="space-y-2 mb-6">
-                          <div className="h-3 w-full bg-slate-200 rounded-full" />
-                          <div className="h-3 w-full bg-slate-200 rounded-full" />
-                          <div className="h-3 w-2/3 bg-slate-200 rounded-full" />
-                        </div>
-                        <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
-                          <div className="h-3 w-10 bg-slate-200 rounded-full" />
-                          <div className="h-3 w-14 bg-slate-200 rounded-full" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {!storiesLoading && recommendedError ? (
-                  <p className="mb-4 text-sm text-rose-500">
-                    {recommendedError}
-                  </p>
-                ) : null}
-
-                {!storiesLoading &&
-                !recommendedError &&
-                recommendedStories.length === 0 ? (
-                  <p className="mb-4 text-sm text-slate-500">
-                    No recommended stories found.
-                  </p>
-                ) : null}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                  {recommendedStories.map((story, i) => (
-                    <div
-                      key={story.id || i}
-                      data-story-id={story.id}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          navigate("/", { state: { focusedPostId: story.id } });
-                        }
-                      }}
-                      onClick={() =>
-                        navigate("/", { state: { focusedPostId: story.id } })
-                      }
-                      className="cursor-pointer bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="min-w-0 flex-1">
-                          <ExpandableGenreChips
-                            storyId={story.id}
-                            genres={story.tags}
-                            limit={5}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
-                          {story.authorId &&
-                          story.authorId !== currentUserId ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleFollow({ userId: story.authorId });
-                              }}
-                              disabled={Boolean(busyFollowIds[story.authorId])}
-                              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
-                                followStateByUserId[story.authorId]
-                                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
-                                  : "bg-rose-500 hover:bg-rose-600 text-white"
-                              } ${
-                                busyFollowIds[story.authorId]
-                                  ? "opacity-60 cursor-not-allowed"
-                                  : ""
-                              }`}
-                            >
-                              {followStateByUserId[story.authorId]
-                                ? "Following"
-                                : "Follow"}
-                            </button>
-                          ) : null}
-                          {story.authorId === currentUserId && (
-                            <div className="relative">
-                              <button
-                                type="button"
-                                aria-label="Story actions"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuStoryId(
-                                    menuStoryId === story.id ? null : story.id,
-                                  );
-                                }}
-                                className={
-                                  menuStoryId === story.id
-                                    ? "text-rose-500"
-                                    : "text-slate-400 hover:text-slate-600"
-                                }
-                              >
-                                <MoreHorizontal className="w-5 h-5" />
-                              </button>
-                              {menuStoryId === story.id && (
-                                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleEditStory(story.id);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteStory(story.id);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                                    disabled={deletingStoryId === story.id}
-                                  >
-                                    {deletingStoryId === story.id
-                                      ? "Deleting..."
-                                      : "Delete"}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleSave(story.id);
-                            }}
-                            className={
-                              savedStoryIds.has(story.id)
-                                ? "text-rose-500"
-                                : "text-slate-500 hover:text-rose-500"
-                            }
-                            aria-label={
-                              savedStoryIds.has(story.id)
-                                ? "Unsave story"
-                                : "Save story"
-                            }
-                          >
-                            <Bookmark
-                              className="w-5 h-5"
-                              fill={
-                                savedStoryIds.has(story.id)
-                                  ? "currentColor"
-                                  : "none"
-                              }
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      <h4 className="font-semibold text-lg sm:text-xl mb-2 text-slate-900">
-                        {story.title}
-                      </h4>
-
-                      <p className="text-[11px] font-medium text-slate-400 mb-3">
-                        By{" "}
-                        <Link
-                          to={
-                            story.authorId
-                              ? `/profile/${story.authorId}`
-                              : "/profile"
-                          }
-                          state={{ from: "/explore" }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-slate-500 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                        >
-                          {story.author}
-                        </Link>
-                      </p>
-
-                      <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
-                        {story.excerpt}
-                      </p>
-
-                      <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
-                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleLike(story.id);
-                            }}
-                            className={
-                              likedStoryIds.has(story.id)
-                                ? "flex items-center gap-1 text-rose-500"
-                                : "flex items-center gap-1 text-slate-500 hover:text-rose-500"
-                            }
-                            aria-label={
-                              likedStoryIds.has(story.id)
-                                ? "Unlike story"
-                                : "Like story"
-                            }
-                          >
-                            <Heart
-                              className="w-3 h-3"
-                              fill={
-                                likedStoryIds.has(story.id)
-                                  ? "currentColor"
-                                  : "none"
-                              }
-                            />
-                            <span>{likeCounts[story.id] ?? story.likes}</span>
-                          </button>
-                          <span className="flex items-center gap-1">
-                            <Eye className="w-3 h-3" /> {story.views} views
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mb-12">
-                <h3 className="font-semibold text-lg mb-6 text-slate-900">
-                  Most Popular
-                </h3>
-
-                {storiesLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-4">
-                    {[0, 1].map((i) => (
-                      <div
-                        key={i}
-                        className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm animate-pulse"
-                      >
-                        <div className="h-3 w-20 bg-slate-200 rounded-full mb-4" />
-                        <div className="h-5 w-3/4 bg-slate-200 rounded-lg mb-2" />
-                        <div className="h-3 w-1/3 bg-slate-200 rounded-full mb-4" />
-                        <div className="space-y-2 mb-6">
-                          <div className="h-3 w-full bg-slate-200 rounded-full" />
-                          <div className="h-3 w-full bg-slate-200 rounded-full" />
-                          <div className="h-3 w-2/3 bg-slate-200 rounded-full" />
-                        </div>
-                        <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
-                          <div className="h-3 w-10 bg-slate-200 rounded-full" />
-                          <div className="h-3 w-14 bg-slate-200 rounded-full" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-
-                {!storiesLoading && popularError ? (
-                  <p className="mb-4 text-sm text-rose-500">{popularError}</p>
-                ) : null}
-
-                {!storiesLoading &&
-                !popularError &&
-                popularStories.length === 0 ? (
-                  <p className="mb-4 text-sm text-slate-500">
-                    No popular stories found.
-                  </p>
-                ) : null}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                  {popularStories.map((story, i) => (
-                    <div
-                      key={story.id || i}
-                      data-story-id={story.id}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          navigate("/", { state: { focusedPostId: story.id } });
-                        }
-                      }}
-                      onClick={() =>
-                        navigate("/", { state: { focusedPostId: story.id } })
-                      }
-                      className="cursor-pointer bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm transition-all duration-300 hover:shadow-md h-full flex flex-col"
-                    >
-                      <div className="flex items-start justify-between gap-3 mb-4">
-                        <div className="min-w-0 flex-1">
-                          <ExpandableGenreChips
-                            storyId={story.id}
-                            genres={story.tags}
-                            limit={5}
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
-                          {story.authorId &&
-                          story.authorId !== currentUserId ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleFollow({ userId: story.authorId });
-                              }}
-                              disabled={Boolean(busyFollowIds[story.authorId])}
-                              className={`text-[10px] font-semibold px-3 py-1.5 rounded-full transition-colors duration-200 whitespace-nowrap ${
-                                followStateByUserId[story.authorId]
-                                  ? "border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100"
-                                  : "bg-rose-500 hover:bg-rose-600 text-white"
-                              } ${
-                                busyFollowIds[story.authorId]
-                                  ? "opacity-60 cursor-not-allowed"
-                                  : ""
-                              }`}
-                            >
-                              {followStateByUserId[story.authorId]
-                                ? "Following"
-                                : "Follow"}
-                            </button>
-                          ) : null}
-                          {story.authorId === currentUserId && (
-                            <div className="relative">
-                              <button
-                                type="button"
-                                aria-label="Story actions"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuStoryId(
-                                    menuStoryId === story.id ? null : story.id,
-                                  );
-                                }}
-                                className={
-                                  menuStoryId === story.id
-                                    ? "text-rose-500"
-                                    : "text-slate-400 hover:text-slate-600"
-                                }
-                              >
-                                <MoreHorizontal className="w-5 h-5" />
-                              </button>
-                              {menuStoryId === story.id && (
-                                <div className="absolute right-0 top-8 z-10 w-32 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleEditStory(story.id);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteStory(story.id);
-                                    }}
-                                    className="w-full text-left px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                                    disabled={deletingStoryId === story.id}
-                                  >
-                                    {deletingStoryId === story.id
-                                      ? "Deleting..."
-                                      : "Delete"}
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleSave(story.id);
-                            }}
-                            className={
-                              savedStoryIds.has(story.id)
-                                ? "text-rose-500"
-                                : "text-slate-500 hover:text-rose-500"
-                            }
-                            aria-label={
-                              savedStoryIds.has(story.id)
-                                ? "Unsave story"
-                                : "Save story"
-                            }
-                          >
-                            <Bookmark
-                              className="w-5 h-5"
-                              fill={
-                                savedStoryIds.has(story.id)
-                                  ? "currentColor"
-                                  : "none"
-                              }
-                            />
-                          </button>
-                        </div>
-                      </div>
-
-                      <h4 className="font-semibold text-lg sm:text-xl mb-2 text-slate-900">
-                        {story.title}
-                      </h4>
-
-                      <p className="text-[11px] font-medium text-slate-400 mb-3">
-                        By{" "}
-                        <Link
-                          to={
-                            story.authorId
-                              ? `/profile/${story.authorId}`
-                              : "/profile"
-                          }
-                          state={{ from: "/explore" }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-slate-500 rounded-md px-1.5 py-0.5 -mx-1.5 -my-0.5 transition-colors duration-150 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
-                        >
-                          {story.author}
-                        </Link>
-                      </p>
-
-                      <p className="text-slate-600 text-sm leading-relaxed mb-6 italic">
-                        {story.excerpt}
-                      </p>
-
-                      <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col items-end gap-1">
-                        <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-slate-500 text-[10px] font-medium">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleToggleLike(story.id);
-                            }}
-                            className={
-                              likedStoryIds.has(story.id)
-                                ? "flex items-center gap-1 text-rose-500"
-                                : "flex items-center gap-1 text-slate-500 hover:text-rose-500"
-                            }
-                            aria-label={
-                              likedStoryIds.has(story.id)
-                                ? "Unlike story"
-                                : "Like story"
-                            }
-                          >
-                            <Heart
-                              className="w-3 h-3"
-                              fill={
-                                likedStoryIds.has(story.id)
-                                  ? "currentColor"
-                                  : "none"
-                              }
-                            />
-                            <span>{likeCounts[story.id] ?? story.likes}</span>
-                          </button>
-                          <span className="flex items-center gap-1">
-                            <Eye className="w-3 h-3" /> {story.views} views
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
               <SiteFooter className="hidden lg:block text-left lg:text-right" />
             </div>
 
-            <aside className="hidden lg:block w-64 shrink-0 h-full">
-              <div className="sticky top-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-sm transition-all duration-300 hover:shadow-md">
-                <h2 className="text-lg sm:text-xl font-semibold mb-4 text-slate-900">
-                  Top Authors
-                </h2>
-
-                <div className="space-y-2">
-                  {authorsLoading ? (
-                    <div className="space-y-1">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between gap-3 py-3 animate-pulse"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-slate-200 shrink-0" />
-                            <div className="space-y-1.5">
-                              <div className="h-3 w-24 bg-slate-200 rounded-full" />
-                              <div className="h-2.5 w-16 bg-slate-200 rounded-full" />
-                            </div>
-                          </div>
-                          <div className="h-6 w-16 bg-slate-200 rounded-full" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {!authorsLoading && authorsError ? (
-                    <p className="text-xs text-rose-500">{authorsError}</p>
-                  ) : null}
-
-                  {!authorsLoading &&
-                  !authorsError &&
-                  resolvedAuthors.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-rose-50/60 px-4 py-4 shadow-sm">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-rose-500 shadow-sm ring-1 ring-rose-100">
-                          <User size={18} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">
-                            No author recommendations at the moment!
-                          </p>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            Add more genre to your interests or like more
-                            author's stories to help them surface in the
-                            top-author list here!
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {!authorsLoading &&
-                    !authorsError &&
-                    resolvedAuthors
-                      .slice(0, TOP_AUTHORS_COUNT)
-                      .map((author) => (
-                        <AuthorRow
-                          key={author.userId || author.displayName}
-                          userId={author.userId}
-                          name={author.displayName}
-                          role={author.role}
-                          avatar={author.avatar}
-                          isFollowing={Boolean(
-                            followStateByUserId[author.userId],
-                          )}
-                          isBusy={Boolean(busyFollowIds[author.userId])}
-                          onToggleFollow={() => handleToggleFollow(author)}
-                        />
-                      ))}
-                </div>
-              </div>
-            </aside>
+            <ExploreTopAuthorsSidebar
+              authorsLoading={authorsLoading}
+              authorsError={authorsError}
+              resolvedAuthors={resolvedAuthors}
+              topAuthorsCount={topAuthorsCount}
+              followStateByUserId={followStateByUserId}
+              busyFollowIds={busyFollowIds}
+              onToggleFollow={toggleFollow}
+            />
           </div>
         </main>
       </div>

@@ -1,73 +1,13 @@
 import { Link } from "react-router-dom";
 import { AlertTriangle, Heart, MoreHorizontal, User, X } from "lucide-react";
+import {
+  formatCount,
+  getRelativeTime,
+  normalizeId,
+  createEmptyRepliesState,
+} from "../lib/format";
 
 const COMMENT_CHARACTER_LIMIT = 2200;
-
-const formatCount = (value) => {
-  if (value >= 1000000) {
-    return `${(value / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
-  }
-
-  if (value >= 1000) {
-    return `${(value / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-  }
-
-  return String(value);
-};
-
-const getRelativeTime = (dateString) => {
-  const sourceDate = new Date(dateString);
-
-  if (Number.isNaN(sourceDate.getTime())) {
-    return "Recently";
-  }
-
-  const diffMs = Date.now() - sourceDate.getTime();
-  const diffMinutes = Math.floor(diffMs / (1000 * 60));
-
-  if (diffMinutes < 1) return "Just now";
-  if (diffMinutes < 60)
-    return `${diffMinutes} minute${diffMinutes > 1 ? "s" : ""} ago`;
-
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-
-  const diffWeeks = Math.floor(diffDays / 7);
-  if (diffWeeks < 5) return `${diffWeeks} week${diffWeeks > 1 ? "s" : ""} ago`;
-
-  const diffMonths = Math.floor(diffDays / 30);
-  if (diffMonths < 12) {
-    return `${diffMonths} month${diffMonths > 1 ? "s" : ""} ago`;
-  }
-
-  const diffYears = Math.floor(diffDays / 365);
-  return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
-};
-
-const normalizeId = (value) => {
-  if (!value) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "object") {
-    if (typeof value.$oid === "string") return value.$oid;
-    if (typeof value.toString === "function") return value.toString();
-  }
-
-  return String(value);
-};
-
-const createEmptyRepliesState = () => ({
-  open: false,
-  loaded: false,
-  loading: false,
-  loadingMore: false,
-  error: "",
-  items: [],
-  nextCursor: null,
-  hasMore: false,
-});
 
 const CommentSection = ({
   story,

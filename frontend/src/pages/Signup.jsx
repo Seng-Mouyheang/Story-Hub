@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, Feather, ArrowRight } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
+import { signup } from "../api/auth/authApi";
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -73,23 +74,7 @@ export default function Signup() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/auth/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          username: name,
-          email,
-          password,
-        }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Signup failed.");
-      }
+      await signup({ username: name, email, password });
 
       localStorage.setItem("needsProfileSetup", "true");
 

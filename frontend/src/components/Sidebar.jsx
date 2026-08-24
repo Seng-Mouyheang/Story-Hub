@@ -15,6 +15,7 @@ import {
   Settings,
   Plus,
 } from "lucide-react";
+import { logout } from "../api/auth/authApi";
 
 export default function Sidebar() {
   const location = useLocation();
@@ -55,25 +56,8 @@ export default function Sidebar() {
   }, []);
 
   const handleLogout = async () => {
-    const token = localStorage.getItem("token");
-
-    try {
-      if (token) {
-        await fetch("/api/auth/logout", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-      }
-    } catch {
-      // Clear local auth state even if the network request fails.
-    } finally {
-      localStorage.removeItem("token");
-      localStorage.removeItem("currentUser");
-      localStorage.removeItem("rememberLogin");
-      navigate("/login", { replace: true });
-    }
+    await logout();
+    navigate("/login", { replace: true });
   };
 
   const navItems = [

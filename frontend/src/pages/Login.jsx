@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Feather, Eye, EyeOff, ArrowRight } from "lucide-react";
 import SiteFooter from "../components/SiteFooter";
+import { login } from "../api/auth/authApi";
 
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -50,19 +51,7 @@ export default function Login() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Login failed.");
-      }
+      const payload = await login({ email, password });
 
       if (payload?.token) {
         localStorage.setItem("token", payload.token);

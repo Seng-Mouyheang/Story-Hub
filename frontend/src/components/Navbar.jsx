@@ -1,24 +1,15 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { User } from "lucide-react";
 import { Link } from "react-router-dom";
-import SearchBar from "./SearchBar";
+import SearchBar from "../features/search/SearchBar";
+import { useCurrentUser } from "../lib/useCurrentUser";
+import { getProfileByUserId } from "../api/profile";
 
 export default function Navbar({ title }) {
   const [avatarUrl, setAvatarUrl] = useState("");
   const [visible, setVisible] = useState(true);
 
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("currentUser") || "null");
-    } catch {
-      return null;
-    }
-  }, []);
-
-  const currentUserId = useMemo(
-    () => String(currentUser?.id || currentUser?._id || "").trim(),
-    [currentUser],
-  );
+  const { currentUserId } = useCurrentUser();
 
   useEffect(() => {
     let lastY = 0;
@@ -47,21 +38,9 @@ export default function Navbar({ title }) {
       return;
     }
 
-    const token = localStorage.getItem("token");
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
     const loadProfileAvatar = async () => {
       try {
-        const response = await fetch(`/api/profile/${currentUserId}`, {
-          headers,
-        });
-
-        if (!response.ok) {
-          if (isMounted) setAvatarUrl("");
-          return;
-        }
-
-        const profile = await response.json();
+        const profile = await getProfileByUserId(currentUserId);
         if (isMounted) {
           setAvatarUrl(profile?.profilePicture || "");
         }

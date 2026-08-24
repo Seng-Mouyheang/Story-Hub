@@ -1,7 +1,13 @@
-export const normalizeId = (value) => String(value || "").trim();
+export const normalizeId = (value) => {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    if (typeof value.$oid === "string") return value.$oid;
+    if (typeof value.toString === "function") return value.toString();
+  }
 
-export const parseResponse = async (response) =>
-  response.json().catch(() => ({}));
+  return String(value);
+};
 
 export const formatCount = (value) => {
   if (value == null || Number.isNaN(Number(value))) {
@@ -79,50 +85,31 @@ export const getRelativeTime = (dateString) => {
   return `${diffYears} year${diffYears > 1 ? "s" : ""} ago`;
 };
 
-export const CONFESSION_FEED_LIMIT = 8;
-export const CONFESSION_CONTENT_PREVIEW_LIMIT = 280;
+export const createEmptyRepliesState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  loadingMore: false,
+  error: "",
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+});
 
-export const extractTagsFromContent = (content) => {
-  const matches = content.match(/#\w+/g) || [];
-  const uniqueByLowercase = new Map();
-
-  for (const rawTag of matches) {
-    const cleanedTag = rawTag.slice(1).trim();
-
-    if (!cleanedTag) {
-      continue;
-    }
-
-    const normalizedKey = cleanedTag.toLowerCase();
-
-    if (!uniqueByLowercase.has(normalizedKey)) {
-      uniqueByLowercase.set(normalizedKey, cleanedTag);
-    }
-  }
-
-  return Array.from(uniqueByLowercase.values());
-};
-
-export const stripTagsFromContent = (content) =>
-  (content || "")
-    .replaceAll(/#\w+/g, "")
-    .replaceAll(/[ \t]{2,}/g, " ")
-    .replaceAll(/\n{3,}/g, "\n\n")
-    .trim();
-
-export const getConfessionContentPreview = (content, isExpanded) => {
-  const safeContent = content || "No confession content";
-  const isLongContent = safeContent.length > CONFESSION_CONTENT_PREVIEW_LIMIT;
-
-  if (!isLongContent || isExpanded) {
-    return {
-      visibleContent: safeContent,
-      isLongContent,
-    };
-  }
-
-  return {
-    visibleContent: `${safeContent.slice(0, CONFESSION_CONTENT_PREVIEW_LIMIT)}...`,
-    isLongContent,
-  };
-};
+export const createEmptyCommentState = () => ({
+  open: false,
+  loaded: false,
+  loading: false,
+  loadingMore: false,
+  error: "",
+  items: [],
+  nextCursor: null,
+  hasMore: false,
+  input: "",
+  originalInput: "",
+  editingCommentId: null,
+  replyingToCommentId: null,
+  replyingToAuthor: "",
+  submitting: false,
+  repliesByComment: {},
+});
