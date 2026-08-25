@@ -9,6 +9,7 @@ const {
   userIdParamSchema,
   followListQuerySchema,
   accountSearchQuerySchema,
+  deleteUploadSchema,
 } = require("../validators/profileValidator");
 
 /* ============================= */
@@ -56,6 +57,13 @@ router.put(
   authenticate,
   validate(updateProfileSchema),
   profileController.updateProfile,
+);
+
+router.delete(
+  "/uploads",
+  authenticate,
+  validate(deleteUploadSchema),
+  profileController.deleteUpload,
 );
 
 router.post(

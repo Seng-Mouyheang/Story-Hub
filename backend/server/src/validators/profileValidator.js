@@ -49,9 +49,14 @@ const accountSearchQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(50).default(20),
 });
 
+const deleteUploadSchema = Joi.object({
+  customId: Joi.string().uuid().required(),
+});
+
 module.exports = {
   updateProfileSchema,
   userIdParamSchema,
   followListQuerySchema,
   accountSearchQuerySchema,
+  deleteUploadSchema,
 };

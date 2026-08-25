@@ -1,14 +1,17 @@
 const path = require("node:path");
 require("dotenv").config({ path: path.resolve(__dirname, "../../../.env") });
 
+const crypto = require("node:crypto");
 const {
   createRouteHandler,
   createUploadthing,
+  UTFiles,
 } = require("uploadthing/express");
 const { UploadThingError } = require("uploadthing/server");
 const authService = require("../services/authService");
 const revokedTokenModel = require("../models/auth/revokedTokenModel");
 const userModel = require("../models/auth/userModel");
+const uploadOwnershipModel = require("../models/profile/uploadOwnershipModel");
 
 const f = createUploadthing();
 
@@ -60,6 +63,28 @@ const requireAuthenticatedUser = async (req) => {
   }
 };
 
+/**
+ * Mints a per-file customId and records its ownership *before* any bytes
+ * are uploaded — this is the only trustworthy place to establish ownership,
+ * since it runs inside our own authenticated request handling rather than
+ * depending on uploadthing's onUploadComplete webhook (unreachable from a
+ * non-public backend, e.g. local dev) or a client-asserted claim made after
+ * the fact.
+ */
+const authenticateAndTagFiles = async ({ req, files }) => {
+  const { userId } = await requireAuthenticatedUser(req);
+
+  const taggedFiles = await Promise.all(
+    files.map(async (file) => {
+      const customId = crypto.randomUUID();
+      await uploadOwnershipModel.recordUpload(customId, userId);
+      return { ...file, customId };
+    }),
+  );
+
+  return { userId, [UTFiles]: taggedFiles };
+};
+
 const uploadRouter = {
   profileImage: f({
     image: {
@@ -67,7 +92,7 @@ const uploadRouter = {
       maxFileSize: "4MB",
     },
   })
-    .middleware(async ({ req }) => requireAuthenticatedUser(req))
+    .middleware(authenticateAndTagFiles)
     .onUploadComplete(async ({ file, metadata }) => ({
       uploadedBy: metadata.userId,
       ufsUrl: file.ufsUrl,
@@ -79,7 +104,7 @@ const uploadRouter = {
       maxFileSize: "8MB",
     },
   })
-    .middleware(async ({ req }) => requireAuthenticatedUser(req))
+    .middleware(authenticateAndTagFiles)
     .onUploadComplete(async ({ file, metadata }) => ({
       uploadedBy: metadata.userId,
       ufsUrl: file.ufsUrl,

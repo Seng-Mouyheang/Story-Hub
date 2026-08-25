@@ -8,8 +8,11 @@ import GenrePicker from "../components/GenrePicker";
 import {
   getProfileByUserId,
   updateProfile,
-  uploadProfileImage,
-  uploadCoverImage,
+  prepareProfileImage,
+  prepareCoverImage,
+  uploadPreparedProfileImage,
+  uploadPreparedCoverImage,
+  deleteUploadedImage,
 } from "../api/profile";
 import { apiUrl } from "../lib/apiUrl";
 import { useCurrentUser } from "../lib/useCurrentUser";
@@ -75,8 +78,12 @@ export default function EditProfile() {
   const [selectedInterest, setSelectedInterest] = useState("");
   const [profilePicture, setProfilePicture] = useState("");
   const [coverImage, setCoverImage] = useState("");
+  const [pendingProfileFile, setPendingProfileFile] = useState(null);
+  const [pendingCoverFile, setPendingCoverFile] = useState(null);
+  const [profilePreviewUrl, setProfilePreviewUrl] = useState("");
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [uploadingField, setUploadingField] = useState("");
+  const [preparingField, setPreparingField] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [uploadDebug, setUploadDebug] = useState(null);
   const navigate = useNavigate();
@@ -121,6 +128,27 @@ export default function EditProfile() {
     };
   }, [currentUser, currentUserId, navigate]);
 
+  // Images are only uploaded to storage on Save (see handleSave) — until
+  // then a picked file just becomes a local object URL for preview, so
+  // there's nothing remote to clean up here, only the object URL itself.
+  // Kept as two separate effects so replacing one preview doesn't revoke
+  // the other.
+  useEffect(() => {
+    return () => {
+      if (profilePreviewUrl) {
+        URL.revokeObjectURL(profilePreviewUrl);
+      }
+    };
+  }, [profilePreviewUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (coverPreviewUrl) {
+        URL.revokeObjectURL(coverPreviewUrl);
+      }
+    };
+  }, [coverPreviewUrl]);
+
   const formatFileSize = (bytes) => {
     if (!Number.isFinite(bytes) || bytes <= 0) {
       return "0 B";
@@ -136,9 +164,12 @@ export default function EditProfile() {
     return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
   };
 
-  const handleImageUpload = async (file, fieldName) => {
+  // Only validates + compresses the picked file locally and swaps in a
+  // local preview — nothing is uploaded to storage until Save, so picking
+  // a file (even repeatedly) never touches uploadthing on its own.
+  const handleImageSelect = async (file, fieldName) => {
     setErrorMessage("");
-    setUploadingField(fieldName);
+    setPreparingField(fieldName);
     setUploadDebug({
       fieldName,
       fileName: file?.name || "unknown",
@@ -149,50 +180,81 @@ export default function EditProfile() {
     });
 
     try {
-      const uploadedUrl =
+      const preparedFile =
         fieldName === "profile"
-          ? await uploadProfileImage(file)
-          : await uploadCoverImage(file);
+          ? await prepareProfileImage(file)
+          : await prepareCoverImage(file);
+      const previewUrl = URL.createObjectURL(preparedFile);
 
       if (fieldName === "profile") {
-        setProfilePicture(uploadedUrl);
+        setPendingProfileFile(preparedFile);
+        setProfilePreviewUrl(previewUrl);
       } else {
-        setCoverImage(uploadedUrl);
+        setPendingCoverFile(preparedFile);
+        setCoverPreviewUrl(previewUrl);
       }
 
       setUploadDebug(null);
     } catch (error) {
-      console.error(`Upload failed for ${fieldName}:`, error);
+      console.error(`Failed to prepare ${fieldName} image:`, error);
       setErrorMessage(
         error instanceof Error && error.message
           ? error.message
-          : `Failed to upload ${fieldName} image.`,
+          : `Failed to process ${fieldName} image.`,
       );
     } finally {
-      setUploadingField("");
+      setPreparingField("");
     }
   };
 
   const handleSave = async () => {
     setErrorMessage("");
-
-    // Profile picture is optional during initial setup
-
     setIsSaving(true);
 
+    // { url, customId } once uploaded — kept around so a later failure in
+    // this same save can clean the upload back up via its customId.
+    let uploadedProfile = null;
+    let uploadedCover = null;
+
     try {
+      let nextProfilePicture = profilePicture;
+      let nextCoverImage = coverImage;
+
+      if (pendingProfileFile) {
+        uploadedProfile = await uploadPreparedProfileImage(pendingProfileFile);
+        nextProfilePicture = uploadedProfile.url;
+      }
+
+      if (pendingCoverFile) {
+        uploadedCover = await uploadPreparedCoverImage(pendingCoverFile);
+        nextCoverImage = uploadedCover.url;
+      }
+
       await updateProfile({
         displayName: name.trim(),
         bio,
         interest: normalizeInterests(interests),
-        profilePicture,
-        coverImage,
+        profilePicture: nextProfilePicture,
+        coverImage: nextCoverImage,
       });
+
+      // The backend itself deletes whichever previously-saved images this
+      // update just replaced, using the value already in the user's own
+      // profile record — nothing to do here for that.
 
       localStorage.removeItem("needsProfileSetup");
 
       navigate("/profile");
     } catch (error) {
+      // If one image upload succeeded but a later step failed (e.g. the
+      // second upload, or updateProfile itself), don't leave the
+      // succeeded upload orphaned — the user can just retry.
+      if (uploadedProfile) {
+        deleteUploadedImage(uploadedProfile.customId);
+      }
+      if (uploadedCover) {
+        deleteUploadedImage(uploadedCover.customId);
+      }
       setErrorMessage(error?.message || "Failed to save profile.");
     } finally {
       setIsSaving(false);
@@ -235,7 +297,8 @@ export default function EditProfile() {
     );
   };
 
-  const previewProfileImage = profilePicture || null;
+  const previewProfileImage = profilePreviewUrl || profilePicture || null;
+  const previewCoverImage = coverPreviewUrl || coverImage || null;
 
   return (
     <div className="flex h-screen bg-white text-gray-900 overflow-hidden">
@@ -254,9 +317,9 @@ export default function EditProfile() {
                 <div className="space-y-6">
                   <div className="space-y-3">
                     <div className="h-40 rounded-3xl overflow-hidden border border-slate-200 bg-slate-100">
-                      {coverImage ? (
+                      {previewCoverImage ? (
                         <img
-                          src={coverImage}
+                          src={previewCoverImage}
                           alt="Cover"
                           className="w-full h-full object-cover"
                         />
@@ -271,11 +334,11 @@ export default function EditProfile() {
                       <button
                         type="button"
                         onClick={() => coverInputRef.current?.click()}
-                        disabled={uploadingField === "cover"}
+                        disabled={preparingField === "cover"}
                         className="px-4 py-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60"
                       >
-                        {uploadingField === "cover"
-                          ? "Uploading..."
+                        {preparingField === "cover"
+                          ? "Processing..."
                           : "Upload Cover"}
                       </button>
                     </div>
@@ -287,7 +350,7 @@ export default function EditProfile() {
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) {
-                          handleImageUpload(file, "cover");
+                          handleImageSelect(file, "cover");
                         }
                         event.target.value = "";
                       }}
@@ -321,11 +384,11 @@ export default function EditProfile() {
                       <button
                         type="button"
                         onClick={() => profileInputRef.current?.click()}
-                        disabled={uploadingField === "profile"}
+                        disabled={preparingField === "profile"}
                         className="mt-3 px-4 py-2 rounded-xl bg-slate-100 text-sm font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-60"
                       >
-                        {uploadingField === "profile"
-                          ? "Uploading..."
+                        {preparingField === "profile"
+                          ? "Processing..."
                           : "Upload Profile"}
                       </button>
                     </div>
@@ -337,7 +400,7 @@ export default function EditProfile() {
                       onChange={(event) => {
                         const file = event.target.files?.[0];
                         if (file) {
-                          handleImageUpload(file, "profile");
+                          handleImageSelect(file, "profile");
                         }
                         event.target.value = "";
                       }}
@@ -456,7 +519,7 @@ export default function EditProfile() {
                     )}
                     <button
                       onClick={handleSave}
-                      disabled={isSaving || Boolean(uploadingField)}
+                      disabled={isSaving || Boolean(preparingField)}
                       className="flex-1 py-3 bg-rose-500 text-white text-sm font-semibold rounded-xl hover:bg-rose-600 shadow-sm shadow-rose-200 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {isSaving ? "Saving..." : "Save Changes"}
