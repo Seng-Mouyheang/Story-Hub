@@ -2,6 +2,9 @@
   "name": "story-hub",
   "private": true,
   "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev:frontend": "pnpm --filter frontend dev",
     "dev:backend": "pnpm --filter backend dev",
