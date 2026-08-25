@@ -169,7 +169,9 @@ export function useStoryFeed({
 
   useEffect(() => {
     const controller = new AbortController();
-    loadStories(controller.signal, null);
+    (async () => {
+      await loadStories(controller.signal, null);
+    })();
 
     return () => controller.abort();
   }, [loadStories]);
@@ -225,7 +227,14 @@ export function useStoryFeed({
         observer.unobserve(currentEndOfFeedRef);
       }
     };
-  }, [cursor, hasMore, handleRefreshFeed, loadStories, posts.length, showToast]);
+  }, [
+    cursor,
+    hasMore,
+    handleRefreshFeed,
+    loadStories,
+    posts.length,
+    showToast,
+  ]);
 
   return {
     posts,

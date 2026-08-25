@@ -1,0 +1,26 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: frontend lint
+      root: "frontend/"
+      glob: "*.{js,jsx}"
+      run: pnpm --filter frontend exec eslint --fix {staged_files}
+      stage_fixed: true
+
+    - name: frontend format
+      root: "frontend/"
+      glob: "*.{js,jsx,json,css,md}"
+      run: pnpm --filter frontend exec prettier --write {staged_files}
+      stage_fixed: true
+
+    - name: backend lint
+      root: "backend/"
+      glob: "*.js"
+      run: pnpm --filter backend exec eslint --fix {staged_files}
+      stage_fixed: true
+
+    - name: backend format
+      root: "backend/"
+      glob: "*.{js,json,md}"
+      run: pnpm --filter backend exec prettier --write {staged_files}
+      stage_fixed: true

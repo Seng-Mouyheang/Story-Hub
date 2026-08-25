@@ -1,0 +1,8 @@
+packages:
+  - "frontend"
+  - "backend"
+allowBuilds:
+  bcrypt: true
+  esbuild: true
+  lefthook: true
+  msgpackr-extract: true

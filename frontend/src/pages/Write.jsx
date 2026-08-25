@@ -96,15 +96,15 @@ export default function Write() {
       return;
     }
 
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setErrorMessage("Unauthorized. Please log in first.");
-      return;
-    }
-
     let isMounted = true;
 
     const loadStoryForEdit = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setErrorMessage("Unauthorized. Please log in first.");
+        return;
+      }
+
       setIsLoadingStory(true);
       setErrorMessage("");
 

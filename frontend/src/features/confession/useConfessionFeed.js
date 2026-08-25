@@ -72,7 +72,9 @@ export function useConfessionFeed({ showError, showToast, hideToast }) {
   }, [hideToast, loadConfessions]);
 
   useEffect(() => {
-    loadConfessions().catch(() => {});
+    (async () => {
+      await loadConfessions().catch(() => {});
+    })();
   }, [loadConfessions]);
 
   useEffect(() => {
