@@ -9,6 +9,7 @@ const { UploadThingError } = require("uploadthing/server");
 const authService = require("../services/authService");
 const revokedTokenModel = require("../models/auth/revokedTokenModel");
 const userModel = require("../models/auth/userModel");
+const uploadOwnershipModel = require("../models/profile/uploadOwnershipModel");
 
 const f = createUploadthing();
 
@@ -68,10 +69,10 @@ const uploadRouter = {
     },
   })
     .middleware(async ({ req }) => requireAuthenticatedUser(req))
-    .onUploadComplete(async ({ file, metadata }) => ({
-      uploadedBy: metadata.userId,
-      ufsUrl: file.ufsUrl,
-    })),
+    .onUploadComplete(async ({ file, metadata }) => {
+      await uploadOwnershipModel.recordUpload(file.key, metadata.userId);
+      return { uploadedBy: metadata.userId, ufsUrl: file.ufsUrl };
+    }),
 
   coverImage: f({
     image: {
@@ -80,10 +81,10 @@ const uploadRouter = {
     },
   })
     .middleware(async ({ req }) => requireAuthenticatedUser(req))
-    .onUploadComplete(async ({ file, metadata }) => ({
-      uploadedBy: metadata.userId,
-      ufsUrl: file.ufsUrl,
-    })),
+    .onUploadComplete(async ({ file, metadata }) => {
+      await uploadOwnershipModel.recordUpload(file.key, metadata.userId);
+      return { uploadedBy: metadata.userId, ufsUrl: file.ufsUrl };
+    }),
 };
 
 module.exports = createRouteHandler({

@@ -2,6 +2,10 @@ const profileModel = require("../../models/profile/profileModel");
 const { connectToDatabase } = require("../../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
 const { calculateUserStats } = require("../../services/userStatsService");
+const {
+  confirmUploadOwnership,
+  deleteUploadedFileByUrl,
+} = require("../../services/uploadThingService");
 
 const getProfile = async (req, res) => {
   try {
@@ -86,9 +90,52 @@ const getUserStats = async (req, res) => {
   }
 };
 
+/**
+ * Confirms the requesting user owns a file they just uploaded to
+ * uploadthing, so a later delete request for it can be authorized. The
+ * frontend calls this immediately after every successful upload.
+ */
+const confirmUpload = async (req, res) => {
+  try {
+    await confirmUploadOwnership(req.body.url, req.user.userId);
+    res.json({ message: "Upload confirmed." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to confirm upload." });
+  }
+};
+
+/**
+ * Delete a previously uploaded profile/cover image that was never saved to
+ * the user's profile (e.g. the user picked a new image before saving,
+ * replacing an in-progress upload). Only accepts uploadthing URLs.
+ */
+const deleteUpload = async (req, res) => {
+  try {
+    const result = await deleteUploadedFileByUrl(req.body.url, req.user.userId);
+
+    if (!result.deleted) {
+      if (result.reason === "forbidden") {
+        return res
+          .status(403)
+          .json({ message: "You don't have permission to delete this file." });
+      }
+
+      return res.status(400).json({ message: "Invalid upload URL." });
+    }
+
+    res.json({ message: "Upload deleted." });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to delete upload." });
+  }
+};
+
 module.exports = {
   getProfile,
   searchAccounts,
   updateProfile,
   getUserStats,
+  confirmUpload,
+  deleteUpload,
 };

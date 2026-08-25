@@ -1,5 +1,11 @@
 export { getProfileByUserId, updateProfile } from "./profileApi";
-export { uploadProfileImage, uploadCoverImage } from "./uploadApi";
+export {
+  prepareProfileImage,
+  prepareCoverImage,
+  uploadPreparedProfileImage,
+  uploadPreparedCoverImage,
+  deleteUploadedImage,
+} from "./uploadApi";
 export {
   getUserStats,
   searchAccounts,

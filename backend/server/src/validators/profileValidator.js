@@ -49,9 +49,17 @@ const accountSearchQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(50).default(20),
 });
 
+const uploadUrlSchema = Joi.object({
+  url: Joi.string()
+    .trim()
+    .uri({ scheme: ["http", "https"] })
+    .required(),
+});
+
 module.exports = {
   updateProfileSchema,
   userIdParamSchema,
   followListQuerySchema,
   accountSearchQuerySchema,
+  uploadUrlSchema,
 };
