@@ -93,7 +93,9 @@ export function useBookmarkedStories({
   }, []);
 
   useEffect(() => {
-    loadBookmarkedStories();
+    (async () => {
+      await loadBookmarkedStories();
+    })();
   }, [loadBookmarkedStories]);
 
   const handleToggleExpandedStory = useCallback((storyId) => {

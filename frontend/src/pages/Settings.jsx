@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -32,14 +32,6 @@ export default function Settings() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteFieldError, setDeleteFieldError] = useState("");
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  // Ensure no password values persist when opening the Settings page
-  useEffect(() => {
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setDeletePassword("");
-  }, []);
 
   const handleChangePassword = async () => {
     setError("");

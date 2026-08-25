@@ -15,7 +15,7 @@ export default function SearchBar({ onResult }) {
   const navigate = useNavigate();
 
   // Separate state for mobile and desktop
-  const [mobileHistory, setMobileHistory] = useState([]);
+  const [mobileHistory, setMobileHistory] = useState(() => loadSearchHistory());
   const [mobileActive, setMobileActive] = useState(false);
   const [mobileQuery, setMobileQuery] = useState("");
   const [mobileResults, setMobileResults] = useState(null);
@@ -31,19 +31,12 @@ export default function SearchBar({ onResult }) {
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState(() => loadSearchHistory());
   const [showDesktopDropdown, setShowDesktopDropdown] = useState(false);
   const inputRef = useRef();
   const timeoutRef = useRef();
   const abortRef = useRef(null);
   const desktopContainerRef = useRef(null);
-
-  // Load search history on mount
-  useEffect(() => {
-    const loaded = loadSearchHistory();
-    setHistory(loaded);
-    setMobileHistory(loaded);
-  }, []);
 
   // Click-outside handler for desktop dropdown
   useEffect(() => {
@@ -61,6 +54,14 @@ export default function SearchBar({ onResult }) {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const closeMobileSearch = () => {
+    setMobileActive(false);
+    setMobileQuery("");
+    setMobileResults(null);
+    setMobileDropdown(false);
+    setMobileError("");
+  };
 
   // Click-outside handler for mobile overlay
   useEffect(() => {
@@ -99,15 +100,19 @@ export default function SearchBar({ onResult }) {
       if (mobileTimeoutRef.current) clearTimeout(mobileTimeoutRef.current);
       mobileAbortRef.current?.abort();
       mobileAbortRef.current = null;
-      setMobileResults(null);
-      setMobileDropdown(false);
-      setMobileError("");
-      setMobileLoading(false);
+      queueMicrotask(() => {
+        setMobileResults(null);
+        setMobileDropdown(false);
+        setMobileError("");
+        setMobileLoading(false);
+      });
       return;
     }
 
-    setMobileLoading(true);
-    setMobileError("");
+    queueMicrotask(() => {
+      setMobileLoading(true);
+      setMobileError("");
+    });
     if (mobileTimeoutRef.current) clearTimeout(mobileTimeoutRef.current);
     mobileAbortRef.current?.abort();
     const controller = new AbortController();
@@ -156,14 +161,18 @@ export default function SearchBar({ onResult }) {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       abortRef.current?.abort();
       abortRef.current = null;
-      setResults(null);
-      setError("");
-      setLoading(false);
+      queueMicrotask(() => {
+        setResults(null);
+        setError("");
+        setLoading(false);
+      });
       return;
     }
 
-    setLoading(true);
-    setError("");
+    queueMicrotask(() => {
+      setLoading(true);
+      setError("");
+    });
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -210,14 +219,6 @@ export default function SearchBar({ onResult }) {
     setTimeout(() => {
       mobileInputRef.current?.focus();
     }, 100);
-  };
-
-  const closeMobileSearch = () => {
-    setMobileActive(false);
-    setMobileQuery("");
-    setMobileResults(null);
-    setMobileDropdown(false);
-    setMobileError("");
   };
 
   const searchFromQuery = async (q, { mobile = false } = {}) => {

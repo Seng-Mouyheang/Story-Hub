@@ -2,21 +2,25 @@ import { useEffect, useState } from "react";
 import { followUser, getFollowStatus, unfollowUser } from "../../api/profile";
 import { normalizeId } from "../../lib/format";
 
-export function useFollowViewedUser({ viewedUserId, currentUserId, isOwnProfile }) {
+export function useFollowViewedUser({
+  viewedUserId,
+  currentUserId,
+  isOwnProfile,
+}) {
   const [isFollowingViewedUser, setIsFollowingViewedUser] = useState(false);
   const [isLoadingFollowStatus, setIsLoadingFollowStatus] = useState(false);
   const [isTogglingFollow, setIsTogglingFollow] = useState(false);
 
   useEffect(() => {
-    if (!viewedUserId || isOwnProfile) {
-      setIsFollowingViewedUser(false);
-      setIsLoadingFollowStatus(false);
-      return;
-    }
-
     let isMounted = true;
 
-    const loadFollowStatus = async () => {
+    (async () => {
+      if (!viewedUserId || isOwnProfile) {
+        setIsFollowingViewedUser(false);
+        setIsLoadingFollowStatus(false);
+        return;
+      }
+
       setIsLoadingFollowStatus(true);
 
       try {
@@ -31,9 +35,7 @@ export function useFollowViewedUser({ viewedUserId, currentUserId, isOwnProfile 
           setIsLoadingFollowStatus(false);
         }
       }
-    };
-
-    loadFollowStatus();
+    })();
 
     return () => {
       isMounted = false;

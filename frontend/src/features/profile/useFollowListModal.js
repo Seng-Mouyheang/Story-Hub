@@ -20,7 +20,11 @@ const isValidUserId = (value) => {
   return objectIdRegex.test(id) || uuidRegex.test(id);
 };
 
-export function useFollowListModal({ viewedUserId, currentUserId, setProfileData }) {
+export function useFollowListModal({
+  viewedUserId,
+  currentUserId,
+  setProfileData,
+}) {
   const [isFollowListOpen, setIsFollowListOpen] = useState(false);
   const [activeFollowListType, setActiveFollowListType] = useState("followers");
   const [followListItems, setFollowListItems] = useState([]);
@@ -29,6 +33,17 @@ export function useFollowListModal({ viewedUserId, currentUserId, setProfileData
   const [isLoadingFollowList, setIsLoadingFollowList] = useState(false);
   const [followListError, setFollowListError] = useState("");
   const [listActionBusyByUserId, setListActionBusyByUserId] = useState({});
+  const [prevViewedUserId, setPrevViewedUserId] = useState(viewedUserId);
+
+  if (viewedUserId !== prevViewedUserId) {
+    setPrevViewedUserId(viewedUserId);
+    setIsFollowListOpen(false);
+    setFollowListItems([]);
+    setFollowListCursor(null);
+    setFollowListHasMore(false);
+    setFollowListError("");
+    setListActionBusyByUserId({});
+  }
 
   const buildFollowListAccounts = useCallback(
     async (userIds) => {
@@ -272,17 +287,10 @@ export function useFollowListModal({ viewedUserId, currentUserId, setProfileData
       return;
     }
 
-    loadFollowList({ listType: activeFollowListType, reset: true });
+    (async () => {
+      await loadFollowList({ listType: activeFollowListType, reset: true });
+    })();
   }, [activeFollowListType, isFollowListOpen, loadFollowList, viewedUserId]);
-
-  useEffect(() => {
-    setIsFollowListOpen(false);
-    setFollowListItems([]);
-    setFollowListCursor(null);
-    setFollowListHasMore(false);
-    setFollowListError("");
-    setListActionBusyByUserId({});
-  }, [viewedUserId]);
 
   useEffect(() => {
     const handleFollowUpdated = (event) => {

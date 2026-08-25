@@ -1,5 +1,18 @@
 {
-  "dependencies": {
-    "helmet": "^8.1.0"
+  "name": "story-hub",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev:frontend": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "build:frontend": "pnpm --filter frontend build",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format"
+  },
+  "devDependencies": {
+    "lefthook": "^2.1.10"
   }
 }

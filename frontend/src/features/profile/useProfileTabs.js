@@ -14,12 +14,14 @@ export function useProfileTabs({ isOwnProfile, viewedUserId }) {
   const [savedItems, setSavedItems] = useState([]);
   const [activityItems, setActivityItems] = useState([]);
   const [isLoadingTabs, setIsLoadingTabs] = useState(true);
+  const [prevIsOwnProfile, setPrevIsOwnProfile] = useState(isOwnProfile);
 
-  useEffect(() => {
+  if (isOwnProfile !== prevIsOwnProfile) {
+    setPrevIsOwnProfile(isOwnProfile);
     if (!isOwnProfile) {
       setActiveTab("Stories");
     }
-  }, [isOwnProfile]);
+  }
 
   useEffect(() => {
     if (!viewedUserId) {

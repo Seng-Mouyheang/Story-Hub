@@ -263,21 +263,21 @@ export function useConfessionCrud({
   ]);
 
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(location.search || "");
-      const editId =
-        params.get("editId") || location.state?.editingConfessionId;
-      if (editId) {
-        setEditingConfessionId(editId);
-        const existing = confessionFeed.find(
-          (c) => String(c._id || c.id) === String(editId),
-        );
-        if (existing) {
-          setEditConfessionContent(existing.content || "");
-          setEditConfessionIsAnonymous(existing.isAnonymous ?? true);
-          setEditConfessionVisibility(existing.visibility || "public");
-        } else {
-          (async () => {
+    (async () => {
+      try {
+        const params = new URLSearchParams(location.search || "");
+        const editId =
+          params.get("editId") || location.state?.editingConfessionId;
+        if (editId) {
+          setEditingConfessionId(editId);
+          const existing = confessionFeed.find(
+            (c) => String(c._id || c.id) === String(editId),
+          );
+          if (existing) {
+            setEditConfessionContent(existing.content || "");
+            setEditConfessionIsAnonymous(existing.isAnonymous ?? true);
+            setEditConfessionVisibility(existing.visibility || "public");
+          } else {
             try {
               const res = await fetch(`/api/confessions/${editId}`);
               const data = await parseResponse(res);
@@ -290,12 +290,12 @@ export function useConfessionCrud({
             } catch (err) {
               console.error("Failed to load confession for editing", err);
             }
-          })();
+          }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
 

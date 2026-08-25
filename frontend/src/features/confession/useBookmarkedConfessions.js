@@ -18,25 +18,19 @@ export function useBookmarkedConfessions({
   const [confessionError, setConfessionError] = useState("");
   const [expandedConfessionIds, setExpandedConfessionIds] = useState({});
   const [menuConfessionId, setMenuConfessionId] = useState("");
-  const [deleteTargetConfessionId, setDeleteTargetConfessionId] =
-    useState("");
+  const [deleteTargetConfessionId, setDeleteTargetConfessionId] = useState("");
   const [isDeletingConfession, setIsDeletingConfession] = useState(false);
 
   const [pressedLikeId, setPressedLikeId] = useState(null);
   const [pressedBookmarkId, setPressedBookmarkId] = useState(null);
   const [pendingLikeIds, setPendingLikeIds] = useState(() => new Set());
-  const [pendingBookmarkIds, setPendingBookmarkIds] = useState(
-    () => new Set(),
-  );
+  const [pendingBookmarkIds, setPendingBookmarkIds] = useState(() => new Set());
   const pendingLikeIdsRef = useRef(new Set());
   const pendingBookmarkIdsRef = useRef(new Set());
   const pressedLikeTimerRef = useRef(null);
   const pressedBookmarkTimerRef = useRef(null);
 
   const loadBookmarkedConfessions = useCallback(async () => {
-    setConfessionError("");
-    setIsLoadingConfessions(true);
-
     try {
       const payload = await getBookmarkedConfessions({ limit: 20 });
       const data = Array.isArray(payload?.data) ? payload.data : [];
@@ -70,7 +64,9 @@ export function useBookmarkedConfessions({
   }, []);
 
   useEffect(() => {
-    loadBookmarkedConfessions();
+    (async () => {
+      await loadBookmarkedConfessions();
+    })();
   }, [loadBookmarkedConfessions]);
 
   const handleToggleExpandedConfession = useCallback((confessionId) => {

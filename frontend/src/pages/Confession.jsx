@@ -113,14 +113,12 @@ export default function Confession() {
   React.useEffect(() => {
     let isMounted = true;
 
-    if (!currentUserId) {
-      setCurrentUserProfilePicture("");
-      return () => {
-        isMounted = false;
-      };
-    }
+    (async () => {
+      if (!currentUserId) {
+        setCurrentUserProfilePicture("");
+        return;
+      }
 
-    const loadCurrentUserProfile = async () => {
       try {
         const profilePayload = await getProfileByUserId(currentUserId);
         if (isMounted) {
@@ -131,9 +129,7 @@ export default function Confession() {
           setCurrentUserProfilePicture("");
         }
       }
-    };
-
-    loadCurrentUserProfile();
+    })();
 
     return () => {
       isMounted = false;
@@ -210,8 +206,13 @@ export default function Confession() {
     dismissToast,
   });
 
-  const { pressedLikeId, pressedBookmarkId, gestureLikeBurstId, handleToggleLike, handleToggleBookmark } =
-    useConfessionLikeBookmark({ setConfessionFeed, showError, showSuccess });
+  const {
+    pressedLikeId,
+    pressedBookmarkId,
+    gestureLikeBurstId,
+    handleToggleLike,
+    handleToggleBookmark,
+  } = useConfessionLikeBookmark({ setConfessionFeed, showError, showSuccess });
 
   const followableAuthorIds = React.useMemo(() => {
     const authorIds = confessionFeed
