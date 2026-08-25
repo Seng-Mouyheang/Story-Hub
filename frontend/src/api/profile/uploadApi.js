@@ -46,36 +46,20 @@ const prepareFile = async (
   return compressedFile;
 };
 
-const confirmUploadOwnership = async (url) => {
-  const token = localStorage.getItem("token");
-
-  if (!token) {
-    return;
-  }
-
-  try {
-    await fetch("/api/profile/uploads", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ url }),
-    });
-  } catch {
-    // Best-effort — if this fails, a later delete of this file will just
-    // be denied rather than something breaking now.
-  }
-};
-
+/**
+ * Uploads a prepared file and returns both the file's public URL (for
+ * display/saving) and its `customId` (for authorizing a later delete if
+ * this upload gets replaced or discarded before being saved — see
+ * deleteUploadedImage). The customId is bound to this user server-side at
+ * upload-request time, before any bytes are sent; the frontend never
+ * asserts ownership itself.
+ */
 const uploadPreparedFile = async (file, routeName) => {
   const token = localStorage.getItem("token");
 
   if (!token) {
     throw new Error("You need to log in again before uploading images.");
   }
-
-  let uploadedUrl;
 
   try {
     const [result] = await uploadFiles(routeName, {
@@ -85,11 +69,13 @@ const uploadPreparedFile = async (file, routeName) => {
       },
     });
 
-    uploadedUrl = result?.ufsUrl || "";
+    const url = result?.ufsUrl || "";
 
-    if (!uploadedUrl) {
+    if (!url) {
       throw new Error("Upload completed without a file URL");
     }
+
+    return { url, customId: result?.customId || null };
   } catch (error) {
     const message =
       error instanceof Error && error.message
@@ -97,14 +83,6 @@ const uploadPreparedFile = async (file, routeName) => {
         : "Upload failed. Please try again.";
     throw new Error(message);
   }
-
-  // Record ownership ourselves rather than relying on uploadthing's
-  // onUploadComplete webhook — that requires a publicly reachable backend
-  // (never true in local dev, not guaranteed promptly even in production),
-  // whereas this call is authenticated and synchronous.
-  await confirmUploadOwnership(uploadedUrl);
-
-  return uploadedUrl;
 };
 
 export async function prepareProfileImage(file) {
@@ -134,11 +112,13 @@ export async function uploadPreparedCoverImage(file) {
 }
 
 /**
- * Deletes an uploadthing file by its URL. Used to clean up the previously
- * saved image once it's been successfully replaced by a new one.
+ * Deletes an in-progress (never saved) upload by its customId. Only valid
+ * for uploads that haven't been saved to a profile yet — once an image is
+ * saved, replacing it is cleaned up automatically by the backend itself
+ * (see profileController.updateProfile), not through this endpoint.
  */
-export async function deleteUploadedImage(url) {
-  if (!url) {
+export async function deleteUploadedImage(customId) {
+  if (!customId) {
     return;
   }
 
@@ -155,7 +135,7 @@ export async function deleteUploadedImage(url) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ customId }),
     });
   } catch {
     // Best-effort cleanup — a failed delete just leaves an orphaned file,

@@ -211,22 +211,23 @@ export default function EditProfile() {
     setErrorMessage("");
     setIsSaving(true);
 
-    let uploadedProfileUrl = null;
-    let uploadedCoverUrl = null;
+    // { url, customId } once uploaded — kept around so a later failure in
+    // this same save can clean the upload back up via its customId.
+    let uploadedProfile = null;
+    let uploadedCover = null;
 
     try {
       let nextProfilePicture = profilePicture;
       let nextCoverImage = coverImage;
 
       if (pendingProfileFile) {
-        uploadedProfileUrl =
-          await uploadPreparedProfileImage(pendingProfileFile);
-        nextProfilePicture = uploadedProfileUrl;
+        uploadedProfile = await uploadPreparedProfileImage(pendingProfileFile);
+        nextProfilePicture = uploadedProfile.url;
       }
 
       if (pendingCoverFile) {
-        uploadedCoverUrl = await uploadPreparedCoverImage(pendingCoverFile);
-        nextCoverImage = uploadedCoverUrl;
+        uploadedCover = await uploadPreparedCoverImage(pendingCoverFile);
+        nextCoverImage = uploadedCover.url;
       }
 
       await updateProfile({
@@ -237,27 +238,22 @@ export default function EditProfile() {
         coverImage: nextCoverImage,
       });
 
-      // The new images are live now — clean up whichever previously-saved
-      // images they replaced.
-      if (uploadedProfileUrl && profilePicture) {
-        deleteUploadedImage(profilePicture);
-      }
-      if (uploadedCoverUrl && coverImage) {
-        deleteUploadedImage(coverImage);
-      }
+      // The backend itself deletes whichever previously-saved images this
+      // update just replaced, using the value already in the user's own
+      // profile record — nothing to do here for that.
 
       localStorage.removeItem("needsProfileSetup");
 
       navigate("/profile");
     } catch (error) {
-      // If one image upload succeeded but the save failed afterward (e.g.
-      // the second upload failed, or updateProfile itself failed), don't
-      // leave the succeeded upload orphaned — the user can just retry.
-      if (uploadedProfileUrl) {
-        deleteUploadedImage(uploadedProfileUrl);
+      // If one image upload succeeded but a later step failed (e.g. the
+      // second upload, or updateProfile itself), don't leave the
+      // succeeded upload orphaned — the user can just retry.
+      if (uploadedProfile) {
+        deleteUploadedImage(uploadedProfile.customId);
       }
-      if (uploadedCoverUrl) {
-        deleteUploadedImage(uploadedCoverUrl);
+      if (uploadedCover) {
+        deleteUploadedImage(uploadedCover.customId);
       }
       setErrorMessage(error?.message || "Failed to save profile.");
     } finally {

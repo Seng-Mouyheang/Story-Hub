@@ -378,6 +378,11 @@ const updateProfile = async (userId, profileData) => {
     { userId: userObjectId, deletedAt: null },
     { $set: updateFields },
   );
+
+  return {
+    previousProfilePicture: existingProfile.profilePicture || "",
+    previousCoverImage: existingProfile.coverImage || "",
+  };
 };
 
 const incrementFollowers = async (userId, options = {}) =>

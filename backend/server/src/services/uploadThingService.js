@@ -27,48 +27,44 @@ const extractFileKey = (url) => {
 };
 
 /**
- * Records that the requesting user owns a just-uploaded file, so a later
- * delete request for it can be authorized. Called by the frontend right
- * after a successful upload — this is the reliable path, since uploadthing's
- * own `onUploadComplete` webhook can't reach a non-publicly-reachable
- * backend (e.g. local dev) and isn't guaranteed to fire promptly even when
- * it can. First-claim-wins (see the model): this can never steal ownership
- * of a fileKey someone else already legitimately claimed.
+ * Deletes a file by a URL the *server itself* already trusts — e.g. the
+ * value just read out of the caller's own profile document before it was
+ * overwritten. No client input is trusted here; callers must only pass a
+ * URL they sourced from their own authenticated data, never from a
+ * request body.
  */
-const confirmUploadOwnership = async (url, requestingUserId) => {
+const deleteFileByTrustedUrl = async (url) => {
   const fileKey = extractFileKey(url);
 
   if (!fileKey) {
-    return { confirmed: false };
+    return;
   }
 
-  await uploadOwnershipModel.recordUpload(fileKey, requestingUserId);
-  return { confirmed: true };
+  await utapi.deleteFiles(fileKey);
 };
 
 /**
- * Deletes an uploadthing file by its URL, but only if the requesting user
- * is the one who uploaded it — otherwise any authenticated user could
- * delete another user's live profile/cover image by copying its (public)
- * URL from their profile page.
+ * Deletes a file the requesting user was granted ownership of via
+ * `customId` at upload-request time (see uploadThingRoute.js's
+ * `.middleware()`) — used for cleaning up an in-progress upload that was
+ * replaced or abandoned before ever being saved to a profile. Rejects if
+ * the requesting user isn't the one the ownership record names.
  */
-const deleteUploadedFileByUrl = async (url, requestingUserId) => {
-  const fileKey = extractFileKey(url);
-
-  if (!fileKey) {
-    return { deleted: false, reason: "invalid_url" };
+const deleteOwnedUploadByCustomId = async (customId, requestingUserId) => {
+  if (!customId) {
+    return { deleted: false, reason: "invalid_id" };
   }
 
-  const owns = await uploadOwnershipModel.isOwner(fileKey, requestingUserId);
+  const owns = await uploadOwnershipModel.isOwner(customId, requestingUserId);
 
   if (!owns) {
     return { deleted: false, reason: "forbidden" };
   }
 
-  await utapi.deleteFiles(fileKey);
-  await uploadOwnershipModel.removeRecord(fileKey);
+  await utapi.deleteFiles(customId, { keyType: "customId" });
+  await uploadOwnershipModel.removeRecord(customId);
 
   return { deleted: true };
 };
 
-module.exports = { confirmUploadOwnership, deleteUploadedFileByUrl };
+module.exports = { deleteFileByTrustedUrl, deleteOwnedUploadByCustomId };
