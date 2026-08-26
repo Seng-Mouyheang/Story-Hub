@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
 import Navbar from "../components/Navbar";
@@ -10,13 +10,15 @@ import { useToast } from "../lib/useToast";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import StoryCard from "../features/stories/StoryCard";
 import DeleteConfirmModal from "../features/stories/DeleteConfirmModal";
-import FollowingAccountsStrip from "../features/stories/FollowingAccountsStrip";
+import MomentsStrip from "../features/moments/MomentsStrip";
+import AddMomentModal from "../features/moments/AddMomentModal";
+import MomentViewer from "../features/moments/MomentViewer";
+import { useMomentsFeed } from "../features/moments/useMomentsFeed";
 import TopAuthorsSidebar from "../features/stories/TopAuthorsSidebar";
 import { useStoryFeed } from "../features/stories/useStoryFeed";
 import { useStoryComments } from "../features/stories/useStoryComments";
 import { useStoryInteractions } from "../features/stories/useStoryInteractions";
 import { useTopAuthors } from "../features/stories/useTopAuthors";
-import { useFollowingAccounts } from "../features/stories/useFollowingAccounts";
 import { useSavedStoryIds } from "../features/stories/useSavedStoryIds";
 
 /* -------------------- Home Page -------------------- */
@@ -33,6 +35,8 @@ export default function Home() {
   const [expandedStoryIds, setExpandedStoryIds] = useState({});
   const [followingAccountsRefreshToken, setFollowingAccountsRefreshToken] =
     useState(0);
+  const [isMomentComposerOpen, setIsMomentComposerOpen] = useState(false);
+  const [viewerAuthorId, setViewerAuthorId] = useState(null);
 
   const {
     toast: feedToast,
@@ -145,11 +149,27 @@ export default function Home() {
     setFollowStateByUserId,
   });
 
-  const { followingAccounts, followingAccountsLoading } =
-    useFollowingAccounts({
-      currentUserId,
-      refreshToken: followingAccountsRefreshToken,
-    });
+  const {
+    momentGroups,
+    momentsLoading,
+    reloadMoments,
+    markMomentsViewed,
+    removeMoment,
+  } = useMomentsFeed({
+    currentUserId,
+    refreshToken: followingAccountsRefreshToken,
+  });
+
+  const authorSequence = useMemo(() => {
+    const ownGroup = momentGroups.find(
+      (group) => group.authorId === currentUserId,
+    );
+    const otherAuthorIds = momentGroups
+      .filter((group) => group.authorId !== currentUserId)
+      .map((group) => group.authorId);
+
+    return ownGroup ? [ownGroup.authorId, ...otherAuthorIds] : otherAuthorIds;
+  }, [momentGroups, currentUserId]);
 
   const {
     activeCommentStoryId,
@@ -390,9 +410,13 @@ export default function Home() {
               ref={feedScrollRef}
               className="min-h-0 flex flex-col overflow-y-auto pr-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             >
-              <FollowingAccountsStrip
-                accounts={followingAccounts}
-                isLoading={followingAccountsLoading}
+              <MomentsStrip
+                momentGroups={momentGroups}
+                isLoading={momentsLoading}
+                currentUserId={currentUserId}
+                currentUserImage={currentUserProfilePicture}
+                onOpenComposer={() => setIsMomentComposerOpen(true)}
+                onOpenViewer={(authorId) => setViewerAuthorId(authorId)}
               />
 
               <section className="flex-1 min-h-0 flex flex-col py-4">
@@ -582,6 +606,26 @@ export default function Home() {
           onCancel={() => setDeleteTargetComment(null)}
           onConfirm={handleConfirmDeleteComment}
         />
+
+        <AddMomentModal
+          isOpen={isMomentComposerOpen}
+          onClose={() => setIsMomentComposerOpen(false)}
+          onCreated={() => reloadMoments()}
+        />
+
+        {viewerAuthorId && (
+          <MomentViewer
+            key={viewerAuthorId}
+            authorSequence={authorSequence}
+            initialAuthorId={viewerAuthorId}
+            momentGroups={momentGroups}
+            currentUserId={currentUserId}
+            onClose={() => setViewerAuthorId(null)}
+            onMomentDeleted={(momentId) => removeMoment(momentId)}
+            onMomentsViewed={(ids) => markMomentsViewed(ids)}
+            onAddMore={() => setIsMomentComposerOpen(true)}
+          />
+        )}
       </div>
     </div>
   );

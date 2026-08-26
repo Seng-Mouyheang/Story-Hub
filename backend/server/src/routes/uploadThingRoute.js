@@ -109,6 +109,18 @@ const uploadRouter = {
       uploadedBy: metadata.userId,
       ufsUrl: file.ufsUrl,
     })),
+
+  momentImage: f({
+    image: {
+      maxFileCount: 1,
+      maxFileSize: "8MB",
+    },
+  })
+    .middleware(authenticateAndTagFiles)
+    .onUploadComplete(async ({ file, metadata }) => ({
+      uploadedBy: metadata.userId,
+      ufsUrl: file.ufsUrl,
+    })),
 };
 
 module.exports = createRouteHandler({

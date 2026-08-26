@@ -1,0 +1,197 @@
+const { connectToDatabase } = require("../../configuration/dbConfig");
+const { ObjectId } = require("mongodb");
+
+const COLLECTION_NAME = "moments";
+const PROFILES_COLLECTION = "profiles";
+const MOMENT_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_BACKGROUND_COLOR = "#0f172a";
+
+const assertValidObjectId = (id, fieldName) => {
+  if (!ObjectId.isValid(id)) {
+    throw new Error(`Invalid ${fieldName}`);
+  }
+};
+
+const mapMoment = (moment, viewerObjectId) => ({
+  id: moment._id.toString(),
+  type: moment.type,
+  imageUrl: moment.imageUrl || null,
+  text: moment.text || null,
+  backgroundColor: moment.backgroundColor || null,
+  createdAt: moment.createdAt,
+  expiresAt: moment.expiresAt,
+  viewed: viewerObjectId
+    ? moment.viewedBy.some((id) => id.equals(viewerObjectId))
+    : false,
+});
+
+const createMoment = async ({
+  authorId,
+  type,
+  imageUrl = null,
+  text = null,
+  backgroundColor = null,
+}) => {
+  assertValidObjectId(authorId, "author id");
+
+  const db = await connectToDatabase();
+  const now = new Date();
+
+  const result = await db.collection(COLLECTION_NAME).insertOne({
+    authorId: new ObjectId(authorId),
+    type,
+    imageUrl: type === "image" ? imageUrl : null,
+    text: type === "text" ? text : null,
+    backgroundColor:
+      type === "text" ? backgroundColor || DEFAULT_BACKGROUND_COLOR : null,
+    viewedBy: [],
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + MOMENT_LIFETIME_MS),
+  });
+
+  return result.insertedId.toString();
+};
+
+const getFeedMoments = async (viewerId, authorIds) => {
+  assertValidObjectId(viewerId, "viewer id");
+
+  const authorObjectIds = authorIds
+    .filter((id) => ObjectId.isValid(id))
+    .map((id) => new ObjectId(id));
+
+  if (authorObjectIds.length === 0) {
+    return [];
+  }
+
+  const db = await connectToDatabase();
+  const viewerObjectId = new ObjectId(viewerId);
+  const now = new Date();
+
+  const groups = await db
+    .collection(COLLECTION_NAME)
+    .aggregate([
+      {
+        $match: {
+          authorId: { $in: authorObjectIds },
+          expiresAt: { $gt: now },
+        },
+      },
+      { $sort: { createdAt: 1 } },
+      {
+        $group: {
+          _id: "$authorId",
+          latestCreatedAt: { $max: "$createdAt" },
+          moments: { $push: "$$ROOT" },
+        },
+      },
+      {
+        $lookup: {
+          from: PROFILES_COLLECTION,
+          let: { uid: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$userId", "$$uid"] },
+                deletedAt: null,
+              },
+            },
+            { $project: { _id: 0, displayName: 1, profilePicture: 1 } },
+          ],
+          as: "profile",
+        },
+      },
+      {
+        $addFields: {
+          profile: { $arrayElemAt: ["$profile", 0] },
+          hasUnseen: {
+            $anyElementTrue: {
+              $map: {
+                input: "$moments",
+                as: "moment",
+                in: { $not: [{ $in: [viewerObjectId, "$$moment.viewedBy"] }] },
+              },
+            },
+          },
+        },
+      },
+      { $sort: { hasUnseen: -1, latestCreatedAt: -1 } },
+    ])
+    .toArray();
+
+  return groups.map((group) => ({
+    authorId: group._id.toString(),
+    name: group.profile?.displayName || "",
+    image: group.profile?.profilePicture || "",
+    hasUnseen: Boolean(group.hasUnseen),
+    latestCreatedAt: group.latestCreatedAt,
+    moments: group.moments.map((moment) => mapMoment(moment, viewerObjectId)),
+  }));
+};
+
+const getMomentsByAuthor = async (authorId, viewerId = null) => {
+  assertValidObjectId(authorId, "author id");
+
+  const db = await connectToDatabase();
+  const authorObjectId = new ObjectId(authorId);
+  const now = new Date();
+
+  const [moments, profile] = await Promise.all([
+    db
+      .collection(COLLECTION_NAME)
+      .find({ authorId: authorObjectId, expiresAt: { $gt: now } })
+      .sort({ createdAt: 1 })
+      .toArray(),
+    db
+      .collection(PROFILES_COLLECTION)
+      .findOne(
+        { userId: authorObjectId, deletedAt: null },
+        { projection: { displayName: 1, profilePicture: 1 } },
+      ),
+  ]);
+
+  const viewerObjectId =
+    viewerId && ObjectId.isValid(viewerId) ? new ObjectId(viewerId) : null;
+
+  return {
+    authorId,
+    name: profile?.displayName || "",
+    image: profile?.profilePicture || "",
+    moments: moments.map((moment) => mapMoment(moment, viewerObjectId)),
+  };
+};
+
+const markViewed = async (momentId, viewerId) => {
+  assertValidObjectId(momentId, "story id");
+  assertValidObjectId(viewerId, "viewer id");
+
+  const db = await connectToDatabase();
+
+  await db
+    .collection(COLLECTION_NAME)
+    .updateOne(
+      { _id: new ObjectId(momentId), expiresAt: { $gt: new Date() } },
+      { $addToSet: { viewedBy: new ObjectId(viewerId) } },
+    );
+};
+
+const deleteMoment = async (momentId, authorId) => {
+  assertValidObjectId(momentId, "story id");
+  assertValidObjectId(authorId, "author id");
+
+  const db = await connectToDatabase();
+
+  const result = await db.collection(COLLECTION_NAME).deleteOne({
+    _id: new ObjectId(momentId),
+    authorId: new ObjectId(authorId),
+  });
+
+  return result.deletedCount > 0;
+};
+
+module.exports = {
+  createMoment,
+  getFeedMoments,
+  getMomentsByAuthor,
+  markViewed,
+  deleteMoment,
+};
