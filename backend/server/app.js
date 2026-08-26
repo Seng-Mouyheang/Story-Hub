@@ -14,9 +14,13 @@ const searchRoutes = require("./src/routes/searchRoutes");
 const uploadThingRoutes = require("./src/routes/uploadThingRoute");
 const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const recommendationRoutes = require("./src/routes/recommendationRoutes");
+const momentRoutes = require("./src/routes/momentRoutes");
 
 const port = process.env.PORT || 3001;
-const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "");
+const normalizeOrigin = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\/+$/, "");
 const allowedOrigins = new Set(
   String(
     process.env.CORS_ORIGIN ||
@@ -89,6 +93,7 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/moments", momentRoutes);
 
 // Connect to the database before starting the server
 connectToDatabase()
@@ -184,6 +189,16 @@ connectToDatabase()
 ║   Recommendation Routes                        ║
 ╠════════════════════════════════════════════════╣
 ║   - GET /api/recommendations/authors           ║
+╚════════════════════════════════════════════════╝
+
+╔════════════════════════════════════════════════╗
+║   Story (24h) Routes                           ║
+╠════════════════════════════════════════════════╣
+║   - GET /api/moments/feed                      ║
+║   - GET /api/moments/author/:id                ║
+║   - POST /api/moments/                         ║
+║   - POST /api/moments/:id/view                 ║
+║   - DELETE /api/moments/:id                    ║
 ╚════════════════════════════════════════════════╝
   `),
     );

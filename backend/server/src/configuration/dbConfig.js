@@ -285,6 +285,30 @@ const connectToDatabase = async () => {
       },
     );
 
+    // TTL index to auto-delete 24-hour stories once they expire.
+    await db
+      .collection("moments")
+      .createIndex(
+        { expiresAt: 1 },
+        { name: "moments_expiresAt_ttl", expireAfterSeconds: 0 },
+      );
+
+    // Fast lookup of an author's still-active stories.
+    await db
+      .collection("moments")
+      .createIndex(
+        { authorId: 1, expiresAt: 1 },
+        { name: "moments_author_active_index" },
+      );
+
+    // Ordered fetch of an author's stories for the full-screen viewer.
+    await db
+      .collection("moments")
+      .createIndex(
+        { authorId: 1, createdAt: 1 },
+        { name: "moments_author_order_index" },
+      );
+
     // One-off safety backfill for historical users before enforcing uniqueness.
     await ensureUserEmailBackfillAndDedup(db);
 
