@@ -10,6 +10,7 @@ export default function DeleteConfirmModal({
   isBusy = false,
   confirmLabel = "Delete",
   busyLabel = "Deleting...",
+  backdropClassName,
 }) {
   return (
     <ModalDialog
@@ -24,6 +25,7 @@ export default function DeleteConfirmModal({
       titleId={titleId}
       closeLabel={`Close ${title.replace(/\?$/, "").toLowerCase()} dialog`}
       widthClassName="max-w-sm"
+      backdropClassName={backdropClassName}
     >
       <div className="p-5">
         <p className="text-sm text-slate-500 mb-5">{message}</p>

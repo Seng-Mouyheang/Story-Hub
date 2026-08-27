@@ -40,3 +40,92 @@ body {
   border-right: 4px solid #f43f5e;
   background: #fff1f2;
 }
+
+/* Custom zoom slider — track fill follows --range-progress (0-100),
+   set inline so the filled portion tracks the thumb in every browser. */
+.zoom-slider {
+  --range-progress: 0%;
+
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 9999px;
+  background: linear-gradient(
+    to right,
+    #f43f5e 0%,
+    #f43f5e var(--range-progress),
+    #e5e7eb var(--range-progress),
+    #e5e7eb 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+
+.zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #f43f5e;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.zoom-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.zoom-slider:active::-webkit-slider-thumb {
+  transform: scale(1.05);
+}
+
+.zoom-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #f43f5e;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.zoom-slider::-moz-range-thumb:hover {
+  transform: scale(1.15);
+}
+
+.zoom-slider::-moz-range-track {
+  background: transparent;
+  height: 4px;
+  border-radius: 9999px;
+}
+
+/* Keeps native scroll (wheel/touch/drag) working while hiding the
+   scrollbar chrome entirely — used where a scroll affordance would be
+   visual clutter in a small floating toolbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.zoom-slider:focus-visible {
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.25);
+  border-radius: 9999px;
+}
+
+/* Story text overlay's "Add text" placeholder — tinted to match whatever
+   color the user has picked for that overlay (via --placeholder-color,
+   set inline) instead of a fixed white, so it still previews legibly
+   against the photo when they've chosen a dark or saturated color. */
+.overlay-text-input::placeholder {
+  color: color-mix(in srgb, var(--placeholder-color, #ffffff) 70%, transparent);
+  opacity: 1;
+}
