@@ -224,8 +224,8 @@ export default function ImageCropper({ file, onCancel, onApply }) {
         )}
       </div>
 
-      <div className="mt-4 flex items-center gap-2">
-        <span className="text-xs text-slate-500">Zoom</span>
+      <div className="mt-4 flex items-center gap-3">
+        <span className="text-xs font-medium text-slate-500">Zoom</span>
         <input
           type="range"
           min={1}
@@ -233,7 +233,11 @@ export default function ImageCropper({ file, onCancel, onApply }) {
           step={0.01}
           value={zoom}
           onChange={(event) => setZoom(Number(event.target.value))}
-          className="flex-1"
+          aria-label="Zoom"
+          className="zoom-slider flex-1"
+          style={{
+            "--range-progress": `${((zoom - 1) / (maxZoom - 1 || 1)) * 100}%`,
+          }}
         />
       </div>
 
