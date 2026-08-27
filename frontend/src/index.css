@@ -45,6 +45,7 @@ body {
    set inline so the filled portion tracks the thumb in every browser. */
 .zoom-slider {
   --range-progress: 0%;
+
   -webkit-appearance: none;
   appearance: none;
   width: 100%;

@@ -537,6 +537,7 @@ function OverlayStage({
   handleSizePointerDown,
   handleSizePointerMove,
   handleSizePointerUp,
+  handleSizeKeyDown,
   handleOverlayTextChange,
   resizeOverlayTextarea,
   handleOverlayBlur,
@@ -706,6 +707,7 @@ function OverlayStage({
               <div
                 ref={sizeTrackRef}
                 role="slider"
+                tabIndex={0}
                 aria-label="Text size"
                 aria-valuemin={MIN_TEXT_SIZE_PX}
                 aria-valuemax={MAX_TEXT_SIZE_PX}
@@ -717,6 +719,7 @@ function OverlayStage({
                 onPointerUp={handleSizePointerUp}
                 onPointerLeave={handleSizePointerUp}
                 onPointerCancel={handleSizePointerUp}
+                onKeyDown={handleSizeKeyDown}
               >
                 <div
                   className="absolute bottom-0 left-0 right-0 rounded-full bg-rose-500"
@@ -1462,6 +1465,31 @@ export default function AddMomentModal({ isOpen, onClose, onCreated }) {
     sizeDragRef.current = false;
   };
 
+  // Keyboard equivalent of the drag — the track carries role="slider" and
+  // full aria-value* attributes already, but had no way to actually move
+  // it from a keyboard until now.
+  const handleSizeKeyDown = (event) => {
+    if (!editingOverlayId) return;
+
+    const step =
+      event.key === "ArrowUp" || event.key === "ArrowRight"
+        ? 2
+        : event.key === "ArrowDown" || event.key === "ArrowLeft"
+          ? -2
+          : null;
+    if (step === null) return;
+
+    event.preventDefault();
+    const currentOverlay = textOverlays.find((o) => o.id === editingOverlayId);
+    const currentFontSize = currentOverlay?.fontSize ?? DEFAULT_TEXT_SIZE_PX;
+    const nextFontSize = clamp(
+      currentFontSize + step,
+      MIN_TEXT_SIZE_PX,
+      MAX_TEXT_SIZE_PX,
+    );
+    handleOverlayFontSizeChange(editingOverlayId, nextFontSize);
+  };
+
   // Resizing drags a handle on the box's own bottom-right corner, so once
   // the box is rotated that corner no longer moves purely left/right in
   // screen space — the drag delta is rotated back into the box's own local
@@ -1778,6 +1806,7 @@ export default function AddMomentModal({ isOpen, onClose, onCreated }) {
     handleSizePointerDown,
     handleSizePointerMove,
     handleSizePointerUp,
+    handleSizeKeyDown,
     handleOverlayTextChange,
     resizeOverlayTextarea,
     handleOverlayBlur,
