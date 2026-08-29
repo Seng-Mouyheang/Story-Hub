@@ -32,15 +32,44 @@ const extractFileKey = (url) => {
  * overwritten. No client input is trusted here; callers must only pass a
  * URL they sourced from their own authenticated data, never from a
  * request body.
+ *
+ * Returns `false` only when no key could be resolved from `url` — a
+ * permanent, non-retryable condition. A provider-reported delete failure
+ * throws instead, so retry-capable callers (see momentCleanupJob.js) can
+ * tell "nothing to delete" apart from "delete attempt failed, try again".
  */
 const deleteFileByTrustedUrl = async (url) => {
   const fileKey = extractFileKey(url);
 
   if (!fileKey) {
-    return;
+    return false;
   }
 
-  await utapi.deleteFiles(fileKey);
+  const result = await utapi.deleteFiles(fileKey);
+  if (!result.success) {
+    throw new Error(`UploadThing reported failure deleting key ${fileKey}`);
+  }
+  return true;
+};
+
+/**
+ * Deletes a file by the customId it was tagged with at upload time (see
+ * `authenticateAndTagFiles` in uploadThingRoute.js). Ownership of a customId
+ * must already have been verified by the caller — this function only
+ * performs the deletion.
+ */
+const deleteFileByCustomId = async (customId) => {
+  if (!customId) {
+    return false;
+  }
+
+  const result = await utapi.deleteFiles(customId, { keyType: "customId" });
+  if (!result.success) {
+    throw new Error(
+      `UploadThing reported failure deleting customId ${customId}`,
+    );
+  }
+  return true;
 };
 
 /**
@@ -67,4 +96,8 @@ const deleteOwnedUploadByCustomId = async (customId, requestingUserId) => {
   return { deleted: true };
 };
 
-module.exports = { deleteFileByTrustedUrl, deleteOwnedUploadByCustomId };
+module.exports = {
+  deleteFileByTrustedUrl,
+  deleteFileByCustomId,
+  deleteOwnedUploadByCustomId,
+};

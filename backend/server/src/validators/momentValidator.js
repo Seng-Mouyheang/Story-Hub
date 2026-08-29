@@ -34,6 +34,14 @@ const createMomentSchema = Joi.object({
       then: Joi.required(),
       otherwise: Joi.optional().allow(""),
     }),
+  // The customId the image was uploaded under (see uploadThingRoute.js's
+  // authenticateAndTagFiles) — required so the server can verify the
+  // requesting user actually owns this file before trusting the URL.
+  imageFileKey: Joi.string().when("type", {
+    is: "image",
+    then: Joi.required(),
+    otherwise: Joi.optional().allow(""),
+  }),
 });
 
 const idParamSchema = Joi.object({

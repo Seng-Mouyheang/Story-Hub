@@ -1,5 +1,21 @@
 const momentModel = require("../../models/moment/momentModel");
 const followModel = require("../../models/profile/followModel");
+const uploadOwnershipModel = require("../../models/profile/uploadOwnershipModel");
+const {
+  deleteMomentFileWithRetry,
+} = require("../../services/momentMediaCleanupService");
+
+// Deletes the file first (retrying the same as the retention job) and only
+// hard-deletes the moment doc once that succeeds — never awaited on the
+// response path. On failure the moment stays `pendingDeletion` (already
+// invisible to feeds), and the retention job's next run retries it.
+const finalizeMomentDeletion = async (moment) => {
+  const fileDeleted = await deleteMomentFileWithRetry(moment);
+
+  if (fileDeleted) {
+    await momentModel.hardDeleteMomentById(moment._id);
+  }
+};
 
 const getAllFollowingIds = async (userId) => {
   const ids = [];
@@ -20,20 +36,66 @@ const getAllFollowingIds = async (userId) => {
 };
 
 const createMoment = async (req, res) => {
+  const { type, text, backgroundColor, imageFileKey } = req.body;
+  let claimedRecord = null;
+
   try {
-    const { type, text, backgroundColor, imageUrl } = req.body;
+    let verifiedImageUrl = null;
+
+    if (type === "image") {
+      // Atomically verify + consume the ownership record in one operation,
+      // rather than a separate check followed by a later removal — the gap
+      // between those two steps would let two concurrent requests for the
+      // same imageFileKey both pass the check before either removed it,
+      // producing two moments backed by one file (deleting one later would
+      // break the other's image).
+      claimedRecord = await uploadOwnershipModel.claimRecord(
+        imageFileKey,
+        req.user.userId,
+      );
+
+      if (!claimedRecord) {
+        return res.status(403).json({ message: "You do not own this image" });
+      }
+
+      // Never trust the client's own imageUrl for what gets displayed —
+      // owning imageFileKey only proves the user owns *some* file with that
+      // customId, not that imageUrl points at it. Use the URL uploadthing's
+      // onUploadComplete recorded server-side for this exact customId
+      // instead (see uploadThingRoute.js).
+      if (!claimedRecord.url) {
+        throw new Error("Upload is missing its recorded file URL");
+      }
+      verifiedImageUrl = claimedRecord.url;
+    }
 
     const momentId = await momentModel.createMoment({
       authorId: req.user.userId,
       type,
       text,
       backgroundColor,
-      imageUrl,
+      imageUrl: verifiedImageUrl,
+      imageFileKey: type === "image" ? imageFileKey : null,
     });
 
     res.status(201).json({ momentId });
   } catch (error) {
     console.error(error);
+
+    if (claimedRecord) {
+      // Moment persistence failed after the claim succeeded — restore the
+      // exact claimed document (not a freshly reconstructed one, which
+      // would drop its `url`) so the upload isn't left permanently unowned.
+      uploadOwnershipModel
+        .restoreRecord(claimedRecord)
+        .catch((restoreError) => {
+          console.error(
+            "Failed to restore upload ownership record:",
+            restoreError,
+          );
+        });
+    }
+
     res.status(500).json({ message: "Failed to post story" });
   }
 };
@@ -79,16 +141,20 @@ const viewMoment = async (req, res) => {
 
 const deleteMoment = async (req, res) => {
   try {
-    const deleted = await momentModel.deleteMoment(
+    const markedMoment = await momentModel.deleteMoment(
       req.params.id,
       req.user.userId,
     );
 
-    if (!deleted) {
+    if (!markedMoment) {
       return res.status(404).json({ message: "Story not found" });
     }
 
     res.json({ deleted: true });
+
+    finalizeMomentDeletion(markedMoment).catch((error) => {
+      console.error("Failed to finalize story deletion:", error);
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Failed to delete story" });

@@ -15,6 +15,7 @@ const uploadThingRoutes = require("./src/routes/uploadThingRoute");
 const dashboardRoutes = require("./src/routes/dashboardRoutes");
 const recommendationRoutes = require("./src/routes/recommendationRoutes");
 const momentRoutes = require("./src/routes/momentRoutes");
+const { startMomentCleanupJob } = require("./src/jobs/momentCleanupJob");
 
 const port = process.env.PORT || 3001;
 const normalizeOrigin = (value) =>
@@ -98,6 +99,7 @@ app.use("/api/moments", momentRoutes);
 // Connect to the database before starting the server
 connectToDatabase()
   .then(() => {
+    startMomentCleanupJob();
     app.listen(port, () =>
       console.log(`
 ╔════════════════════════════════════════════════╗

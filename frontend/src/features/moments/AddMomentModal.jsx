@@ -1772,10 +1772,9 @@ export default function AddMomentModal({ isOpen, onClose, onCreated }) {
               textOverlays,
               stageHeightPx,
             );
-      const payload = {
-        type: "image",
-        imageUrl: await uploadMomentImage(flattenedImage),
-      };
+      const { url: imageUrl, fileKey: imageFileKey } =
+        await uploadMomentImage(flattenedImage);
+      const payload = { type: "image", imageUrl, imageFileKey };
 
       await createMoment(payload);
       onCreated?.();
