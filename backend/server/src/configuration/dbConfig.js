@@ -135,6 +135,19 @@ const connectToDatabase = async () => {
       .collection("storyLikes")
       .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
 
+    // Unique index to prevent duplicate likes by the same user on the same
+    // moment (24h story)
+    await db
+      .collection("momentLikes")
+      .createIndex(
+        { userId: 1, momentId: 1 },
+        { unique: true, name: "unique_user_moment_like" },
+      );
+
+    await db
+      .collection("momentLikes")
+      .createIndex({ momentId: 1 }, { name: "momentId_lookup_index" });
+
     await db
       .collection("confessionLikes")
       .createIndex(
@@ -250,6 +263,15 @@ const connectToDatabase = async () => {
     await db
       .collection("commentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
+
+    // Unique index to prevent duplicate likes by the same user on the same
+    // moment (24h story) comment/reply
+    await db
+      .collection("momentCommentLikes")
+      .createIndex(
+        { userId: 1, commentId: 1 },
+        { unique: true, name: "unique_user_moment_comment_like" },
+      );
 
     await db
       .collection("confessionCommentLikes")

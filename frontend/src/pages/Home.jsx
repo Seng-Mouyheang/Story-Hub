@@ -155,6 +155,8 @@ export default function Home() {
     reloadMoments,
     markMomentsViewed,
     removeMoment,
+    patchMomentLike,
+    patchMomentCommentCount,
   } = useMomentsFeed({
     currentUserId,
     refreshToken: followingAccountsRefreshToken,
@@ -620,9 +622,24 @@ export default function Home() {
             initialAuthorId={viewerAuthorId}
             momentGroups={momentGroups}
             currentUserId={currentUserId}
+            currentUsername={currentUsername}
+            currentUserProfilePicture={currentUserProfilePicture}
+            notify={showFeedToast}
+            onUnauthenticated={(message) =>
+              navigate("/login", {
+                replace: true,
+                state: message ? { message } : undefined,
+              })
+            }
             onClose={() => setViewerAuthorId(null)}
             onMomentDeleted={(momentId) => removeMoment(momentId)}
             onMomentsViewed={(ids) => markMomentsViewed(ids)}
+            onMomentLikeToggled={(momentId, likeState) =>
+              patchMomentLike(momentId, likeState)
+            }
+            onMomentCommentCountChanged={(momentId, delta) =>
+              patchMomentCommentCount(momentId, delta)
+            }
             onAddMore={() => setIsMomentComposerOpen(true)}
           />
         )}

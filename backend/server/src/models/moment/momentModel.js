@@ -1,5 +1,9 @@
-const { connectToDatabase } = require("../../configuration/dbConfig");
+const {
+  connectToDatabase,
+  getClient,
+} = require("../../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
+const momentLikeModel = require("./momentLikeModel");
 
 const COLLECTION_NAME = "moments";
 const PROFILES_COLLECTION = "profiles";
@@ -13,7 +17,7 @@ const assertValidObjectId = (id, fieldName) => {
   }
 };
 
-const mapMoment = (moment, viewerObjectId) => ({
+const mapMoment = (moment, viewerObjectId, likedMomentIds = null) => ({
   id: moment._id.toString(),
   type: moment.type,
   imageUrl: moment.imageUrl || null,
@@ -23,6 +27,11 @@ const mapMoment = (moment, viewerObjectId) => ({
   expiresAt: moment.expiresAt,
   viewed: viewerObjectId
     ? moment.viewedBy.some((id) => id.equals(viewerObjectId))
+    : false,
+  likesCount: moment.likesCount || 0,
+  commentCount: moment.commentCount || 0,
+  likedByCurrentUser: likedMomentIds
+    ? likedMomentIds.has(moment._id.toString())
     : false,
 });
 
@@ -52,6 +61,8 @@ const createMoment = async ({
     backgroundColor:
       type === "text" ? backgroundColor || DEFAULT_BACKGROUND_COLOR : null,
     viewedBy: [],
+    likesCount: 0,
+    commentCount: 0,
     createdAt: now,
     expiresAt: new Date(now.getTime() + MOMENT_LIFETIME_MS),
   });
@@ -126,13 +137,23 @@ const getFeedMoments = async (viewerId, authorIds) => {
     ])
     .toArray();
 
+  const allMomentIds = groups.flatMap((group) =>
+    group.moments.map((moment) => moment._id.toString()),
+  );
+  const likedMomentIds = await momentLikeModel.getLikedMomentIds(
+    viewerId,
+    allMomentIds,
+  );
+
   return groups.map((group) => ({
     authorId: group._id.toString(),
     name: group.profile?.displayName || "",
     image: group.profile?.profilePicture || "",
     hasUnseen: Boolean(group.hasUnseen),
     latestCreatedAt: group.latestCreatedAt,
-    moments: group.moments.map((moment) => mapMoment(moment, viewerObjectId)),
+    moments: group.moments.map((moment) =>
+      mapMoment(moment, viewerObjectId, likedMomentIds),
+    ),
   }));
 };
 
@@ -164,12 +185,30 @@ const getMomentsByAuthor = async (authorId, viewerId = null) => {
   const viewerObjectId =
     viewerId && ObjectId.isValid(viewerId) ? new ObjectId(viewerId) : null;
 
+  const likedMomentIds = viewerId
+    ? await momentLikeModel.getLikedMomentIds(
+        viewerId,
+        moments.map((moment) => moment._id.toString()),
+      )
+    : null;
+
   return {
     authorId,
     name: profile?.displayName || "",
     image: profile?.profilePicture || "",
-    moments: moments.map((moment) => mapMoment(moment, viewerObjectId)),
+    moments: moments.map((moment) =>
+      mapMoment(moment, viewerObjectId, likedMomentIds),
+    ),
   };
+};
+
+const getMomentById = async (momentId) => {
+  if (!ObjectId.isValid(momentId)) return null;
+
+  const db = await connectToDatabase();
+  return db
+    .collection(COLLECTION_NAME)
+    .findOne({ _id: new ObjectId(momentId) });
 };
 
 const markViewed = async (momentId, viewerId) => {
@@ -216,9 +255,52 @@ const deleteMoment = async (momentId, authorId) => {
   return markedMoment;
 };
 
+// Deletes every momentComments/momentCommentLikes/momentLikes row belonging
+// to the given moments, so hard-deleting a moment doesn't leave those rows
+// as permanent orphans pointing at an id that no longer exists.
+const cascadeDeleteMomentInteractions = async (
+  db,
+  momentObjectIds,
+  session,
+) => {
+  const commentIds = await db
+    .collection("momentComments")
+    .find({ momentId: { $in: momentObjectIds } }, { session })
+    .project({ _id: 1 })
+    .map((doc) => doc._id)
+    .toArray();
+
+  if (commentIds.length > 0) {
+    await db
+      .collection("momentCommentLikes")
+      .deleteMany({ commentId: { $in: commentIds } }, { session });
+  }
+
+  await db
+    .collection("momentComments")
+    .deleteMany({ momentId: { $in: momentObjectIds } }, { session });
+
+  await db
+    .collection("momentLikes")
+    .deleteMany({ momentId: { $in: momentObjectIds } }, { session });
+};
+
 const hardDeleteMomentById = async (momentId) => {
   const db = await connectToDatabase();
-  await db.collection(COLLECTION_NAME).deleteOne({ _id: momentId });
+  const client = getClient();
+  const session = client.startSession();
+  const momentObjectId = new ObjectId(momentId);
+
+  try {
+    await session.withTransaction(async () => {
+      await cascadeDeleteMomentInteractions(db, [momentObjectId], session);
+      await db
+        .collection(COLLECTION_NAME)
+        .deleteOne({ _id: momentObjectId }, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 };
 
 // Sorted + cursor-paginated (rather than always re-querying the same top N)
@@ -255,17 +337,33 @@ const hardDeleteMoments = async (momentIds) => {
   }
 
   const db = await connectToDatabase();
-  const result = await db.collection(COLLECTION_NAME).deleteMany({
-    _id: { $in: momentIds },
-  });
+  const client = getClient();
+  const session = client.startSession();
 
-  return result.deletedCount;
+  try {
+    let deletedCount = 0;
+
+    await session.withTransaction(async () => {
+      await cascadeDeleteMomentInteractions(db, momentIds, session);
+
+      const result = await db
+        .collection(COLLECTION_NAME)
+        .deleteMany({ _id: { $in: momentIds } }, { session });
+
+      deletedCount = result.deletedCount;
+    });
+
+    return deletedCount;
+  } finally {
+    await session.endSession();
+  }
 };
 
 module.exports = {
   createMoment,
   getFeedMoments,
   getMomentsByAuthor,
+  getMomentById,
   markViewed,
   deleteMoment,
   hardDeleteMomentById,

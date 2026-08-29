@@ -95,11 +95,66 @@ export function useMomentsFeed({ currentUserId, refreshToken }) {
     );
   }, []);
 
+  // Same idea for likes — MomentViewer keeps its own local copy of the group
+  // while open, so patch the shared feed state here too or the like resets
+  // to unliked the next time the viewer is reopened.
+  const patchMomentLike = useCallback(
+    (momentId, { likedByCurrentUser, likesCount }) => {
+      setMomentGroups((groups) =>
+        groups.map((group) => {
+          if (!group.moments.some((moment) => moment.id === momentId)) {
+            return group;
+          }
+
+          return {
+            ...group,
+            moments: group.moments.map((moment) =>
+              moment.id === momentId
+                ? { ...moment, likedByCurrentUser, likesCount }
+                : moment,
+            ),
+          };
+        }),
+      );
+    },
+    [],
+  );
+
+  // Same idea for comment counts — MomentViewer keeps its own local copy of
+  // the group while open, so patch the shared feed state here too or the
+  // count resets to stale once the viewer is reopened or swiped away from.
+  const patchMomentCommentCount = useCallback((momentId, delta) => {
+    setMomentGroups((groups) =>
+      groups.map((group) => {
+        if (!group.moments.some((moment) => moment.id === momentId)) {
+          return group;
+        }
+
+        return {
+          ...group,
+          moments: group.moments.map((moment) =>
+            moment.id === momentId
+              ? {
+                  ...moment,
+                  commentCount: Math.max(
+                    0,
+                    Number(moment.commentCount || 0) + delta,
+                  ),
+                }
+              : moment,
+          ),
+        };
+      }),
+    );
+  }, []);
+
   return {
     momentGroups,
     momentsLoading,
     reloadMoments,
     markMomentsViewed,
     removeMoment,
+    patchMomentLike,
+    patchMomentCommentCount,
   };
 }
