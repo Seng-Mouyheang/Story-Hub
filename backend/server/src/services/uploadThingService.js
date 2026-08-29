@@ -32,15 +32,35 @@ const extractFileKey = (url) => {
  * overwritten. No client input is trusted here; callers must only pass a
  * URL they sourced from their own authenticated data, never from a
  * request body.
+ *
+ * Returns whether a file was actually deleted, so callers can tell "key
+ * couldn't be parsed" apart from "deleted successfully" instead of treating
+ * both as success.
  */
 const deleteFileByTrustedUrl = async (url) => {
   const fileKey = extractFileKey(url);
 
   if (!fileKey) {
-    return;
+    return false;
   }
 
-  await utapi.deleteFiles(fileKey);
+  const result = await utapi.deleteFiles(fileKey);
+  return result.success;
+};
+
+/**
+ * Deletes a file by the customId it was tagged with at upload time (see
+ * `authenticateAndTagFiles` in uploadThingRoute.js). Ownership of a customId
+ * must already have been verified by the caller — this function only
+ * performs the deletion.
+ */
+const deleteFileByCustomId = async (customId) => {
+  if (!customId) {
+    return false;
+  }
+
+  const result = await utapi.deleteFiles(customId, { keyType: "customId" });
+  return result.success;
 };
 
 /**
@@ -67,4 +87,8 @@ const deleteOwnedUploadByCustomId = async (customId, requestingUserId) => {
   return { deleted: true };
 };
 
-module.exports = { deleteFileByTrustedUrl, deleteOwnedUploadByCustomId };
+module.exports = {
+  deleteFileByTrustedUrl,
+  deleteFileByCustomId,
+  deleteOwnedUploadByCustomId,
+};

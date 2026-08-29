@@ -4,6 +4,7 @@ const { ObjectId } = require("mongodb");
 const COLLECTION_NAME = "moments";
 const PROFILES_COLLECTION = "profiles";
 const MOMENT_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const MOMENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_BACKGROUND_COLOR = "#0f172a";
 
 const assertValidObjectId = (id, fieldName) => {
@@ -29,6 +30,7 @@ const createMoment = async ({
   authorId,
   type,
   imageUrl = null,
+  imageFileKey = null,
   text = null,
   backgroundColor = null,
 }) => {
@@ -41,6 +43,11 @@ const createMoment = async ({
     authorId: new ObjectId(authorId),
     type,
     imageUrl: type === "image" ? imageUrl : null,
+    // The customId this image was uploaded under, verified as owned by
+    // `authorId` by the controller before calling this — kept so the
+    // retention cleanup job can delete the UploadThing file by an
+    // authoritative id rather than trusting a client-supplied URL.
+    imageFileKey: type === "image" ? imageFileKey : null,
     text: type === "text" ? text : null,
     backgroundColor:
       type === "text" ? backgroundColor || DEFAULT_BACKGROUND_COLOR : null,
@@ -180,12 +187,40 @@ const deleteMoment = async (momentId, authorId) => {
 
   const db = await connectToDatabase();
 
-  const result = await db.collection(COLLECTION_NAME).deleteOne({
-    _id: new ObjectId(momentId),
-    authorId: new ObjectId(authorId),
+  const deletedMoment = await db.collection(COLLECTION_NAME).findOneAndDelete(
+    {
+      _id: new ObjectId(momentId),
+      authorId: new ObjectId(authorId),
+    },
+    { projection: { type: 1, imageUrl: 1, imageFileKey: 1 } },
+  );
+
+  return deletedMoment;
+};
+
+const findMomentsPastRetention = async (limit) => {
+  const db = await connectToDatabase();
+  const cutoff = new Date(Date.now() - MOMENT_RETENTION_MS);
+
+  return db
+    .collection(COLLECTION_NAME)
+    .find({ createdAt: { $lt: cutoff } })
+    .project({ imageUrl: 1, imageFileKey: 1 })
+    .limit(limit)
+    .toArray();
+};
+
+const hardDeleteMoments = async (momentIds) => {
+  if (momentIds.length === 0) {
+    return 0;
+  }
+
+  const db = await connectToDatabase();
+  const result = await db.collection(COLLECTION_NAME).deleteMany({
+    _id: { $in: momentIds },
   });
 
-  return result.deletedCount > 0;
+  return result.deletedCount;
 };
 
 module.exports = {
@@ -194,4 +229,6 @@ module.exports = {
   getMomentsByAuthor,
   markViewed,
   deleteMoment,
+  findMomentsPastRetention,
+  hardDeleteMoments,
 };

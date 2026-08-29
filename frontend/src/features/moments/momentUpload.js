@@ -37,12 +37,13 @@ export async function uploadMomentImage(file) {
     });
 
     const url = result?.ufsUrl || "";
+    const fileKey = result?.customId || "";
 
-    if (!url) {
+    if (!url || !fileKey) {
       throw new Error("Upload completed without a file URL");
     }
 
-    return url;
+    return { url, fileKey };
   } catch (error) {
     const message =
       error instanceof Error && error.message
