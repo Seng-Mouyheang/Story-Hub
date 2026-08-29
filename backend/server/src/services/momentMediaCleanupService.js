@@ -30,12 +30,14 @@ const deleteMomentFileWithRetry = async (moment) => {
 
   for (let attempt = 1; attempt <= MAX_DELETE_ATTEMPTS; attempt += 1) {
     try {
-      const deleted = await deleteOnce();
-      if (deleted) {
-        return true;
-      }
-      // Nothing to delete (no key could be resolved) — no point retrying.
-      return false;
+      // Resolves either way — `true` (deleted) or `false` (no key could be
+      // resolved, so there was never anything to delete) both mean this
+      // moment is done and safe to hard-delete. Only a thrown provider
+      // failure (see uploadThingService.js) is retryable; treating an
+      // unresolvable key as retryable would leave it stuck forever, since
+      // no retry ever makes a key resolvable.
+      await deleteOnce();
+      return true;
     } catch (error) {
       const isLastAttempt = attempt === MAX_DELETE_ATTEMPTS;
       console.error(

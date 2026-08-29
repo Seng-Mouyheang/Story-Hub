@@ -84,9 +84,10 @@ const createMoment = async (req, res) => {
 
     if (claimedRecord) {
       // Moment persistence failed after the claim succeeded — restore the
-      // record so the upload isn't left permanently unowned.
+      // exact claimed document (not a freshly reconstructed one, which
+      // would drop its `url`) so the upload isn't left permanently unowned.
       uploadOwnershipModel
-        .recordUpload(claimedRecord.customId, claimedRecord.userId)
+        .restoreRecord(claimedRecord)
         .catch((restoreError) => {
           console.error(
             "Failed to restore upload ownership record:",

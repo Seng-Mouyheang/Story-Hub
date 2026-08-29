@@ -67,6 +67,19 @@ const claimRecord = async (customId, userId) => {
 };
 
 /**
+ * Puts back the exact document `claimRecord` just removed — used when a
+ * claim succeeded but the moment it was for failed to persist. Restoring
+ * via `recordUpload(customId, userId)` instead would drop any `url`
+ * `attachFileUrl` had already set, leaving the record permanently unusable
+ * (a later retry would claim it but fail the "must have a url" check) and
+ * its file un-cleanable.
+ */
+const restoreRecord = async (record) => {
+  const collection = await getCollection();
+  await collection.insertOne(record);
+};
+
+/**
  * Records the file's real URL once uploadthing's `onUploadComplete` reports
  * it — the only server-trustworthy source, since the client could otherwise
  * claim ownership of a customId it legitimately holds while asserting an
@@ -82,5 +95,6 @@ module.exports = {
   isOwner,
   removeRecord,
   claimRecord,
+  restoreRecord,
   attachFileUrl,
 };
