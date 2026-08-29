@@ -117,10 +117,16 @@ const uploadRouter = {
     },
   })
     .middleware(authenticateAndTagFiles)
-    .onUploadComplete(async ({ file, metadata }) => ({
-      uploadedBy: metadata.userId,
-      ufsUrl: file.ufsUrl,
-    })),
+    .onUploadComplete(async ({ file, metadata }) => {
+      // Bind the customId to its real URL here, server-side, so
+      // momentController.createMoment can trust this URL instead of
+      // whatever URL the client separately claims alongside the customId.
+      await uploadOwnershipModel.attachFileUrl(file.customId, file.ufsUrl);
+      return {
+        uploadedBy: metadata.userId,
+        ufsUrl: file.ufsUrl,
+      };
+    }),
 };
 
 module.exports = createRouteHandler({

@@ -81,6 +81,7 @@ const getFeedMoments = async (viewerId, authorIds) => {
         $match: {
           authorId: { $in: authorObjectIds },
           expiresAt: { $gt: now },
+          pendingDeletion: { $ne: true },
         },
       },
       { $sort: { createdAt: 1 } },
@@ -145,7 +146,11 @@ const getMomentsByAuthor = async (authorId, viewerId = null) => {
   const [moments, profile] = await Promise.all([
     db
       .collection(COLLECTION_NAME)
-      .find({ authorId: authorObjectId, expiresAt: { $gt: now } })
+      .find({
+        authorId: authorObjectId,
+        expiresAt: { $gt: now },
+        pendingDeletion: { $ne: true },
+      })
       .sort({ createdAt: 1 })
       .toArray(),
     db
@@ -173,38 +178,72 @@ const markViewed = async (momentId, viewerId) => {
 
   const db = await connectToDatabase();
 
-  await db
-    .collection(COLLECTION_NAME)
-    .updateOne(
-      { _id: new ObjectId(momentId), expiresAt: { $gt: new Date() } },
-      { $addToSet: { viewedBy: new ObjectId(viewerId) } },
-    );
+  await db.collection(COLLECTION_NAME).updateOne(
+    {
+      _id: new ObjectId(momentId),
+      expiresAt: { $gt: new Date() },
+      pendingDeletion: { $ne: true },
+    },
+    { $addToSet: { viewedBy: new ObjectId(viewerId) } },
+  );
 };
 
+// Marks the moment for deletion (immediately excluded from feeds/profile
+// views via the `pendingDeletion` filter) rather than hard-deleting it here.
+// The caller must delete the UploadThing file first and only then call
+// `hardDeleteMomentById` — if that file deletion fails, the moment stays in
+// this pending state, and `findMomentsPastRetention` will pick it up (it
+// matches on `pendingDeletion` regardless of age) so the retry isn't lost.
 const deleteMoment = async (momentId, authorId) => {
   assertValidObjectId(momentId, "story id");
   assertValidObjectId(authorId, "author id");
 
   const db = await connectToDatabase();
 
-  const deletedMoment = await db.collection(COLLECTION_NAME).findOneAndDelete(
+  const markedMoment = await db.collection(COLLECTION_NAME).findOneAndUpdate(
     {
       _id: new ObjectId(momentId),
       authorId: new ObjectId(authorId),
+      // Excludes an already-marked moment so a duplicate/concurrent delete
+      // request (double-click, client retry) can't also match and trigger
+      // a second, redundant finalizeMomentDeletion for the same file.
+      pendingDeletion: { $ne: true },
     },
+    { $set: { pendingDeletion: true } },
     { projection: { type: 1, imageUrl: 1, imageFileKey: 1 } },
   );
 
-  return deletedMoment;
+  return markedMoment;
 };
 
-const findMomentsPastRetention = async (limit) => {
+const hardDeleteMomentById = async (momentId) => {
+  const db = await connectToDatabase();
+  await db.collection(COLLECTION_NAME).deleteOne({ _id: momentId });
+};
+
+// Sorted + cursor-paginated (rather than always re-querying the same top N)
+// so a run keeps advancing past moments whose file deletion failed instead
+// of re-fetching and re-attempting the same stuck page forever, which would
+// starve later, unrelated moments in the backlog of ever being attempted.
+//
+// Matches on `pendingDeletion` in addition to the age cutoff so a moment
+// whose manual-delete file cleanup failed (see deleteMoment above) gets
+// retried on the next run rather than waiting out the full 7 days.
+const findMomentsPastRetention = async (limit, afterId = null) => {
   const db = await connectToDatabase();
   const cutoff = new Date(Date.now() - MOMENT_RETENTION_MS);
 
+  const filter = {
+    $or: [{ createdAt: { $lt: cutoff } }, { pendingDeletion: true }],
+  };
+  if (afterId) {
+    filter._id = { $gt: afterId };
+  }
+
   return db
     .collection(COLLECTION_NAME)
-    .find({ createdAt: { $lt: cutoff } })
+    .find(filter)
+    .sort({ _id: 1 })
     .project({ imageUrl: 1, imageFileKey: 1 })
     .limit(limit)
     .toArray();
@@ -229,6 +268,7 @@ module.exports = {
   getMomentsByAuthor,
   markViewed,
   deleteMoment,
+  hardDeleteMomentById,
   findMomentsPastRetention,
   hardDeleteMoments,
 };

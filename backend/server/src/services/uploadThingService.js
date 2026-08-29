@@ -33,9 +33,10 @@ const extractFileKey = (url) => {
  * URL they sourced from their own authenticated data, never from a
  * request body.
  *
- * Returns whether a file was actually deleted, so callers can tell "key
- * couldn't be parsed" apart from "deleted successfully" instead of treating
- * both as success.
+ * Returns `false` only when no key could be resolved from `url` — a
+ * permanent, non-retryable condition. A provider-reported delete failure
+ * throws instead, so retry-capable callers (see momentCleanupJob.js) can
+ * tell "nothing to delete" apart from "delete attempt failed, try again".
  */
 const deleteFileByTrustedUrl = async (url) => {
   const fileKey = extractFileKey(url);
@@ -45,7 +46,10 @@ const deleteFileByTrustedUrl = async (url) => {
   }
 
   const result = await utapi.deleteFiles(fileKey);
-  return result.success;
+  if (!result.success) {
+    throw new Error(`UploadThing reported failure deleting key ${fileKey}`);
+  }
+  return true;
 };
 
 /**
@@ -60,7 +64,12 @@ const deleteFileByCustomId = async (customId) => {
   }
 
   const result = await utapi.deleteFiles(customId, { keyType: "customId" });
-  return result.success;
+  if (!result.success) {
+    throw new Error(
+      `UploadThing reported failure deleting customId ${customId}`,
+    );
+  }
+  return true;
 };
 
 /**

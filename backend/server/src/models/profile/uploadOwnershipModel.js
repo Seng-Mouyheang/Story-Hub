@@ -54,4 +54,33 @@ const removeRecord = async (customId) => {
   await collection.deleteOne({ customId });
 };
 
-module.exports = { recordUpload, isOwner, removeRecord };
+/**
+ * Atomically verifies ownership and consumes the record in one operation,
+ * closing the check-then-act window a separate isOwner + removeRecord pair
+ * would leave open (two concurrent callers both passing the check before
+ * either removes it). Returns the claimed record, or null if `userId`
+ * doesn't own `customId`.
+ */
+const claimRecord = async (customId, userId) => {
+  const collection = await getCollection();
+  return collection.findOneAndDelete({ customId, userId });
+};
+
+/**
+ * Records the file's real URL once uploadthing's `onUploadComplete` reports
+ * it — the only server-trustworthy source, since the client could otherwise
+ * claim ownership of a customId it legitimately holds while asserting an
+ * unrelated URL (e.g. someone else's image) alongside it.
+ */
+const attachFileUrl = async (customId, url) => {
+  const collection = await getCollection();
+  await collection.updateOne({ customId }, { $set: { url } });
+};
+
+module.exports = {
+  recordUpload,
+  isOwner,
+  removeRecord,
+  claimRecord,
+  attachFileUrl,
+};
