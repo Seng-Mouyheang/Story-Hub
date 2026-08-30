@@ -192,9 +192,9 @@ const getMomentsByAuthor = async (authorId, viewerId = null) => {
   const viewerObjectId =
     viewerId && ObjectId.isValid(viewerId) ? new ObjectId(viewerId) : null;
 
-  const likedMomentIds = viewerId
+  const likedMomentIds = viewerObjectId
     ? await momentLikeModel.getLikedMomentIds(
-        viewerId,
+        viewerObjectId,
         moments.map((moment) => moment._id.toString()),
       )
     : null;

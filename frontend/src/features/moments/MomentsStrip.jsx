@@ -22,7 +22,7 @@ export default function MomentsStrip({
         Stories
       </h2>
 
-      <div className="flex md:gap-2 overflow-x-auto snap-x snap-mandatory scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-4 sm:gap-5 md:gap-2 overflow-x-auto snap-x snap-mandatory scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {isLoading ? (
           <div className="flex gap-4 sm:gap-5">
             {[...Array(4)].map((_, index) => (

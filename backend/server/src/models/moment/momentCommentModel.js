@@ -42,7 +42,7 @@ const createComment = async (commentData) => {
   const comment = {
     userId,
     momentId,
-    content: commentData.content,
+    content: commentData.content.trim(),
     parentId,
     isEdited: false,
     likesCount: 0,

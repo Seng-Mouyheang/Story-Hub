@@ -113,6 +113,12 @@ const updateComment = async (req, res) => {
       return res.status(404).json({ message: "Comment not found" });
     }
 
+    const moment = await momentModel.getMomentById(comment.momentId);
+
+    if (!isMomentActive(moment)) {
+      return res.status(403).json({ message: "Cannot edit this comment" });
+    }
+
     await commentModel.updateComment(commentId, req.user.userId, req.body);
 
     res.json({ message: "Comment updated" });
