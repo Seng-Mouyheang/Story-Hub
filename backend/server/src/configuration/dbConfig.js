@@ -321,13 +321,16 @@ const connectToDatabase = async () => {
       },
     );
 
-    // TTL index to auto-delete 24-hour stories once they expire.
+    // A TTL index here would let MongoDB delete a moment the instant
+    // expiresAt passes (~24h) — before the retention cleanup job
+    // (momentCleanupJob.js, 7-day window) ever gets to delete its
+    // UploadThing file first, permanently orphaning it. Expired moments are
+    // excluded from reads via application-level `expiresAt` filtering
+    // (momentModel.js) instead; only the cleanup job hard-deletes them.
     await db
       .collection("moments")
-      .createIndex(
-        { expiresAt: 1 },
-        { name: "moments_expiresAt_ttl", expireAfterSeconds: 0 },
-      );
+      .dropIndex("moments_expiresAt_ttl")
+      .catch(() => {});
 
     // Fast lookup of an author's still-active stories.
     await db

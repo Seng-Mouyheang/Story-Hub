@@ -14,11 +14,42 @@ const toggleLikeComment = async (userId, commentId) => {
 
   const likesCollection = db.collection("momentCommentLikes");
   const commentsCollection = db.collection("momentComments");
+  const momentsCollection = db.collection("moments");
 
   try {
     let toggleResult;
 
     await session.withTransaction(async () => {
+      const comment = await commentsCollection.findOne(
+        { _id: commentObjectId, deletedAt: null },
+        { session, projection: { momentId: 1 } },
+      );
+
+      if (!comment) {
+        const notFoundError = new Error("Comment not found");
+        notFoundError.code = "COMMENT_NOT_FOUND";
+        throw notFoundError;
+      }
+
+      // Mirrors createComment's enforcement (momentCommentModel.js) — a
+      // comment whose parent story has expired or is pending deletion
+      // shouldn't still be likeable, since the story (and this comment
+      // along with it) is on its way out.
+      const activeMoment = await momentsCollection.findOne(
+        {
+          _id: comment.momentId,
+          expiresAt: { $gt: new Date() },
+          pendingDeletion: { $ne: true },
+        },
+        { session, projection: { _id: 1 } },
+      );
+
+      if (!activeMoment) {
+        const inactiveError = new Error("Story is no longer active");
+        inactiveError.code = "MOMENT_NOT_ACTIVE";
+        throw inactiveError;
+      }
+
       const existingLike = await likesCollection.findOne(
         { userId: userObjectId, commentId: commentObjectId },
         { session },
