@@ -330,7 +330,15 @@ const connectToDatabase = async () => {
     await db
       .collection("moments")
       .dropIndex("moments_expiresAt_ttl")
-      .catch(() => {});
+      .catch((error) => {
+        // code 27 = IndexNotFound — already absent, nothing to do. Any
+        // other error (e.g. permissions) must propagate: silently
+        // swallowing it would let the TTL index keep running, deleting
+        // moments before momentCleanupJob.js can clean up their files.
+        if (error.code !== 27) {
+          throw error;
+        }
+      });
 
     // Fast lookup of an author's still-active stories.
     await db
