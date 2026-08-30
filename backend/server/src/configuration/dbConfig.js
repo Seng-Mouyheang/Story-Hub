@@ -135,6 +135,19 @@ const connectToDatabase = async () => {
       .collection("storyLikes")
       .createIndex({ storyId: 1 }, { name: "storyId_lookup_index" });
 
+    // Unique index to prevent duplicate likes by the same user on the same
+    // moment (24h story)
+    await db
+      .collection("momentLikes")
+      .createIndex(
+        { userId: 1, momentId: 1 },
+        { unique: true, name: "unique_user_moment_like" },
+      );
+
+    await db
+      .collection("momentLikes")
+      .createIndex({ momentId: 1 }, { name: "momentId_lookup_index" });
+
     await db
       .collection("confessionLikes")
       .createIndex(
@@ -251,6 +264,29 @@ const connectToDatabase = async () => {
       .collection("commentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
+    // For fetching comments per moment (24h story) quickly
+    await db.collection("momentComments").createIndex({
+      momentId: 1,
+      parentId: 1,
+      deletedAt: 1,
+      createdAt: -1,
+      _id: -1,
+    });
+
+    // For replies to a moment comment
+    await db
+      .collection("momentComments")
+      .createIndex({ parentId: 1, deletedAt: 1, createdAt: 1, _id: 1 });
+
+    // Unique index to prevent duplicate likes by the same user on the same
+    // moment (24h story) comment/reply
+    await db
+      .collection("momentCommentLikes")
+      .createIndex(
+        { userId: 1, commentId: 1 },
+        { unique: true, name: "unique_user_moment_comment_like" },
+      );
+
     await db
       .collection("confessionCommentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
@@ -285,13 +321,24 @@ const connectToDatabase = async () => {
       },
     );
 
-    // TTL index to auto-delete 24-hour stories once they expire.
+    // A TTL index here would let MongoDB delete a moment the instant
+    // expiresAt passes (~24h) — before the retention cleanup job
+    // (momentCleanupJob.js, 7-day window) ever gets to delete its
+    // UploadThing file first, permanently orphaning it. Expired moments are
+    // excluded from reads via application-level `expiresAt` filtering
+    // (momentModel.js) instead; only the cleanup job hard-deletes them.
     await db
       .collection("moments")
-      .createIndex(
-        { expiresAt: 1 },
-        { name: "moments_expiresAt_ttl", expireAfterSeconds: 0 },
-      );
+      .dropIndex("moments_expiresAt_ttl")
+      .catch((error) => {
+        // code 27 = IndexNotFound — already absent, nothing to do. Any
+        // other error (e.g. permissions) must propagate: silently
+        // swallowing it would let the TTL index keep running, deleting
+        // moments before momentCleanupJob.js can clean up their files.
+        if (error.code !== 27) {
+          throw error;
+        }
+      });
 
     // Fast lookup of an author's still-active stories.
     await db

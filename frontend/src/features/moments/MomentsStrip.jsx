@@ -17,12 +17,12 @@ export default function MomentsStrip({
   );
 
   return (
-    <section className="bg-white/95 border border-slate-200 rounded-xl lg:rounded-3xl p-4 sm:p-6 mb-6 sm:mb-8 shadow-sm transition-all duration-300 hover:shadow-md">
-      <h2 className="text-xl sm:text-2xl font-semibold mb-5 sm:mb-6 px-1 sm:px-2 text-slate-900">
+    <section className="bg-white/95 border border-slate-200 rounded-xl lg:rounded-3xl p-3 sm:p-4 mb-6 sm:mb-8 shadow-sm transition-all duration-300 hover:shadow-md">
+      <h2 className="text-xl sm:text-2xl font-semibold mb-3 sm:mb-4 px-1 sm:px-2 text-slate-900">
         Stories
       </h2>
 
-      <div className="flex md:gap-2 overflow-x-auto snap-x snap-mandatory pb-2 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      <div className="flex gap-4 sm:gap-5 md:gap-2 overflow-x-auto snap-x snap-mandatory scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {isLoading ? (
           <div className="flex gap-4 sm:gap-5">
             {[...Array(4)].map((_, index) => (
