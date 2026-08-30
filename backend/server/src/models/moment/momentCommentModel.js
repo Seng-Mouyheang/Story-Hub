@@ -359,32 +359,69 @@ const getCommentById = async (id, currentUserId = null) => {
 // Edit comments
 const updateComment = async (id, userId, updateData) => {
   const collection = await getCollection();
+  const db = collection.db;
+  const momentsCollection = db.collection("moments");
 
-  const comment = await collection.findOne({
-    _id: new ObjectId(id),
-    deletedAt: null,
-  });
+  const client = getClient();
+  const session = client.startSession();
 
-  if (!comment) throw new Error("not found");
+  const commentId = new ObjectId(id);
 
-  // Ensure only the comment's owner can update
-  if (comment.userId.toString() !== userId.toString()) {
-    throw new Error("Unauthorized");
+  try {
+    let updateResult;
+
+    await session.withTransaction(async () => {
+      const comment = await collection.findOne(
+        { _id: commentId, deletedAt: null },
+        { session },
+      );
+
+      if (!comment) throw new Error("not found");
+
+      // Ensure only the comment's owner can update
+      if (comment.userId.toString() !== userId.toString()) {
+        throw new Error("Unauthorized");
+      }
+
+      // Mirrors createComment/toggleLikeComment's enforcement — checked
+      // atomically with the write itself (not just earlier by the
+      // controller's isMomentActive check) so a moment that transitions to
+      // expired/pendingDeletion in between can't let an edit slip through.
+      const activeMoment = await momentsCollection.findOne(
+        {
+          _id: comment.momentId,
+          expiresAt: { $gt: new Date() },
+          pendingDeletion: { $ne: true },
+        },
+        { session, projection: { _id: 1 } },
+      );
+
+      if (!activeMoment) {
+        const inactiveError = new Error("Story is no longer active");
+        inactiveError.code = "MOMENT_NOT_ACTIVE";
+        throw inactiveError;
+      }
+
+      // Remove protected fields
+      PROTECTED_FIELDS.forEach((field) => delete updateData[field]);
+
+      updateResult = await collection.updateOne(
+        { _id: commentId },
+        {
+          $set: {
+            ...updateData,
+            isEdited: true,
+            updatedAt: new Date(),
+          },
+        },
+        { session },
+      );
+    });
+
+    return updateResult;
+  } finally {
+    await session.endSession();
   }
-
-  // Remove protected fields
-  PROTECTED_FIELDS.forEach((field) => delete updateData[field]);
-
-  return collection.updateOne(
-    { _id: new ObjectId(id) },
-    {
-      $set: {
-        ...updateData,
-        isEdited: true,
-        updatedAt: new Date(),
-      },
-    },
-  );
 };
 
 // soft delete comment

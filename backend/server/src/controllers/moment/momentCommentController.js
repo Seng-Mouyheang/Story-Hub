@@ -129,6 +129,12 @@ const updateComment = async (req, res) => {
     if (error.message === "Unauthorized") {
       return res.status(403).json({ message: "Forbidden" });
     }
+    if (error.code === "MOMENT_NOT_ACTIVE") {
+      // The isMomentActive check above passed, but the moment transitioned
+      // to expired/pendingDeletion before updateComment's own atomic check
+      // ran — the model is the source of truth here.
+      return res.status(403).json({ message: "Cannot edit this comment" });
+    }
     console.error(error);
     res.status(500).json({ message: "Failed to update comment" });
   }
