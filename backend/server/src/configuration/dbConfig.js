@@ -264,6 +264,20 @@ const connectToDatabase = async () => {
       .collection("commentLikes")
       .createIndex({ userId: 1, commentId: 1 }, { unique: true });
 
+    // For fetching comments per moment (24h story) quickly
+    await db.collection("momentComments").createIndex({
+      momentId: 1,
+      parentId: 1,
+      deletedAt: 1,
+      createdAt: -1,
+      _id: -1,
+    });
+
+    // For replies to a moment comment
+    await db
+      .collection("momentComments")
+      .createIndex({ parentId: 1, deletedAt: 1, createdAt: 1, _id: 1 });
+
     // Unique index to prevent duplicate likes by the same user on the same
     // moment (24h story) comment/reply
     await db

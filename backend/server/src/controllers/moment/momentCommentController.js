@@ -1,10 +1,7 @@
 const commentModel = require("../../models/moment/momentCommentModel");
 const momentModel = require("../../models/moment/momentModel");
 
-const isMomentActive = (moment) =>
-  Boolean(moment) &&
-  !moment.pendingDeletion &&
-  new Date(moment.expiresAt) > new Date();
+const { isMomentActive } = momentModel;
 
 // POST /moments/:id/comments
 const addComment = async (req, res) => {
@@ -28,6 +25,9 @@ const addComment = async (req, res) => {
 
     res.status(201).json({ commentId });
   } catch (error) {
+    if (error.code === "MOMENT_NOT_FOUND") {
+      return res.status(403).json({ message: "Cannot comment on this story" });
+    }
     const validationMessages = [
       "Invalid parent comment",
       "Nested replies not allowed",

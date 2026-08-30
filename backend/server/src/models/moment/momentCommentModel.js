@@ -101,7 +101,9 @@ const createComment = async (commentData) => {
       );
 
       if (momentUpdate.matchedCount === 0) {
-        throw new Error("Invalid story");
+        const notFoundError = new Error("Invalid story");
+        notFoundError.code = "MOMENT_NOT_FOUND";
+        throw notFoundError;
       }
     });
 

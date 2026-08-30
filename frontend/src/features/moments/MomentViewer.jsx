@@ -88,6 +88,7 @@ export default function MomentViewer({
   const viewedIdsRef = useRef(new Set());
   const pendingLikeMomentIdsRef = useRef(new Set());
   const menuRef = useRef(null);
+  const commentPanelCloseTimeoutRef = useRef(null);
 
   const {
     activeMomentId: activeCommentMomentId,
@@ -149,15 +150,34 @@ export default function MomentViewer({
   // used by every close trigger (X button, backdrop click, Escape) so the
   // animation is consistent no matter how the user closes it.
   const requestCloseComments = useCallback(() => {
-    setIsCommentPanelClosing((currentlyClosing) => {
-      if (currentlyClosing) return currentlyClosing;
-      setTimeout(() => {
-        setIsCommentPanelClosing(false);
-        handleCloseComments();
-      }, COMMENT_PANEL_TRANSITION_MS);
-      return true;
-    });
+    if (commentPanelCloseTimeoutRef.current) return;
+
+    setIsCommentPanelClosing(true);
+    commentPanelCloseTimeoutRef.current = setTimeout(() => {
+      commentPanelCloseTimeoutRef.current = null;
+      setIsCommentPanelClosing(false);
+      handleCloseComments();
+    }, COMMENT_PANEL_TRANSITION_MS);
   }, [handleCloseComments]);
+
+  // Reopening while the previous close is still mid-animation would
+  // otherwise leave that timeout pending — it'd fire ~300ms later and
+  // immediately close the panel the user just reopened.
+  const cancelPendingCommentPanelClose = useCallback(() => {
+    if (commentPanelCloseTimeoutRef.current) {
+      clearTimeout(commentPanelCloseTimeoutRef.current);
+      commentPanelCloseTimeoutRef.current = null;
+      setIsCommentPanelClosing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (commentPanelCloseTimeoutRef.current) {
+        clearTimeout(commentPanelCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const requireToken = useCallback(
     (message) => {
@@ -450,6 +470,7 @@ export default function MomentViewer({
     if (!currentMoment) return;
     if (!requireToken("Please log in to comment.")) return;
 
+    cancelPendingCommentPanelClose();
     handleOpenComments(currentMoment.id);
     setTimeout(() => commentInputRef.current?.focus(), 50);
   };
@@ -462,6 +483,7 @@ export default function MomentViewer({
       return;
     }
 
+    cancelPendingCommentPanelClose();
     handleOpenComments(currentMoment.id);
   };
 

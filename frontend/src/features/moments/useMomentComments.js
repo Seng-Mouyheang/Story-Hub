@@ -264,6 +264,7 @@ export function useMomentComments({
               ...createEmptyRepliesState(),
               ...(prev.repliesByComment?.[commentId] || {}),
               loading: false,
+              loadingMore: false,
               error: "Unable to load replies.",
             },
           },

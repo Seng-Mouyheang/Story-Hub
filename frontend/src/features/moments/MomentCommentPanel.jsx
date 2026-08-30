@@ -329,6 +329,12 @@ const MomentCommentPanel = ({
                           </p>
                         )}
 
+                        {!replyState.loading && replyState.error && (
+                          <p className="text-[11px] text-rose-500">
+                            {replyState.error}
+                          </p>
+                        )}
+
                         {(replyState.items || []).map((reply) => {
                           const replyId = String(reply._id || reply.id || "");
                           const replyOwnerId = normalizeId(reply?.userId);
@@ -519,10 +525,12 @@ const MomentCommentPanel = ({
                             onClick={() => onLoadMoreReplies(commentId)}
                             className="text-xs font-semibold text-rose-600 cursor-pointer hover:text-rose-700"
                           >
-                            Replies(
-                            {Math.max(
-                              0,
-                              replyCount - (replyState.items || []).length,
+                            View replies (
+                            {formatCount(
+                              Math.max(
+                                0,
+                                replyCount - (replyState.items || []).length,
+                              ),
                             )}
                             )
                           </button>

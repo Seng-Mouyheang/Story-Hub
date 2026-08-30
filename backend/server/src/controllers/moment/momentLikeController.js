@@ -1,10 +1,7 @@
 const momentLikeModel = require("../../models/moment/momentLikeModel");
 const momentModel = require("../../models/moment/momentModel");
 
-const isMomentActive = (moment) =>
-  Boolean(moment) &&
-  !moment.pendingDeletion &&
-  new Date(moment.expiresAt) > new Date();
+const { isMomentActive } = momentModel;
 
 const getMomentLikes = async (req, res) => {
   try {
@@ -44,6 +41,9 @@ const toggleLikeMoment = async (req, res) => {
 
     res.json(result);
   } catch (error) {
+    if (error.code === "MOMENT_NOT_FOUND") {
+      return res.status(403).json({ message: "Cannot like this story" });
+    }
     console.error(error);
     res.status(500).json({ message: "Failed to toggle like" });
   }

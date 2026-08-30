@@ -17,6 +17,13 @@ const assertValidObjectId = (id, fieldName) => {
   }
 };
 
+// A moment is only interactable (commentable/likeable) while it exists,
+// hasn't been marked for deletion, and hasn't expired yet.
+const isMomentActive = (moment) =>
+  Boolean(moment) &&
+  !moment.pendingDeletion &&
+  new Date(moment.expiresAt) > new Date();
+
 const mapMoment = (moment, viewerObjectId, likedMomentIds = null) => ({
   id: moment._id.toString(),
   type: moment.type,
@@ -364,6 +371,7 @@ module.exports = {
   getFeedMoments,
   getMomentsByAuthor,
   getMomentById,
+  isMomentActive,
   markViewed,
   deleteMoment,
   hardDeleteMomentById,

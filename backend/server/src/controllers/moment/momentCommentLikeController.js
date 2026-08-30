@@ -1,20 +1,13 @@
 const commentLikeModel = require("../../models/moment/momentCommentLikeModel");
-const commentModel = require("../../models/moment/momentCommentModel");
 
 const toggleLikeComment = async (req, res) => {
   try {
     const commentId = req.params.id;
     const userId = req.user.userId;
 
-    await commentLikeModel.toggleLikeComment(userId, commentId);
+    const result = await commentLikeModel.toggleLikeComment(userId, commentId);
 
-    const updatedComment = await commentModel.getCommentById(commentId, userId);
-
-    if (!updatedComment) {
-      return res.status(404).json({ message: "Comment not found" });
-    }
-
-    res.json(updatedComment);
+    res.json(result);
   } catch (error) {
     console.error("Toggle comment like failed:", error);
 
