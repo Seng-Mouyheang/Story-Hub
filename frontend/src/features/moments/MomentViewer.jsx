@@ -907,6 +907,8 @@ export default function MomentViewer({
                       }}
                       className="p-1.5 rounded-full text-white/80 hover:bg-white/10"
                       aria-label="Story options"
+                      aria-haspopup="menu"
+                      aria-expanded={isMenuOpen}
                     >
                       <MoreVertical size={18} />
                     </button>
@@ -1080,6 +1082,8 @@ export default function MomentViewer({
                 />
                 <div
                   ref={menuPanelRef}
+                  role="menu"
+                  aria-label="Story options"
                   className={`absolute inset-x-0 bottom-0 z-20 rounded-t-2xl border border-white/10 bg-slate-800 shadow-lg pb-[max(0.75rem,env(safe-area-inset-bottom))] transition-transform duration-200 ease-out sm:inset-x-auto sm:bottom-auto sm:right-3 sm:top-16 sm:w-36 sm:rounded-xl sm:py-1 sm:pb-1 sm:transition-none sm:duration-0 ${
                     isMenuEntered && !isMenuClosing
                       ? "translate-y-0"
@@ -1091,6 +1095,7 @@ export default function MomentViewer({
                   </div>
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={handleSaveMoment}
                     className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-white/80 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
                   >
@@ -1100,6 +1105,7 @@ export default function MomentViewer({
                   </button>
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={handleShareMoment}
                     className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-white/80 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
                   >
@@ -1109,6 +1115,7 @@ export default function MomentViewer({
                   </button>
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={handleToggleComments}
                     className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-white/80 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
                   >
@@ -1120,6 +1127,7 @@ export default function MomentViewer({
                   </button>
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={requestDelete}
                     className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-rose-400 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
                   >

@@ -283,13 +283,15 @@ const MomentCommentPanel = ({
                         />
                         <span>{formatCount(commentLikesCount)}</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onStartReply(momentId, comment)}
-                        className="text-xs font-medium text-slate-500 cursor-pointer transition-colors hover:text-slate-700"
-                      >
-                        Reply
-                      </button>
+                      {!commentsDisabled && (
+                        <button
+                          type="button"
+                          onClick={() => onStartReply(momentId, comment)}
+                          className="text-xs font-medium text-slate-500 cursor-pointer transition-colors hover:text-slate-700"
+                        >
+                          Reply
+                        </button>
+                      )}
                       {replyCount > 0 && (
                         <button
                           type="button"
