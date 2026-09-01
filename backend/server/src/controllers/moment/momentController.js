@@ -1,4 +1,5 @@
 const momentModel = require("../../models/moment/momentModel");
+const momentViewModel = require("../../models/moment/momentViewModel");
 const followModel = require("../../models/profile/followModel");
 const uploadOwnershipModel = require("../../models/profile/uploadOwnershipModel");
 const {
@@ -139,6 +140,40 @@ const viewMoment = async (req, res) => {
   }
 };
 
+// Get who has viewed a story, with a `liked` flag on each — author only.
+const getMomentViewers = async (req, res) => {
+  try {
+    // Ownership is part of the query itself, so a wrong-owner request 404s
+    // exactly like a nonexistent one — no separate check to accidentally
+    // omit, and no way to tell "not yours" apart from "doesn't exist".
+    const moment = await momentModel.getMomentOwnedByAuthor(
+      req.params.id,
+      req.user.userId,
+    );
+
+    if (!moment) {
+      return res.status(404).json({ message: "Story not found" });
+    }
+
+    const cursor = req.query.cursor || null;
+    // req.query is read-only in Express 5, so the validate middleware's
+    // Joi-coerced value never actually lands on it — re-parse here rather
+    // than trust req.query.limit's type (see getComments/getReplies).
+    const limit = Number.parseInt(req.query.limit, 10) || 20;
+    const [result, totalCount] = await Promise.all([
+      momentViewModel.getMomentViewers(req.params.id, limit, cursor),
+      // Only needed to render the header count on the first page — later
+      // pages don't need to pay for it again.
+      cursor ? null : momentViewModel.getMomentViewsCount(req.params.id),
+    ]);
+
+    res.json(totalCount === null ? result : { ...result, totalCount });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch viewers" });
+  }
+};
+
 const deleteMoment = async (req, res) => {
   try {
     const markedMoment = await momentModel.deleteMoment(
@@ -166,5 +201,6 @@ module.exports = {
   getFeedMoments,
   getMomentsByAuthor,
   viewMoment,
+  getMomentViewers,
   deleteMoment,
 };

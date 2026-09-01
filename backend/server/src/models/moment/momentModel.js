@@ -4,6 +4,7 @@ const {
 } = require("../../configuration/dbConfig");
 const { ObjectId } = require("mongodb");
 const momentLikeModel = require("./momentLikeModel");
+const momentViewModel = require("./momentViewModel");
 
 const COLLECTION_NAME = "moments";
 const PROFILES_COLLECTION = "profiles";
@@ -218,20 +219,42 @@ const getMomentById = async (momentId) => {
     .findOne({ _id: new ObjectId(momentId) });
 };
 
+// Ownership baked into the query itself (mirrors deleteMoment) rather than
+// a separate fetch-then-check-authorId step, so a wrong-owner request is
+// indistinguishable from a nonexistent one and the check can't be silently
+// dropped by a future edit that forgets to compare authorId.
+const getMomentOwnedByAuthor = async (momentId, authorId) => {
+  if (!ObjectId.isValid(momentId) || !ObjectId.isValid(authorId)) return null;
+
+  const db = await connectToDatabase();
+  return db.collection(COLLECTION_NAME).findOne({
+    _id: new ObjectId(momentId),
+    authorId: new ObjectId(authorId),
+  });
+};
+
 const markViewed = async (momentId, viewerId) => {
   assertValidObjectId(momentId, "story id");
   assertValidObjectId(viewerId, "viewer id");
 
   const db = await connectToDatabase();
+  const viewerObjectId = new ObjectId(viewerId);
 
-  await db.collection(COLLECTION_NAME).updateOne(
+  const moment = await db.collection(COLLECTION_NAME).findOneAndUpdate(
     {
       _id: new ObjectId(momentId),
       expiresAt: { $gt: new Date() },
       pendingDeletion: { $ne: true },
     },
-    { $addToSet: { viewedBy: new ObjectId(viewerId) } },
+    { $addToSet: { viewedBy: viewerObjectId } },
+    { projection: { authorId: 1 } },
   );
+
+  // Skip recording a self-view so the author never shows up in their own
+  // "viewers" list.
+  if (moment && !moment.authorId.equals(viewerObjectId)) {
+    await momentViewModel.recordView(momentId, viewerId);
+  }
 };
 
 // Marks the moment for deletion (immediately excluded from feeds/profile
@@ -262,7 +285,7 @@ const deleteMoment = async (momentId, authorId) => {
   return markedMoment;
 };
 
-// Deletes every momentComments/momentCommentLikes/momentLikes row belonging
+// Deletes every momentComments/momentCommentLikes/momentLikes/momentViews row belonging
 // to the given moments, so hard-deleting a moment doesn't leave those rows
 // as permanent orphans pointing at an id that no longer exists.
 const cascadeDeleteMomentInteractions = async (
@@ -289,6 +312,10 @@ const cascadeDeleteMomentInteractions = async (
 
   await db
     .collection("momentLikes")
+    .deleteMany({ momentId: { $in: momentObjectIds } }, { session });
+
+  await db
+    .collection("momentViews")
     .deleteMany({ momentId: { $in: momentObjectIds } }, { session });
 };
 
@@ -371,6 +398,7 @@ module.exports = {
   getFeedMoments,
   getMomentsByAuthor,
   getMomentById,
+  getMomentOwnedByAuthor,
   isMomentActive,
   markViewed,
   deleteMoment,

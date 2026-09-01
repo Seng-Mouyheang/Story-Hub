@@ -44,6 +44,15 @@ router.post(
   momentController.viewMoment,
 );
 
+// Get who has viewed a story, with like status (author only)
+router.get(
+  "/:id/viewers",
+  authenticate,
+  validate(idParamSchema, "params"),
+  validate(cursorPaginationSchema, "query"),
+  momentController.getMomentViewers,
+);
+
 // Delete one of the current user's own stories
 router.delete(
   "/:id",
