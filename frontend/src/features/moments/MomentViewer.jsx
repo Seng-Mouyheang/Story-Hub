@@ -8,10 +8,14 @@ import {
   Heart,
   MessageCircle,
   Eye,
+  Download,
+  Share2,
+  MessageCircleOff,
 } from "lucide-react";
 import {
   markMomentViewed,
   deleteMoment as deleteMomentApi,
+  toggleMomentComments,
 } from "../../api/moment/momentApi";
 import { toggleMomentLike } from "../../api/moment/momentInteractionsApi";
 import { useMomentComments } from "./useMomentComments";
@@ -41,6 +45,7 @@ const formatShortAge = (dateString) => {
 export default function MomentViewer({
   authorSequence,
   initialAuthorId,
+  initialMomentId,
   momentGroups,
   currentUserId,
   currentUsername,
@@ -75,12 +80,20 @@ export default function MomentViewer({
   // the end of the new array.
   const [authorId, setAuthorId] = useState(initialAuthorId);
   const [group, setGroup] = useState(() => deriveGroup(initialAuthorId));
-  const [momentIndex, setMomentIndex] = useState(0);
+  const [momentIndex, setMomentIndex] = useState(() => {
+    if (!initialMomentId || !group) return 0;
+    const index = group.moments.findIndex(
+      (moment) => moment.id === initialMomentId,
+    );
+    return index > -1 ? index : 0;
+  });
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [entered, setEntered] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuClosing, setIsMenuClosing] = useState(false);
+  const [isMenuEntered, setIsMenuEntered] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
   const [isCommentPanelClosing, setIsCommentPanelClosing] = useState(false);
@@ -91,7 +104,15 @@ export default function MomentViewer({
   const rafRef = useRef(null);
   const viewedIdsRef = useRef(new Set());
   const pendingLikeMomentIdsRef = useRef(new Set());
+  const pendingCommentsToggleMomentIdsRef = useRef(new Set());
   const menuRef = useRef(null);
+  // The menu's trigger button and its dropdown/sheet content are no longer
+  // DOM-nested (the content is rendered as a top-level sibling so its
+  // z-index isn't trapped inside the header row's own stacking context —
+  // see where isMenuOpen is rendered below) — a click needs to check both
+  // refs to know whether it landed "inside" the menu.
+  const menuPanelRef = useRef(null);
+  const menuCloseTimeoutRef = useRef(null);
   const commentPanelCloseTimeoutRef = useRef(null);
   const viewersPanelCloseTimeoutRef = useRef(null);
 
@@ -160,6 +181,21 @@ export default function MomentViewer({
     onMomentsViewed?.(viewedIdsRef.current);
     setTimeout(onClose, TRANSITION_MS);
   }, [onClose, onMomentsViewed]);
+
+  // Plays the options menu's slide-down (mobile) / fade (desktop) exit
+  // transition before actually unmounting it, same pattern as the comment
+  // and viewers panels below.
+  const requestCloseMenu = useCallback(() => {
+    if (menuCloseTimeoutRef.current) return;
+
+    setIsMenuClosing(true);
+    menuCloseTimeoutRef.current = setTimeout(() => {
+      menuCloseTimeoutRef.current = null;
+      setIsMenuClosing(false);
+      setIsMenuOpen(false);
+      setIsMenuEntered(false);
+    }, TRANSITION_MS);
+  }, []);
 
   // Plays the panel's slide-out transition before actually unmounting it —
   // used by every close trigger (X button, backdrop click, Escape) so the
@@ -325,7 +361,8 @@ export default function MomentViewer({
       !currentMoment ||
       isPaused ||
       isCommentPanelOpen ||
-      isViewersPanelOpen
+      isViewersPanelOpen ||
+      isMenuOpen
     ) {
       return undefined;
     }
@@ -356,6 +393,7 @@ export default function MomentViewer({
     isPaused,
     isCommentPanelOpen,
     isViewersPanelOpen,
+    isMenuOpen,
     advance,
   ]);
 
@@ -376,12 +414,17 @@ export default function MomentViewer({
           return;
         }
         if (isMenuOpen) {
-          setIsMenuOpen(false);
+          requestCloseMenu();
           return;
         }
         requestClose();
       }
-      if (isConfirmingDelete || isCommentPanelOpen || isViewersPanelOpen)
+      if (
+        isConfirmingDelete ||
+        isCommentPanelOpen ||
+        isViewersPanelOpen ||
+        isMenuOpen
+      )
         return;
       if (event.key === "ArrowRight") advance();
       if (event.key === "ArrowLeft") goBack();
@@ -396,17 +439,39 @@ export default function MomentViewer({
     isViewersPanelOpen,
     requestCloseComments,
     requestCloseViewers,
+    requestCloseMenu,
     requestClose,
     advance,
     goBack,
   ]);
 
+  // Mounts the menu already off-screen (mobile: slid down) and flips to its
+  // entered position a frame later, so the slide-in transition has somewhere
+  // to animate from. The false case is reset by requestCloseMenu's own
+  // timeout instead of here, once the close transition actually finishes.
+  useEffect(() => {
+    if (!isMenuOpen) return undefined;
+
+    const raf = requestAnimationFrame(() => setIsMenuEntered(true));
+    return () => cancelAnimationFrame(raf);
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (menuCloseTimeoutRef.current) {
+        clearTimeout(menuCloseTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!isMenuOpen) return undefined;
 
     const handlePointerDown = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsMenuOpen(false);
+      const insideTrigger = menuRef.current?.contains(event.target);
+      const insidePanel = menuPanelRef.current?.contains(event.target);
+      if (!insideTrigger && !insidePanel) {
+        requestCloseMenu();
       }
     };
 
@@ -417,10 +482,167 @@ export default function MomentViewer({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("touchstart", handlePointerDown);
     };
-  }, [isMenuOpen]);
+  }, [isMenuOpen, requestCloseMenu]);
+
+  // Draws a legacy text-only story (no baked image) onto an offscreen canvas
+  // so it can still be saved as a PNG — mirrors the on-screen rendering
+  // below (solid/gradient background + centered white wrapped text).
+  const renderTextMomentToCanvas = (moment) => {
+    const width = 1080;
+    const height = 1920;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+
+    context.fillStyle = moment.backgroundColor || "#0f172a";
+    context.fillRect(0, 0, width, height);
+
+    const text = moment.text || "";
+    const maxLineWidth = width - 160;
+    const fontSize = 56;
+    context.fillStyle = "#ffffff";
+    context.font = `600 ${fontSize}px sans-serif`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+
+    const lines = [];
+    text.split("\n").forEach((paragraph) => {
+      const words = paragraph.split(" ");
+      let current = "";
+      words.forEach((word) => {
+        const candidate = current ? `${current} ${word}` : word;
+        if (current && context.measureText(candidate).width > maxLineWidth) {
+          lines.push(current);
+          current = word;
+        } else {
+          current = candidate;
+        }
+      });
+      lines.push(current);
+    });
+
+    const lineHeight = fontSize * 1.3;
+    const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, index) => {
+      context.fillText(line, width / 2, startY + index * lineHeight);
+    });
+
+    return canvas;
+  };
+
+  const triggerDownload = (href, filename) => {
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  // Shared by Save and Share below — resolves a moment (baked image or
+  // legacy text card) down to a single image Blob so both actions work off
+  // identical pixels regardless of the moment's type.
+  const getMomentImageBlob = async (moment) => {
+    if (moment.type === "image" && moment.imageUrl) {
+      const response = await fetch(moment.imageUrl);
+      if (!response.ok) throw new Error("Failed to fetch story image");
+      return response.blob();
+    }
+
+    const canvas = renderTextMomentToCanvas(moment);
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error("Failed to render story image"));
+      }, "image/png");
+    });
+  };
+
+  const getMomentImageFilename = (moment) =>
+    `story-${moment.id}.${moment.type === "image" ? "jpg" : "png"}`;
+
+  const handleSaveMoment = async () => {
+    requestCloseMenu();
+    if (!currentMoment) return;
+
+    setIsPaused(true);
+    try {
+      const blob = await getMomentImageBlob(currentMoment);
+      const objectUrl = URL.createObjectURL(blob);
+      triggerDownload(objectUrl, getMomentImageFilename(currentMoment));
+      URL.revokeObjectURL(objectUrl);
+      notify?.("Story saved to your device.", "success");
+    } catch {
+      notify?.("Failed to save story. Please try again.", "error");
+    } finally {
+      setIsPaused(false);
+    }
+  };
+
+  const handleShareMoment = async () => {
+    requestCloseMenu();
+    if (!currentMoment) return;
+
+    // The link only resolves for as long as the moment itself is active —
+    // it stops working once the story expires, same as Instagram's story
+    // share links.
+    const shareUrl = `${window.location.origin}/moments/${authorId}/${currentMoment.id}`;
+
+    setIsPaused(true);
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Story on Story Hub", url: shareUrl });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        notify?.("Link copied to clipboard.", "success");
+      }
+    } catch (error) {
+      // AbortError just means the user closed the native share sheet.
+      if (error?.name !== "AbortError") {
+        notify?.("Failed to share story. Please try again.", "error");
+      }
+    } finally {
+      setIsPaused(false);
+    }
+  };
+
+  const handleToggleComments = async () => {
+    // Deliberately leaves the menu open (unlike Save/Share/Delete) so the
+    // owner sees the label flip to its new state immediately, in place.
+    if (!currentMoment) return;
+
+    const momentId = currentMoment.id;
+    if (pendingCommentsToggleMomentIdsRef.current.has(momentId)) return;
+    pendingCommentsToggleMomentIdsRef.current.add(momentId);
+
+    try {
+      const result = await toggleMomentComments(momentId);
+      const commentsDisabled = Boolean(result.commentsDisabled);
+
+      setGroup((currentGroup) => {
+        if (!currentGroup) return currentGroup;
+        return {
+          ...currentGroup,
+          moments: currentGroup.moments.map((moment) =>
+            moment.id === momentId ? { ...moment, commentsDisabled } : moment,
+          ),
+        };
+      });
+
+      notify?.(
+        commentsDisabled ? "Commenting turned off." : "Commenting turned on.",
+        "success",
+      );
+    } catch {
+      notify?.("Failed to update comment settings. Please try again.", "error");
+    } finally {
+      pendingCommentsToggleMomentIdsRef.current.delete(momentId);
+    }
+  };
 
   const requestDelete = () => {
-    setIsMenuOpen(false);
+    requestCloseMenu();
     setIsConfirmingDelete(true);
     setIsPaused(true);
   };
@@ -435,19 +657,28 @@ export default function MomentViewer({
 
     setIsConfirmingDelete(false);
 
-    try {
-      await deleteMomentApi(currentMoment.id);
-      onMomentDeleted?.(currentMoment.id);
+    const deletedMomentId = currentMoment.id;
 
-      const remaining = group.moments.filter((m) => m.id !== currentMoment.id);
+    try {
+      await deleteMomentApi(deletedMomentId);
+
+      const remaining = group.moments.filter((m) => m.id !== deletedMomentId);
 
       if (remaining.length === 0) {
+        onMomentDeleted?.(deletedMomentId, null);
         goToNextAuthor();
         return;
       }
 
+      const newIndex = Math.min(momentIndex, remaining.length - 1);
+      // Tell the parent which moment is now on screen (not just which one
+      // was removed) — a permalink page keyed to the deleted moment's id
+      // needs this to update its URL, or a refresh/reshare of that same
+      // link would 404 even though the author still has other live stories.
+      onMomentDeleted?.(deletedMomentId, remaining[newIndex]?.id ?? null);
+
       setGroup({ ...group, moments: remaining });
-      setMomentIndex((index) => Math.min(index, remaining.length - 1));
+      setMomentIndex(newIndex);
       setIsPaused(false);
     } catch {
       // best-effort; keep viewer open on failure
@@ -667,25 +898,20 @@ export default function MomentViewer({
                   <div className="relative" ref={menuRef}>
                     <button
                       type="button"
-                      onClick={() => setIsMenuOpen((open) => !open)}
+                      onClick={() => {
+                        if (isMenuOpen) {
+                          requestCloseMenu();
+                        } else {
+                          setIsMenuOpen(true);
+                        }
+                      }}
                       className="p-1.5 rounded-full text-white/80 hover:bg-white/10"
                       aria-label="Story options"
+                      aria-haspopup="menu"
+                      aria-expanded={isMenuOpen}
                     >
                       <MoreVertical size={18} />
                     </button>
-
-                    {isMenuOpen && (
-                      <div className="absolute right-0 top-9 z-20 w-36 rounded-xl border border-white/10 bg-slate-800 shadow-lg py-1 overflow-hidden">
-                        <button
-                          type="button"
-                          onClick={requestDelete}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-rose-400 hover:bg-white/5"
-                        >
-                          <Trash2 size={14} />
-                          Delete story
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
                 <button
@@ -756,6 +982,10 @@ export default function MomentViewer({
                   </button>
                   <div className="flex-1" />
                 </>
+              ) : currentMoment.commentsDisabled ? (
+                <div className="flex-1 min-w-0 rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/40 truncate">
+                  Comments are off
+                </div>
               ) : (
                 <button
                   type="button"
@@ -802,6 +1032,7 @@ export default function MomentViewer({
             {isCommentPanelOpen && (
               <MomentCommentPanel
                 momentId={currentMoment.id}
+                commentsDisabled={Boolean(currentMoment.commentsDisabled)}
                 isDimmed={isConfirmingDelete}
                 isClosing={isCommentPanelClosing || isClosing}
                 commentState={commentState}
@@ -837,6 +1068,75 @@ export default function MomentViewer({
                 viewersListSentinelRef={viewersListSentinelRef}
                 onClose={requestCloseViewers}
               />
+            )}
+
+            {isMenuOpen && (
+              <>
+                {/* Backdrop: mobile-only, dims behind the bottom sheet. A
+                    top-level sibling (not nested under the header row) so
+                    its z-index actually wins against the header/toolbar,
+                    which sit in their own sibling stacking contexts. */}
+                <div
+                  className="absolute inset-0 z-20 bg-black/50 sm:hidden"
+                  onClick={requestCloseMenu}
+                />
+                <div
+                  ref={menuPanelRef}
+                  role="menu"
+                  aria-label="Story options"
+                  className={`absolute inset-x-0 bottom-0 z-20 rounded-t-2xl border border-white/10 bg-slate-800 shadow-lg pb-[max(0.75rem,env(safe-area-inset-bottom))] transition-transform duration-200 ease-out sm:inset-x-auto sm:bottom-auto sm:right-3 sm:top-16 sm:w-36 sm:rounded-xl sm:py-1 sm:pb-1 sm:transition-none sm:duration-0 ${
+                    isMenuEntered && !isMenuClosing
+                      ? "translate-y-0"
+                      : "translate-y-full sm:translate-y-0"
+                  }`}
+                >
+                  <div className="flex justify-center pt-2 pb-1 sm:hidden">
+                    <div className="h-1 w-10 rounded-full bg-white/20" />
+                  </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleSaveMoment}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-white/80 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
+                  >
+                    <Download size={18} className="sm:hidden" />
+                    <Download size={14} className="hidden sm:block" />
+                    Save story
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleShareMoment}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-white/80 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
+                  >
+                    <Share2 size={18} className="sm:hidden" />
+                    <Share2 size={14} className="hidden sm:block" />
+                    Share story
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleToggleComments}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-white/80 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
+                  >
+                    <MessageCircleOff size={18} className="sm:hidden" />
+                    <MessageCircleOff size={14} className="hidden sm:block" />
+                    {currentMoment.commentsDisabled
+                      ? "Turn on commenting"
+                      : "Turn off commenting"}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={requestDelete}
+                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left text-sm font-medium text-rose-400 hover:bg-white/5 sm:gap-2 sm:px-3 sm:py-2 sm:text-xs"
+                  >
+                    <Trash2 size={18} className="sm:hidden" />
+                    <Trash2 size={14} className="hidden sm:block" />
+                    Delete story
+                  </button>
+                </div>
+              </>
             )}
 
             {isConfirmingDelete && (

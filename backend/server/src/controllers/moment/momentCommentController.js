@@ -16,6 +16,12 @@ const addComment = async (req, res) => {
       return res.status(403).json({ message: "Cannot comment on this story" });
     }
 
+    if (moment.commentsDisabled) {
+      return res
+        .status(403)
+        .json({ message: "Comments are turned off for this story" });
+    }
+
     const commentId = await commentModel.createComment({
       userId,
       momentId,

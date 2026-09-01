@@ -17,6 +17,7 @@ const Bookmarks = lazy(() => import("./pages/Bookmarks"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Write = lazy(() => import("./pages/Write"));
 const Profile = lazy(() => import("./pages/Profile"));
+const MomentPermalink = lazy(() => import("./pages/MomentPermalink"));
 const EditProfile = lazy(() => import("./pages/EditProfile"));
 const Settings = lazy(() => import("./pages/Settings"));
 
@@ -48,6 +49,7 @@ const PAGE_TITLES = [
   { path: "/dashboard", title: "Dashboard" },
   { path: "/write", title: "Write Story" },
   { path: "/profile", title: "Profile" },
+  { path: "/moments", title: "Story" },
   { path: "/edit-profile", title: "Edit Profile" },
   { path: "/settings", title: "Settings" },
 ];
@@ -172,6 +174,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/moments/:authorId/:momentId"
+            element={
+              <ProtectedRoute>
+                <MomentPermalink />
               </ProtectedRoute>
             }
           />

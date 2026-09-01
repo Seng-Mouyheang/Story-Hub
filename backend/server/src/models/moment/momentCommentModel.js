@@ -95,6 +95,7 @@ const createComment = async (commentData) => {
           _id: momentId,
           expiresAt: { $gt: now },
           pendingDeletion: { $ne: true },
+          commentsDisabled: { $ne: true },
         },
         { $inc: { commentCount: 1 } },
         { session },

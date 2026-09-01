@@ -174,6 +174,27 @@ const getMomentViewers = async (req, res) => {
   }
 };
 
+const toggleComments = async (req, res) => {
+  try {
+    // Ownership + active-story check and the flip itself all happen in one
+    // atomic query (see toggleCommentsDisabled) — a wrong-owner or
+    // already-expired/deleted request 404s exactly like a nonexistent one.
+    const moment = await momentModel.toggleCommentsDisabled(
+      req.params.id,
+      req.user.userId,
+    );
+
+    if (!moment) {
+      return res.status(404).json({ message: "Story not found" });
+    }
+
+    res.json({ commentsDisabled: Boolean(moment.commentsDisabled) });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to update story" });
+  }
+};
+
 const deleteMoment = async (req, res) => {
   try {
     const markedMoment = await momentModel.deleteMoment(
@@ -202,5 +223,6 @@ module.exports = {
   getMomentsByAuthor,
   viewMoment,
   getMomentViewers,
+  toggleComments,
   deleteMoment,
 };
