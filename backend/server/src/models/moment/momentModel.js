@@ -222,7 +222,10 @@ const getMomentById = async (momentId) => {
 // Ownership baked into the query itself (mirrors deleteMoment) rather than
 // a separate fetch-then-check-authorId step, so a wrong-owner request is
 // indistinguishable from a nonexistent one and the check can't be silently
-// dropped by a future edit that forgets to compare authorId.
+// dropped by a future edit that forgets to compare authorId. Also scoped to
+// active moments (same predicates as markViewed) so an expired or
+// pending-deletion story — already invisible everywhere else — can't still
+// be queried for its viewer identities.
 const getMomentOwnedByAuthor = async (momentId, authorId) => {
   if (!ObjectId.isValid(momentId) || !ObjectId.isValid(authorId)) return null;
 
@@ -230,6 +233,8 @@ const getMomentOwnedByAuthor = async (momentId, authorId) => {
   return db.collection(COLLECTION_NAME).findOne({
     _id: new ObjectId(momentId),
     authorId: new ObjectId(authorId),
+    expiresAt: { $gt: new Date() },
+    pendingDeletion: { $ne: true },
   });
 };
 

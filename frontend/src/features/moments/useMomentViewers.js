@@ -15,9 +15,20 @@ export function useMomentViewers() {
   const viewersListRef = useRef(null);
   const viewersListSentinelRef = useRef(null);
   const activeMomentIdRef = useRef(null);
+  // Bumped at the start of every fetch so a same-moment reopen or a rapid
+  // double-open (e.g. two click events landing before React re-renders and
+  // isViewersPanelOpen reflects the first one) can't have its earlier,
+  // slower request resolve later and clobber the newer one's state — the
+  // activeMomentIdRef check alone only catches a *different* moment.
+  const requestGenerationRef = useRef(0);
 
   const fetchViewers = useCallback(
     async (momentId, cursor = null, append = false) => {
+      const generation = (requestGenerationRef.current += 1);
+      const isStale = () =>
+        activeMomentIdRef.current !== momentId ||
+        requestGenerationRef.current !== generation;
+
       setViewersState((prev) => ({
         ...prev,
         loading: !append,
@@ -28,7 +39,7 @@ export function useMomentViewers() {
       try {
         const payload = await getMomentViewers(momentId, { limit: 20, cursor });
 
-        if (activeMomentIdRef.current !== momentId) {
+        if (isStale()) {
           return;
         }
 
@@ -50,7 +61,7 @@ export function useMomentViewers() {
           hasMore: Boolean(payload?.hasMore),
         }));
       } catch {
-        if (activeMomentIdRef.current !== momentId) {
+        if (isStale()) {
           return;
         }
 
