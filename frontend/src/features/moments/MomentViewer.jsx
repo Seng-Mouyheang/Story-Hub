@@ -7,6 +7,7 @@ import {
   MoreVertical,
   Heart,
   MessageCircle,
+  Eye,
 } from "lucide-react";
 import {
   markMomentViewed,
@@ -14,11 +15,13 @@ import {
 } from "../../api/moment/momentApi";
 import { toggleMomentLike } from "../../api/moment/momentInteractionsApi";
 import { useMomentComments } from "./useMomentComments";
+import { useMomentViewers } from "./useMomentViewers";
 import MomentCommentPanel from "./MomentCommentPanel";
+import MomentViewersPanel from "./MomentViewersPanel";
 
 const MOMENT_DURATION_MS = 5000;
 const TRANSITION_MS = 220;
-const COMMENT_PANEL_TRANSITION_MS = 300;
+const PANEL_TRANSITION_MS = 300;
 
 const formatShortAge = (dateString) => {
   const sourceMs = new Date(dateString).getTime();
@@ -81,6 +84,7 @@ export default function MomentViewer({
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [likePulse, setLikePulse] = useState(false);
   const [isCommentPanelClosing, setIsCommentPanelClosing] = useState(false);
+  const [isViewersPanelClosing, setIsViewersPanelClosing] = useState(false);
 
   const startRef = useRef(0);
   const pausedElapsedRef = useRef(0);
@@ -89,6 +93,7 @@ export default function MomentViewer({
   const pendingLikeMomentIdsRef = useRef(new Set());
   const menuRef = useRef(null);
   const commentPanelCloseTimeoutRef = useRef(null);
+  const viewersPanelCloseTimeoutRef = useRef(null);
 
   const {
     activeMomentId: activeCommentMomentId,
@@ -140,6 +145,16 @@ export default function MomentViewer({
     },
   });
 
+  const {
+    activeMomentId: activeViewersMomentId,
+    viewersState,
+    totalCount: viewersTotalCount,
+    viewersListRef,
+    viewersListSentinelRef,
+    handleOpenViewers,
+    handleCloseViewers,
+  } = useMomentViewers();
+
   const requestClose = useCallback(() => {
     setIsClosing(true);
     onMomentsViewed?.(viewedIdsRef.current);
@@ -157,7 +172,7 @@ export default function MomentViewer({
       commentPanelCloseTimeoutRef.current = null;
       setIsCommentPanelClosing(false);
       handleCloseComments();
-    }, COMMENT_PANEL_TRANSITION_MS);
+    }, PANEL_TRANSITION_MS);
   }, [handleCloseComments]);
 
   // Reopening while the previous close is still mid-animation would
@@ -175,6 +190,33 @@ export default function MomentViewer({
     return () => {
       if (commentPanelCloseTimeoutRef.current) {
         clearTimeout(commentPanelCloseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const requestCloseViewers = useCallback(() => {
+    if (viewersPanelCloseTimeoutRef.current) return;
+
+    setIsViewersPanelClosing(true);
+    viewersPanelCloseTimeoutRef.current = setTimeout(() => {
+      viewersPanelCloseTimeoutRef.current = null;
+      setIsViewersPanelClosing(false);
+      handleCloseViewers();
+    }, PANEL_TRANSITION_MS);
+  }, [handleCloseViewers]);
+
+  const cancelPendingViewersPanelClose = useCallback(() => {
+    if (viewersPanelCloseTimeoutRef.current) {
+      clearTimeout(viewersPanelCloseTimeoutRef.current);
+      viewersPanelCloseTimeoutRef.current = null;
+      setIsViewersPanelClosing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (viewersPanelCloseTimeoutRef.current) {
+        clearTimeout(viewersPanelCloseTimeoutRef.current);
       }
     };
   }, []);
@@ -220,6 +262,8 @@ export default function MomentViewer({
   const currentMoment = group?.moments?.[momentIndex];
   const isCommentPanelOpen =
     Boolean(currentMoment) && activeCommentMomentId === currentMoment.id;
+  const isViewersPanelOpen =
+    Boolean(currentMoment) && activeViewersMomentId === currentMoment.id;
 
   useEffect(() => {
     if (!currentMoment || currentMoment.viewed) {
@@ -273,10 +317,16 @@ export default function MomentViewer({
 
     resetProgress();
     handleCloseComments();
-  }, [authorId, momentIndex, handleCloseComments]);
+    handleCloseViewers();
+  }, [authorId, momentIndex, handleCloseComments, handleCloseViewers]);
 
   useEffect(() => {
-    if (!currentMoment || isPaused || isCommentPanelOpen) {
+    if (
+      !currentMoment ||
+      isPaused ||
+      isCommentPanelOpen ||
+      isViewersPanelOpen
+    ) {
       return undefined;
     }
 
@@ -301,11 +351,21 @@ export default function MomentViewer({
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       pausedElapsedRef.current = performance.now() - startRef.current;
     };
-  }, [currentMoment, isPaused, isCommentPanelOpen, advance]);
+  }, [
+    currentMoment,
+    isPaused,
+    isCommentPanelOpen,
+    isViewersPanelOpen,
+    advance,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
+        if (isViewersPanelOpen) {
+          requestCloseViewers();
+          return;
+        }
         if (isCommentPanelOpen) {
           requestCloseComments();
           return;
@@ -321,7 +381,8 @@ export default function MomentViewer({
         }
         requestClose();
       }
-      if (isConfirmingDelete || isCommentPanelOpen) return;
+      if (isConfirmingDelete || isCommentPanelOpen || isViewersPanelOpen)
+        return;
       if (event.key === "ArrowRight") advance();
       if (event.key === "ArrowLeft") goBack();
     };
@@ -332,7 +393,9 @@ export default function MomentViewer({
     isMenuOpen,
     isConfirmingDelete,
     isCommentPanelOpen,
+    isViewersPanelOpen,
     requestCloseComments,
+    requestCloseViewers,
     requestClose,
     advance,
     goBack,
@@ -485,6 +548,18 @@ export default function MomentViewer({
 
     cancelPendingCommentPanelClose();
     handleOpenComments(currentMoment.id);
+  };
+
+  const openViewersPanel = () => {
+    if (!currentMoment) return;
+
+    if (isViewersPanelOpen && !isViewersPanelClosing) {
+      requestCloseViewers();
+      return;
+    }
+
+    cancelPendingViewersPanelClose();
+    handleOpenViewers(currentMoment.id);
   };
 
   if (!authorId) return null;
@@ -669,13 +744,27 @@ export default function MomentViewer({
             <div className="absolute bottom-0 left-0 right-0 h-28 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
 
             <div className="absolute bottom-0 left-0 right-0 z-10 flex items-center gap-3 p-3">
-              <button
-                type="button"
-                onClick={openCommentComposer}
-                className="flex-1 min-w-0 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-left text-sm text-white/70 backdrop-blur-sm hover:bg-white/15 transition-colors truncate"
-              >
-                Send message...
-              </button>
+              {authorId === currentUserId ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={openViewersPanel}
+                    aria-label="View story viewers"
+                    className="shrink-0 p-2 rounded-full text-white hover:bg-white/10"
+                  >
+                    <Eye size={24} />
+                  </button>
+                  <div className="flex-1" />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={openCommentComposer}
+                  className="flex-1 min-w-0 rounded-full border border-white/30 bg-white/10 px-4 py-2.5 text-left text-sm text-white/70 backdrop-blur-sm hover:bg-white/15 transition-colors truncate"
+                >
+                  Send message...
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleToggleLike}
@@ -735,6 +824,18 @@ export default function MomentViewer({
                 onCancelCommentComposer={handleCancelCommentComposer}
                 onCommentInputChange={handleCommentInputChange}
                 onSubmitComment={handleSubmitComment}
+              />
+            )}
+
+            {isViewersPanelOpen && (
+              <MomentViewersPanel
+                isDimmed={isConfirmingDelete}
+                isClosing={isViewersPanelClosing || isClosing}
+                viewersState={viewersState}
+                totalCount={viewersTotalCount}
+                viewersListRef={viewersListRef}
+                viewersListSentinelRef={viewersListSentinelRef}
+                onClose={requestCloseViewers}
               />
             )}
 

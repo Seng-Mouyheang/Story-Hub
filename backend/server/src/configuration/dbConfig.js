@@ -148,6 +148,23 @@ const connectToDatabase = async () => {
       .collection("momentLikes")
       .createIndex({ momentId: 1 }, { name: "momentId_lookup_index" });
 
+    // Unique index to prevent duplicate view records by the same user on
+    // the same moment (24h story)
+    await db
+      .collection("momentViews")
+      .createIndex(
+        { userId: 1, momentId: 1 },
+        { unique: true, name: "unique_user_moment_view" },
+      );
+
+    // Cursor index for paginating a moment's viewers list by recency
+    await db
+      .collection("momentViews")
+      .createIndex(
+        { momentId: 1, viewedAt: -1, _id: -1 },
+        { name: "moment_viewers_cursor_index" },
+      );
+
     await db
       .collection("confessionLikes")
       .createIndex(
