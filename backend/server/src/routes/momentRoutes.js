@@ -61,6 +61,14 @@ router.delete(
   momentController.deleteMoment,
 );
 
+// Turn commenting on/off for one of the current user's own stories
+router.post(
+  "/:id/toggle-comments",
+  authenticate,
+  validate(idParamSchema, "params"),
+  momentController.toggleComments,
+);
+
 /* ============================= */
 /*       PUBLIC LIKE ROUTE       */
 /* ============================= */

@@ -14,6 +14,7 @@ const COMMENT_CHARACTER_LIMIT = 2200;
 // Right-docked panel on sm:+ (YouTube Reels style), bottom sheet on mobile.
 const MomentCommentPanel = ({
   momentId,
+  commentsDisabled,
   isDimmed,
   isClosing,
   commentState,
@@ -552,106 +553,113 @@ const MomentCommentPanel = ({
           )}
         </div>
 
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            onSubmitComment(momentId);
-          }}
-          className="px-5 py-4 border-t border-slate-100 shrink-0"
-        >
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              {commentState.editingCommentId && (
-                <p className="text-xs text-sky-600 whitespace-nowrap">
-                  Editing comment
+        {commentsDisabled && !commentState.editingCommentId ? (
+          <div className="px-5 py-4 border-t border-slate-100 shrink-0 text-center text-sm text-slate-400">
+            Comments are off for this story.
+          </div>
+        ) : (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmitComment(momentId);
+            }}
+            className="px-5 py-4 border-t border-slate-100 shrink-0"
+          >
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                {commentState.editingCommentId && (
+                  <p className="text-xs text-sky-600 whitespace-nowrap">
+                    Editing comment
+                  </p>
+                )}
+                {!commentState.editingCommentId &&
+                  commentState.replyingToCommentId && (
+                    <p className="text-xs text-rose-600 whitespace-nowrap">
+                      Replying to {commentState.replyingToAuthor || "user"}
+                    </p>
+                  )}
+                {!commentState.editingCommentId &&
+                  !commentState.replyingToCommentId &&
+                  commentState.input.length === COMMENT_CHARACTER_LIMIT && (
+                    <p className="text-xs text-rose-500">
+                      Comments can't be over {COMMENT_CHARACTER_LIMIT}{" "}
+                      characters.
+                    </p>
+                  )}
+              </div>
+              {commentState.input?.length > 0 && (
+                <p
+                  className={`shrink-0 text-[11px] font-medium ${
+                    commentState.input.length >= COMMENT_CHARACTER_LIMIT * 0.9
+                      ? "text-rose-600"
+                      : "text-slate-400"
+                  }`}
+                >
+                  {commentState.input.length}/{COMMENT_CHARACTER_LIMIT}
                 </p>
               )}
-              {!commentState.editingCommentId &&
-                commentState.replyingToCommentId && (
-                  <p className="text-xs text-rose-600 whitespace-nowrap">
-                    Replying to {commentState.replyingToAuthor || "user"}
-                  </p>
-                )}
-              {!commentState.editingCommentId &&
-                !commentState.replyingToCommentId &&
-                commentState.input.length === COMMENT_CHARACTER_LIMIT && (
-                  <p className="text-xs text-rose-500">
-                    Comments can't be over {COMMENT_CHARACTER_LIMIT} characters.
-                  </p>
-                )}
             </div>
-            {commentState.input?.length > 0 && (
-              <p
-                className={`shrink-0 text-[11px] font-medium ${
-                  commentState.input.length >= COMMENT_CHARACTER_LIMIT * 0.9
-                    ? "text-rose-600"
-                    : "text-slate-400"
-                }`}
-              >
-                {commentState.input.length}/{COMMENT_CHARACTER_LIMIT}
-              </p>
-            )}
-          </div>
 
-          <div className="flex items-start gap-2">
-            <textarea
-              ref={commentInputRef}
-              rows={1}
-              maxLength={COMMENT_CHARACTER_LIMIT}
-              value={commentState.input || ""}
-              onChange={(event) => {
-                if (event.target) {
-                  event.target.style.height = "auto";
-                  event.target.style.height = `${event.target.scrollHeight}px`;
+            <div className="flex items-start gap-2">
+              <textarea
+                ref={commentInputRef}
+                rows={1}
+                maxLength={COMMENT_CHARACTER_LIMIT}
+                value={commentState.input || ""}
+                onChange={(event) => {
+                  if (event.target) {
+                    event.target.style.height = "auto";
+                    event.target.style.height = `${event.target.scrollHeight}px`;
+                  }
+                  onCommentInputChange(event.target.value);
+                }}
+                placeholder={
+                  commentState.editingCommentId
+                    ? "Edit your comment..."
+                    : commentState.replyingToCommentId
+                      ? `Write a reply to ${commentState.replyingToAuthor || "this comment"}...`
+                      : "Write a comment..."
                 }
-                onCommentInputChange(event.target.value);
-              }}
-              placeholder={
-                commentState.editingCommentId
-                  ? "Edit your comment..."
-                  : commentState.replyingToCommentId
-                    ? `Write a reply to ${commentState.replyingToAuthor || "this comment"}...`
-                    : "Write a comment..."
-              }
-              className={`flex-1 ${
-                commentState.editingCommentId ? "min-h-18" : "min-h-10"
-              } max-h-40 overflow-y-auto rounded-xl border border-slate-200 pl-5 pr-2 py-2 text-sm outline-none focus:border-rose-300 custom-scrollbar`}
-            />
-            <div className="flex flex-col items-end gap-2">
-              {(commentState.editingCommentId ||
-                commentState.replyingToCommentId) && (
+                className={`flex-1 ${
+                  commentState.editingCommentId ? "min-h-18" : "min-h-10"
+                } max-h-40 overflow-y-auto rounded-xl border border-slate-200 pl-5 pr-2 py-2 text-sm outline-none focus:border-rose-300 custom-scrollbar`}
+              />
+              <div className="flex flex-col items-end gap-2">
+                {(commentState.editingCommentId ||
+                  commentState.replyingToCommentId) && (
+                  <button
+                    type="button"
+                    onClick={onCancelCommentComposer}
+                    className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs cursor-pointer font-semibold"
+                  >
+                    Cancel
+                  </button>
+                )}
                 <button
-                  type="button"
-                  onClick={onCancelCommentComposer}
-                  className="rounded-xl border border-slate-200 text-slate-600 px-3 py-2 text-xs cursor-pointer font-semibold"
+                  type="submit"
+                  disabled={
+                    commentState.submitting ||
+                    !commentState.input?.trim() ||
+                    (isEditMode && !hasInputChanged)
+                  }
+                  className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold cursor-pointer disabled:bg-rose-300 disabled:text-white disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {commentState.submitting
+                    ? commentState.editingCommentId
+                      ? "Updating..."
+                      : commentState.replyingToCommentId
+                        ? "Replying..."
+                        : "Posting..."
+                    : commentState.editingCommentId
+                      ? "Update"
+                      : commentState.replyingToCommentId
+                        ? "Reply"
+                        : "Post"}
                 </button>
-              )}
-              <button
-                type="submit"
-                disabled={
-                  commentState.submitting ||
-                  !commentState.input?.trim() ||
-                  (isEditMode && !hasInputChanged)
-                }
-                className="rounded-xl bg-rose-500 text-white px-3 py-2 text-xs font-semibold cursor-pointer disabled:bg-rose-300 disabled:text-white disabled:cursor-not-allowed"
-              >
-                {commentState.submitting
-                  ? commentState.editingCommentId
-                    ? "Updating..."
-                    : commentState.replyingToCommentId
-                      ? "Replying..."
-                      : "Posting..."
-                  : commentState.editingCommentId
-                    ? "Update"
-                    : commentState.replyingToCommentId
-                      ? "Reply"
-                      : "Post"}
-              </button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        )}
       </div>
     </div>,
     document.body,

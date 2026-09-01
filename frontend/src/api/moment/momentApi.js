@@ -53,6 +53,15 @@ export async function markMomentViewed(momentId) {
   return parseJsonResponse(response, "Failed to update story.");
 }
 
+export async function toggleMomentComments(momentId) {
+  const response = await fetch(`/api/moments/${momentId}/toggle-comments`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  return parseJsonResponse(response, "Failed to update story.");
+}
+
 export async function deleteMoment(momentId) {
   const response = await fetch(`/api/moments/${momentId}`, {
     method: "DELETE",

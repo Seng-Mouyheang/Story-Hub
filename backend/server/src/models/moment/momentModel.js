@@ -41,6 +41,7 @@ const mapMoment = (moment, viewerObjectId, likedMomentIds = null) => ({
   likedByCurrentUser: likedMomentIds
     ? likedMomentIds.has(moment._id.toString())
     : false,
+  commentsDisabled: Boolean(moment.commentsDisabled),
 });
 
 const createMoment = async ({
@@ -71,6 +72,7 @@ const createMoment = async ({
     viewedBy: [],
     likesCount: 0,
     commentCount: 0,
+    commentsDisabled: false,
     createdAt: now,
     expiresAt: new Date(now.getTime() + MOMENT_LIFETIME_MS),
   });
@@ -236,6 +238,31 @@ const getMomentOwnedByAuthor = async (momentId, authorId) => {
     expiresAt: { $gt: new Date() },
     pendingDeletion: { $ne: true },
   });
+};
+
+// Flips commentsDisabled in a single atomic round trip (aggregation-pipeline
+// update referencing the field's own current value) instead of a separate
+// read-then-write — two concurrent toggles (double-click, two tabs) can't
+// race each other into applying the same direction twice. Ownership and
+// active-story checks are baked into the same query, mirroring deleteMoment,
+// so a wrong-owner or already-expired/deleted request 404s exactly like a
+// nonexistent one and can't be missed by a future edit that forgets a
+// separate check.
+const toggleCommentsDisabled = async (momentId, authorId) => {
+  if (!ObjectId.isValid(momentId) || !ObjectId.isValid(authorId)) return null;
+
+  const db = await connectToDatabase();
+
+  return db.collection(COLLECTION_NAME).findOneAndUpdate(
+    {
+      _id: new ObjectId(momentId),
+      authorId: new ObjectId(authorId),
+      expiresAt: { $gt: new Date() },
+      pendingDeletion: { $ne: true },
+    },
+    [{ $set: { commentsDisabled: { $not: ["$commentsDisabled"] } } }],
+    { returnDocument: "after", projection: { commentsDisabled: 1 } },
+  );
 };
 
 const markViewed = async (momentId, viewerId) => {
@@ -404,6 +431,7 @@ module.exports = {
   getMomentsByAuthor,
   getMomentById,
   getMomentOwnedByAuthor,
+  toggleCommentsDisabled,
   isMomentActive,
   markViewed,
   deleteMoment,
