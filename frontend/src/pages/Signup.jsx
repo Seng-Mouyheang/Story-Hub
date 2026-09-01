@@ -74,16 +74,20 @@ export default function Signup() {
     setIsSubmitting(true);
 
     try {
-      await signup({ username: name, email, password });
+      const payload = await signup({ username: name, email, password });
 
-      localStorage.setItem("needsProfileSetup", "true");
-
-      navigate("/login", {
-        state: {
-          message:
-            "Account created successfully. You can optionally set up your profile after logging in.",
-        },
-      });
+      if (payload?.token && payload?.user) {
+        localStorage.setItem("token", payload.token);
+        localStorage.setItem("currentUser", JSON.stringify(payload.user));
+        localStorage.setItem("needsProfileSetup", "true");
+        navigate("/edit-profile", { replace: true });
+      } else {
+        navigate("/login", {
+          state: {
+            message: "Account created successfully. Please log in to continue.",
+          },
+        });
+      }
     } catch (error) {
       setErrorMessage(error.message || "Unable to sign up right now.");
     } finally {

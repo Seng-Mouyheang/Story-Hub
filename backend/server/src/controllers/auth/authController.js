@@ -57,7 +57,18 @@ const register = async (req, res) => {
       return createdUserId;
     });
 
-    res.status(201).json({ userId });
+    const token = authService.generateToken({ _id: userId, role: "user" });
+
+    res.status(201).json({
+      userId,
+      token,
+      user: {
+        id: userId,
+        username,
+        email: normalizedEmail,
+        role: "user",
+      },
+    });
   } catch (error) {
     if (error?.code === 11000) {
       return res.status(409).json({ message: "Email already exists" });
